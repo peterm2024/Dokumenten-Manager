@@ -28,7 +28,7 @@ Das Programm ist in der Beta-Phase. Wer mittestet, findet in [BETA_LEITFADEN.md]
 
 ## KI: Was man braucht
 
-Für die KI-Funktionen läuft [Ollama](https://ollama.com) mit dem Bild-Modell `qwen2.5vl:7b` - auf diesem PC oder auf einem Rechner im Heimnetz. Einrichtung in drei Schritten steht im Programm unter Hilfe → „KI auf dem eigenen PC". Richtwerte, wie lange ein Dokument dauert:
+Für die KI-Funktionen läuft [Ollama](https://ollama.com) mit dem Bild-Modell `qwen2.5vl:7b` - auf diesem PC oder auf einem Rechner im Heimnetz. Einrichtung in drei Schritten steht im Programm unter Hilfe → „KI auf dem eigenen PC". Steht der Server woanders, etwa bei Angehörigen, verbindet [Tailscale](https://tailscale.com) beide Rechner privat und verschlüsselt, ohne Portfreigabe am Router - im Programm erklärt unter Hilfe → „KI-Server aus der Ferne (Tailscale)". Richtwerte, wie lange ein Dokument dauert:
 
 | Rechner | Dauer je Dokument | Bemerkung |
 |---|---|---|

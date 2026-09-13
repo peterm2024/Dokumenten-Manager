@@ -16,7 +16,9 @@ Der Dokumenten-Manager verwaltet PDF-Dokumente (Rechnungen, Verträge, Bescheide
 
 ## 3. KI - mit oder ohne
 
-Alles außer den KI-Funktionen läuft ohne weitere Software. Für Titelvorschlag, Tags ergänzen, Ablage-Vorschau und Vollautomatik braucht es ein [Ollama](https://ollama.com) auf diesem oder einem anderen Rechner:
+Alles außer den KI-Funktionen läuft ohne weitere Software. Für Titelvorschlag, Tags ergänzen, Ablage-Vorschau und Vollautomatik braucht es ein [Ollama](https://ollama.com) auf diesem PC oder einem Rechner im Heimnetz. Steht der Server woanders, etwa bei Angehörigen, verbindet [Tailscale](https://tailscale.com) beide Rechner privat und verschlüsselt, ohne Portfreigabe am Router - im Programm erklärt unter Hilfe → „KI-Server aus der Ferne (Tailscale)".
+
+Einrichtung auf dem eigenen PC:
 
 1. Ollama für Windows installieren (läuft als Hintergrunddienst, hört nur auf diesem PC).
 2. In der Eingabeaufforderung das Modell laden (einmalig, rund 6 GB): `ollama pull qwen2.5vl:7b`
