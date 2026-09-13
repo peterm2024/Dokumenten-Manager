@@ -1,8 +1,12 @@
 # Dokumenten-Manager (KI Edition)
 
+<img src="bilder/icon.png" width="72" align="right" alt="Programmsymbol">
+
 Ein Programm für Windows, das PDF-Dokumente (Rechnungen, Verträge, Bescheide, Scans) in einer normalen Ordnerstruktur auf dem eigenen Rechner verwaltet: Titel, Tags und Datum vergeben, blitzschnell suchen, Dubletten finden, Dateinamen aufräumen. Eine optionale lokale KI beschriftet neue Scans und legt sie von selbst ab.
 
 **Alles bleibt bei dir.** Titel, Tags und Datum werden direkt in die PDF-Dateien geschrieben (in deren Metadaten, der Inhalt bleibt unverändert). Es gibt keine Datenbank, keinen Online-Dienst, keine Anmeldung. Auch die KI läuft lokal ([Ollama](https://ollama.com)) - auf diesem oder einem anderen Rechner im eigenen Netz.
+
+![Hauptfenster: Ordnerbaum und Tag-Katalog links, Dokumentenliste und Beschriftung in der Mitte, Seitenvorschau rechts](bilder/hauptfenster.png)
 
 ## Download
 
