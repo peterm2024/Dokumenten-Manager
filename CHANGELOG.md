@@ -2,6 +2,13 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Hintergründe zu einzelnen Fixes in [FALLSTRICKE_UND_WORKAROUNDS.md](FALLSTRICKE_UND_WORKAROUNDS.md).
 
+## v0.9.19 — 2026-09-15
+
+- Eigenschaften-Bereich als Tabelle mit Linien: Titel, Tags und Datum als weiße bearbeitbare Zellen, alle übrigen Angaben als graue schreibgeschützte Zellen (markieren/kopieren, Rechtsklick „Kopieren“ / „Alles kopieren“, Tooltip bei abgeschnittenem Wert). Kurze Angaben teilen sich eine Zeile; ausgeklappt braucht die Tabelle weniger Höhe als der alte Textblock, und der Bereich entfaltet sich nach oben (FALLSTRICKE #72).
+- Einstellungen → neuer Reiter „Eigenschaften“: eine Liste mit zwei Trennern bestimmt Reihenfolge und Sichtbarkeit der Felder (immer / nur mit „Details“ / nie; ▲▼ oder Alt+Hoch/Runter), + und − die Breite je Feld (⅛, ¼, ½, ¾, 1). Die Tabelle folgt sofort, „Standard“ stellt die Auslieferung her.
+- Tags per Drag & Drop auf ein anderes Dokument übertragen geht nur noch mit gedrückter Alt-Taste (Fehlgriff-Schutz); das Drag-Fensterchen zeigt „Tags übertragen →“, ohne Alt erscheint ein kurzer Hinweis in der Menüleiste.
+- Hilfe → Schnellstart: fehlende Tastenkürzel ergänzt (Greifer-Doppelklick, Tag für mehrere Dokumente, Spaltensortierung, Esc im Tag-Suchfeld, Ordnerbaum); Pfad in den Eigenschaften einheitlich mit Backslashes.
+
 ## v0.9.18 — 2026-09-14
 
 - Hilfe → „Auf neue Version prüfen…“: fragt die Releases-Seite ab, vergleicht die Versionsnummer und bietet bei einer neueren die Download-Seite im Browser an. Dieselbe Prüfung läuft still beim Programmstart und meldet sich nur, wenn es etwas Neueres gibt (abschaltbar unter Einstellungen → Allgemein; es werden keine Angaben über dich übertragen).
