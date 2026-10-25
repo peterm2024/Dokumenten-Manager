@@ -1,6 +1,24 @@
 # Changelog
 
-Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Hintergründe zu einzelnen Fixes in [FALLSTRICKE_UND_WORKAROUNDS.md](FALLSTRICKE_UND_WORKAROUNDS.md).
+Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
+
+## v0.9.20 — 2026-10-25
+
+- Titel-Aufräumen (OCR): Spalte „Datei“, senkrechte Scrollleiste, Klick auf eine Zeile zeigt das Dokument im Hauptfenster (FALLSTRICKE #73), Knopf „KI-Titel vorschlagen“ (erste Seite per KI wie im Dateinamen-Tool), Vorschläge werden nicht mehr automatisch angehakt. Kauderwelsch-Erkennung zählt Laute statt Buchstaben (sch/ch/ck/pf/tz/st) und erkennt den e→c-Lesefehler - ehrliche Titel wie „Rechtsschutz“ oder „Abschlagsplan“ melden nicht mehr.
+- Vorschau: Seitenwechsel ohne graue Pause - die neue Seite ist sofort da und gleitet mit der alten zusammen ein. Die Bildlaufleiste zeigt jetzt die Position im ganzen Dokument (Ziehen springt zur Seite, kurz „Seite x von N“), beim Zoomen erscheint bei Bedarf eine waagerechte Leiste.
+- Nach dem Umbenennen (F2) bleibt die umbenannte Datei markiert, statt auf die erste Zeile zu springen.
+- Tags mit Alt auf ein anderes Dokument übertragen behält die Reihenfolge: dessen Tags bleiben vorne, die neuen kommen dahinter (vorher durcheinandergewürfelt).
+- Tags-Feld und Suchfeld: Return übernimmt einen Vorschlag der Liste nur noch, wenn er mit Pfeil runter/hoch angewählt ist - ein neu getipptes Tag wie „Test“ wird nicht mehr ungefragt zu „Testament“. Die Tags im PDF enden nicht mehr mit einem Komma.
+- Ordner reagieren wieder beim ersten Klick: mit Haken „Inhalt (OCR)“ oder nach dem Anklicken eines Suchtreffers wurde der nächste Ordnerklick verschluckt (FALLSTRICKE #74).
+- Ein Dokument aus der Trefferliste auf einen Ordner ziehen lässt die Suche stehen; das Dokument bleibt markiert und zeigt seinen neuen Ordner (vorher wechselte die Ansicht in den Ordner und die Suche war weg).
+- Papierkorb: „Wiederherstellen“ legt ein Dokument zurück in den Ordner, aus dem es gelöscht wurde (vorher immer in den Hauptordner), die Meldung nennt den Ordner. Wird der Papierkorb ausgeblendet, während man ihn ansieht, wechselt die Ansicht in den Hauptordner.
+- Dokumentenliste: Die Spalte „Tags“ gehört zur Standard-Ansicht (erster Start und „Fensteraufteilung zurücksetzen“); die Meldung nach dem Zurücksetzen verlangt keinen Neustart mehr - alles wirkt sofort.
+- Ablage-Vorschau: Im Dialog „Zielordner wählen“ bricht die Option „Alle Dokumente von … — auch künftige“ um, statt bei langen Absendernamen rechts abgeschnitten zu werden.
+- Dokument-ID: Jedes Dokument bekommt beim ersten Speichern eine kurze, gut lesbare ID (z.B. K7M4-Q2XP), um es in Notizen und Rückmeldungen eindeutig zu nennen. Sie steht in den Eigenschaften, bleibt beim Umbenennen und Verschieben gleich, und die Suche findet das Dokument über die ID (auch nur deren Anfang, Groß-/Kleinschreibung und Bindestrich egal). Neues Werkzeug Tools → Aufräumen → „Dokument-IDs vergeben…“ holt den Bestand nach und gibt Kopien, die die ID ihres Originals mitgebracht haben, eine eigene.
+- Speichern: Dateien mit Sonderzeichen wie ● oder □ im Namen ließen sich bei umgeleiteter Programmausgabe nicht speichern (FALLSTRICKE #78).
+- Große Schrift (125 %): Fenster, die nahe am unteren Bildschirmrand aufgehen, ragen nicht mehr mit der Fußzeile über den Rand; Datum in der Dokumentenliste und Dokumentenzahl im Ordnerbaum werden nicht mehr abgeschnitten (Spaltenbreiten wachsen mit).
+- Suche: Ein Dokument, das nicht unter den Treffern steht, verschwindet aus Vorschau und Eigenschaften. Findet eine Textsuche ohne „Inhalt (OCR)“ nichts, erklärt ein Hinweis in der Vorschau, wie man im Dokumenttext sucht.
+- Vollautomatik: Ein frisch gescanntes Dokument wird nach gut 10 Sekunden abgelegt statt erst nach rund einer Minute (FALLSTRICKE #75).
 
 ## v0.9.19 — 2026-09-15
 
@@ -36,9 +54,9 @@ Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt E
 
 ## v0.9.14 — 2026-09-12
 
-- Windows-Textgröße 125 % (Barrierefreiheit, Eltern-PC): Fenstergrößen, Umbrüche und Spaltenbreiten wachsen jetzt auch mit der Textgröße, nicht nur mit der Bildschirm-Skalierung; Zeilen in Bäumen und Tabellen sind so hoch wie die Schrift (keine abgeschnittenen Unterlängen); in den Einstellungen bleiben Fußzeile mit „Schließen“, „Ändern…“ und „Altbestand nachziehen“ immer sichtbar; Reset-/Speichern-Knopf und Statusfenster nutzen die Standardschriftgröße (FALLSTRICKE #69).
+- Windows-Textgröße 125 % (Barrierefreiheit): Fenstergrößen, Umbrüche und Spaltenbreiten wachsen jetzt auch mit der Textgröße, nicht nur mit der Bildschirm-Skalierung; Zeilen in Bäumen und Tabellen sind so hoch wie die Schrift (keine abgeschnittenen Unterlängen); in den Einstellungen bleiben Fußzeile mit „Schließen“, „Ändern…“ und „Altbestand nachziehen“ immer sichtbar; Reset-/Speichern-Knopf und Statusfenster nutzen die Standardschriftgröße (FALLSTRICKE #69).
 - Vollautomatik: nach jedem abgelegten Dokument wird der angezeigte Posteingang nur noch einmal neu gelesen statt zweimal (#68).
-- KI-Server → „Verbindung testen“ meldet, ob das Modell auf der Grafikkarte oder still auf der CPU rechnet, und warnt bei CPU-Betrieb (Ursache des Timeouts in Dachau, #67).
+- KI-Server → „Verbindung testen“ meldet, ob das Modell auf der Grafikkarte oder still auf der CPU rechnet, und warnt bei CPU-Betrieb (häufige Ursache für Zeitüberschreitungen, #67).
 
 ## v0.9.13 — 2026-09-12
 
@@ -50,13 +68,13 @@ Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt E
 
 - Aktivitätsanzeige rechts neben „Hilfe" in der Menüleiste: zeigt in Klartext, was gerade läuft („Lese Ordner … (12 Dateien)…", „Suche läuft…", „Vorschau wird gezeichnet…", „Speichere …", „KI antwortet … (14 s)", „Wartet auf deine Antwort: „…""), im Ruhezustand „Bereit" — auf langsamen Rechnern sieht man so, dass es weitergeht.
 - Suchtreffer im Dokument: bei aktiver Suche markiert die Vorschau die Suchbegriffe hellblau mit blauem Rahmen (Datum bleibt gelb/rot), springt beim Anklicken eines Treffers auf die erste Fundstelle und nennt in der Titelleiste Trefferzahl bzw. Trefferseite; Treffer nur in Name/Titel/Tags oder im verbesserten Index-Text werden als „nicht im Seitentext" ausgewiesen.
-- Phrasensuche: `"Peter Metz"` in Anführungszeichen findet nur den zusammenhängenden Text (nicht „Metz, Peter"), Zeilenumbruch zählt als Leerzeichen; ohne Anführungszeichen wie bisher jedes Wort für sich. Hilfe-Absatz „Wiederfinden" ergänzt.
+- Phrasensuche: `"Max Mustermann"` in Anführungszeichen findet nur den zusammenhängenden Text (nicht „Mustermann, Max"), Zeilenumbruch zählt als Leerzeichen; ohne Anführungszeichen wie bisher jedes Wort für sich. Hilfe-Absatz „Wiederfinden" ergänzt.
 - Behoben: unscharfe Suche traf Bruchstücke von OCR-Müll („Kostal" fand „Sta(l^'tc^ke" = Stadtwerke) — kürzere Wörter brauchen jetzt eine höhere Ähnlichkeit (#64).
 
 ## v0.9.11 — 2026-09-11
 
 - Dateinamen unter Kontrolle: der bisherige Name wird beim ersten Umbenennen als „Originalname" ins PDF eingebrannt (Details-Block); Umbenennen beim Ablegen abschaltbar; neues Tool „Dateinamen aufräumen" (Vorschlag `JJJJMMTT_Titel.pdf`, nur Angehaktes wird umbenannt, Originalnamen wiederherstellen, Müll-Titel orange, „KI-Titel vorschlagen").
-- Vollautomatik: Objekt-Alias ordnet absenderlose Eigenbelege (Notizen, Zählerstände) per Zielordner-Klick ihrem Haus zu; Rücksendezeilen wie „Bay. LfSt, PF 0151 Straubing" werden gekürzt und reine Kürzel nie zum neuen Ordner.
+- Vollautomatik: Objekt-Alias ordnet absenderlose Eigenbelege (Notizen, Zählerstände) per Zielordner-Klick ihrem Haus zu; Rücksendezeilen wie „Finanzamt Musterstadt, Postfach 1234" werden gekürzt und reine Kürzel nie zum neuen Ordner.
 - Dokumentenliste: optionale Spalte „Textqualität" (kaputte Scanner-OCR sofort sichtbar, aktualisiert sich nach „Dokument neu erfassen"); Datums-Marker ohne Doppel-Treffer und nach dem Neu-Erfassen bündig (#63); Hilfe springt zum Tailscale-Abschnitt (#62); Tag-Suchfeld: Esc gibt Fokus an den Baum, F2/Strg+I aus dem Suchfeld.
 - Behoben: Spaltenbreite ziehen endete als Drag & Drop (#61).
 - Entwicklung: Test-Wizard `python testwizard.py` führt durch MANUELLE_TESTS.md (feste IDs, Vorbereitung/Datei/Klicks).
@@ -80,7 +98,7 @@ Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt E
 ## v0.9.8 — 2026-09-03
 
 - Tag-Hygiene-Tool: selten benutzte Tags sammeln, entfernen und dauerhaft ignorieren; Ignorierliste bearbeitbar.
-- Objekt im Titel („… Gebäudeversicherung Winterstr. 8"); Ort und Objekt als getrennte Schlagwörter.
+- Objekt im Titel („… Gebäudeversicherung Musterstraße 1"); Ort und Objekt als getrennte Schlagwörter.
 - „Ordner zusammenführen" per Rechtsklick, inklusive gemerkter Zuordnung.
 - Ablage-Vorschau: maximierbar, Zeile zeigt das Dokument im Hauptfenster, Tags in der Zelle korrigierbar, vollständiges Protokoll.
 - Behoben: c/o-Zustellvermerke zerhackten Namen (#47), Adress-Schreibvarianten (#48), Ordner-Wildwuchs durch Wortreihenfolge/Rechtsform, flatternde Bildlaufleiste (#49).
