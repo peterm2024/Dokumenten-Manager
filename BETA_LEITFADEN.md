@@ -21,7 +21,7 @@ Alles außer den KI-Funktionen läuft ohne weitere Software. Für Titelvorschlag
 Einrichtung auf dem eigenen PC:
 
 1. Ollama für Windows installieren (läuft als Hintergrunddienst, hört nur auf diesem PC).
-2. In der Eingabeaufforderung das Modell laden (einmalig, rund 6 GB): `ollama pull qwen2.5vl:7b`
+2. In der Eingabeaufforderung das Modell laden (einmalig, rund 7 GB): `ollama pull qwen3.5:9b`. Wer schon `qwen2.5vl:7b` geladen hat: es läuft weiter; zum Umstieg `qwen3.5:9b` laden und unter Datei → Einstellungen → KI-Server als Modell eintragen (legt deutlich seltener falsch ab).
 3. Im Programm unter Datei → Einstellungen → KI-Server „Verbindung testen" klicken. Der Punkt rechts in der Suchleiste wird grün.
 
 Wie schnell die KI antwortet, hängt fast nur von der Grafikkarte ab. Richtwerte je Dokument:
