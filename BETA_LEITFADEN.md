@@ -62,3 +62,7 @@ Am hilfreichsten ist eine Rückmeldung mit diesen drei Dingen:
 3. Die **Protokolldatei**: Datei → „Protokoll-Datei (Log) öffnen", Inhalt kopieren oder Datei anhängen. Erscheint ein Fenster „Interner Fehler", bitte dort „Ja" wählen, dann ist das Protokoll schon offen. Startet das Programm gar nicht erst, liegt neben der EXE eine Datei `startfehler.txt`.
 
 Rückmeldungen als [GitHub-Issue](https://github.com/peterm2024/Dokumenten-Manager/issues) oder direkt an den Entwickler. Auch „hat alles funktioniert" ist eine wertvolle Rückmeldung.
+
+## 7. Lizenz und Quellcode
+
+Der Dokumenten-Manager ist freie Software unter der GNU Affero General Public License v3.0 (AGPL-3.0, Lizenztext: [LICENSE](https://github.com/peterm2024/Dokumenten-Manager/blob/main/LICENSE)). Der Quellcode wird in einem eigenen Schritt veröffentlicht; bis dahin gibt es ihn auf Anfrage - per [GitHub-Issue](https://github.com/peterm2024/Dokumenten-Manager/issues) oder direkt beim Entwickler.
