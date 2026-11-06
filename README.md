@@ -2,7 +2,7 @@
 
 <img src="bilder/icon.png" width="72" align="right" alt="Programmsymbol">
 
-Ein Programm für Windows, das PDF-Dokumente (Rechnungen, Verträge, Bescheide, Scans) in einer normalen Ordnerstruktur auf dem eigenen Rechner verwaltet: Titel, Tags und Datum vergeben, blitzschnell suchen, Dubletten finden, Dateinamen aufräumen. Eine optionale lokale KI beschriftet neue Scans und legt sie von selbst ab.
+Ein Programm für Windows, das PDF-Dokumente (Rechnungen, Verträge, Bescheide, Scans) in einer normalen Ordnerstruktur auf dem eigenen Rechner verwaltet: Titel, Tags und Datum vergeben, blitzschnell suchen, Dubletten finden, Dateinamen aufräumen, alte Mails übernehmen. Eine optionale lokale KI beschriftet neue Scans, legt sie von selbst ab und beantwortet Fragen zu den Dokumenten.
 
 **Alles bleibt bei dir.** Titel, Tags und Datum werden direkt in die PDF-Dateien geschrieben (in deren Metadaten, der Inhalt bleibt unverändert). Es gibt keine Datenbank, keinen Online-Dienst, keine Anmeldung. Auch die KI läuft lokal ([Ollama](https://ollama.com)) - auf diesem oder einem anderen Rechner im eigenen Netz.
 
@@ -22,13 +22,15 @@ Das Programm ist in der Beta-Phase. Wer mittestet, findet in [BETA_LEITFADEN.md]
 
 - **Ordner und Dokumente:** Ordnerbaum links, Dokumentenliste in der Mitte, Seitenvorschau rechts. Dateien per Maus verschieben, umbenennen, löschen (Papierkorb der Sammlung). Neue Dateien im Ordner werden von selbst bemerkt.
 - **Beschriften:** Titel, Tags und Datum je Dokument; Tag-Katalog mit Ober- und Unterbegriffen; Auto-Save.
-- **Suchen:** Text, Tags, Datum („2021" oder „07.2021" reicht), auf Wunsch auch im Inhalt gescannter Seiten (OCR). Treffer werden in der Vorschau markiert.
+- **Suchen:** Text, Tags, Datum („2021" oder „07.2021" reicht), auf Wunsch auch im Inhalt gescannter Seiten (OCR). Tippfehler werden verziehen, ein Wort in Anführungszeichen findet nur genau dieses Wort. Treffer werden in der Vorschau markiert.
 - **Aufräumen:** Dubletten finden (doppelt gescannt oder kopiert), Dateinamen vereinheitlichen, PDF-Inspektor.
-- **KI (optional):** Titel vorschlagen, Tags ergänzen, Ablage-Vorschau, und eine Vollautomatik, die neue Scans aus dem Posteingang beschriftet und einsortiert - gedacht für Angehörige, die nur noch den Scanner bedienen.
+- **Mails übernehmen:** Alte Mail-Archive aus Thunderbird, klassischem Outlook (.pst/.ost) oder .eml-Dateien einmal in die Sammlung holen. KID sucht die Mail-Programme selbst, arbeitet nur auf einer Kopie und verändert an ihnen nichts. Je Absender entscheidest du einmal, was bleibt; übernommene Mails werden PDFs mit der Original-Mail darin, Anhänge behalten den Bezug zu ihrer Mail. Die Suche nach den Mail-Programmen ist neu und noch wenig erprobt.
+- **KI (optional):** Titel vorschlagen, Tags ergänzen, Ablage-Vorschau, und eine Vollautomatik, die neue Scans aus dem Posteingang beschriftet und einsortiert - gedacht für Angehörige, die nur noch den Scanner bedienen. „Begleitet erfassen“ geht den Posteingang Dokument für Dokument mit dir durch, gedacht für eine neue oder große Sammlung.
+- **Sammlungs-Wiki und Fragen (optional, je Sammlung einzuschalten):** KID sammelt Fakten aus den Dokumenten, jeweils mit Zitat, und zeigt sie als Seiten im Browser. „Frag deine Dokumente“ beantwortet Fragen in Alltagssprache, jede Angabe nennt ihr Dokument. Fragen und Antworten werden nicht gespeichert.
 
 ## KI: Was man braucht
 
-Für die KI-Funktionen läuft [Ollama](https://ollama.com) mit dem Bild-Modell `qwen2.5vl:7b` - auf diesem PC oder auf einem Rechner im Heimnetz. Einrichtung in drei Schritten steht im Programm unter Hilfe → „KI auf dem eigenen PC". Steht der Server woanders, etwa bei Angehörigen, verbindet [Tailscale](https://tailscale.com) beide Rechner privat und verschlüsselt, ohne Portfreigabe am Router - im Programm erklärt unter Hilfe → „KI-Server aus der Ferne (Tailscale)". Richtwerte, wie lange ein Dokument dauert:
+Für die KI-Funktionen läuft [Ollama](https://ollama.com) mit dem Bild-Modell `qwen3.5:9b` - auf diesem PC oder auf einem Rechner im Heimnetz. Einrichtung in drei Schritten steht im Programm unter Hilfe → „KI auf dem eigenen PC". Steht der Server woanders, etwa bei Angehörigen, verbindet [Tailscale](https://tailscale.com) beide Rechner privat und verschlüsselt, ohne Portfreigabe am Router - im Programm erklärt unter Hilfe → „KI-Server aus der Ferne (Tailscale)". Richtwerte, wie lange ein Dokument dauert:
 
 | Rechner | Dauer je Dokument | Bemerkung |
 |---|---|---|
