@@ -2,6 +2,18 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.25 — 2026-11-06
+
+- Mails importieren: Das Fenster ist neu aufgebaut, in drei Schritten auf einer Seite: Woher, Was soll rein, Übernehmen. Der jeweils nächste Knopf ist blau, die Liste filtern Optionsfelder mit den Zahlen dabei, von Hand entscheidet man per Rechtsklick. Vor dem Übernehmen steht da, wie viele Mails, Anhänge und neue Ordner es werden und wie lange das Ablegen dauert. Regeln je Absender sind optional.
+- Mails importieren: Auch Mails von Absendern, die schon einen Ordner haben, gehen jetzt durch die KI, denn auch dort kommt Werbung vor. Eine Mail mit PDF-Anhang von einem solchen Absender bleibt immer drin.
+- Vollautomatik: Eine einzelne Mail ohne Anhang bekommt keinen eigenen Ordner mehr, sondern kommt nach „Einzelne Mails“ in der jeweiligen Buchstabengruppe. Der Absender steht dann als Tag dabei.
+- Ansicht: Neuer Schalter „Mails ausblenden“. Ordnerbaum, Dokumentenliste und Suche zeigen dann keine importierten Mails, Ordner mit nur Mails verschwinden aus dem Baum. Gelöscht oder verschoben wird nichts. Scans und PDF-Anhänge bleiben sichtbar, ebenso alles in `0_Posteingang` und `0_Unsicher`. Die Suche nennt, wie viele Mails sie außerdem gefunden hätte.
+- Menüleiste: Statt nur „KI antwortet“ steht dort jetzt, woran die KI arbeitet, zum Beispiel „Vollautomatik liest 3 von 120: …“ oder „Wiki liest Fakten, noch 812: …“.
+- Dokumentenliste: Bei einem leeren Ordner verschwinden auch Dateiname, Ordner und „Original-Mail öffnen“ unter der Liste.
+- Mails importieren: Anführungszeichen und Adressen im Absendernamen ergeben keine Ordnernamen wie `'M.Muster'` mehr.
+- Vollautomatik: Neu importierte Mails bekommen nicht mehr den eigenen Namen als Tag.
+- Mails importieren: Das Statusfenster der Vollautomatik verdeckt das Fenster nicht mehr, solange es offen ist.
+
 ## v0.9.24 — 2026-11-06
 
 - Mails importieren: Newsletter mit vielen externen Bildern sehen als PDF deutlich besser aus. In Tabellen steht kein „[Bild nicht geladen]“ mehr, das drückte die Spalten zusammen und ließ Texte überlappen; die Zahl der Bilder steht weiterhin oben im Kopf. Fehler in den Stilen einer Mail setzen die Darstellung von Betreff und Kopfzeilen nicht mehr außer Kraft.
