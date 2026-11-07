@@ -2,6 +2,15 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.26 — 2026-11-07
+
+- Speichern: Ein Dokument wird jetzt in einem Schritt ersetzt, die neue Fassung wird vorher geprüft. Ein Absturz oder Stromausfall beim Speichern beschädigt das Original nicht mehr. Lässt ein anderes Programm das Ersetzen nicht zu, kommt eine Meldung, und das Dokument bleibt, wie es war.
+- Einstellungen, Tag-Katalog und die übrigen Listen werden genauso sicher geschrieben. Eine beschädigte Datei wird nicht mehr überschrieben, sondern als `.kaputt` beiseitegelegt und gemeldet. Der Tag-Katalog kommt, wenn möglich, aus seiner Sicherung zurück.
+- Ein zweiter Doppelklick öffnet kein zweites Programm auf derselben Sammlung mehr, sondern holt das laufende Fenster nach vorn.
+- Protokoll: Fehler, die bisher verloren gingen, stehen jetzt dort. Es bleibt auf 5 MB plus eine ältere Datei begrenzt. Stürzt das Programm beim Lesen einer PDF oder eines Postfachs ab, steht der Hergang beim nächsten Start im Protokoll.
+- Signierte PDFs: Scheitert die Prüfung auf eine Signatur, gilt das PDF als signiert, damit eine vorhandene Signatur erhalten bleibt.
+- Vorschau: Wer gezoomt mit dem Mausrad blättert, landet vorwärts am Anfang der neuen Seite und rückwärts am Ende der vorigen. Bisher scrollte das Rad im Schwung gleich weiter. Wer die kurze Pause nach dem Seitenwechsel nicht mag, schaltet sie unter Einstellungen → Vorschau ab. Zoomen mit Strg+Mausrad flackert nicht mehr.
+
 ## v0.9.25 — 2026-11-06
 
 - Mails importieren: Das Fenster ist neu aufgebaut, in drei Schritten auf einer Seite: Woher, Was soll rein, Übernehmen. Der jeweils nächste Knopf ist blau, die Liste filtern Optionsfelder mit den Zahlen dabei, von Hand entscheidet man per Rechtsklick. Vor dem Übernehmen steht da, wie viele Mails, Anhänge und neue Ordner es werden und wie lange das Ablegen dauert. Regeln je Absender sind optional.
