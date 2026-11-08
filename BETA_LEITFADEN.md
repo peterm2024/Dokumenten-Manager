@@ -16,7 +16,7 @@ Der Dokumenten-Manager verwaltet PDF-Dokumente (Rechnungen, Verträge, Bescheide
 
 ## 3. KI - mit oder ohne
 
-Alles außer den KI-Funktionen läuft ohne weitere Software. Für Titelvorschlag, Tags ergänzen, Ablage-Vorschau, Vollautomatik, Begleitet erfassen, die KI-Einstufung beim Mail-Import, das Sammlungs-Wiki und „Frag deine Dokumente“ braucht es ein [Ollama](https://ollama.com) auf diesem PC oder einem Rechner im Heimnetz. Steht der Server woanders, etwa bei Angehörigen, verbindet [Tailscale](https://tailscale.com) beide Rechner privat und verschlüsselt, ohne Portfreigabe am Router - im Programm erklärt unter Hilfe → „KI-Server aus der Ferne (Tailscale)".
+Alles außer den KI-Funktionen läuft ohne weitere Software. Für Titelvorschlag, Ablage-Vorschau, Vollautomatik, Begleitet erfassen, das Sammlungs-Wiki und „Frag deine Dokumente“ braucht es ein [Ollama](https://ollama.com) auf diesem PC oder einem Rechner im Heimnetz. Steht der Server woanders, etwa bei Angehörigen, verbindet [Tailscale](https://tailscale.com) beide Rechner privat und verschlüsselt, ohne Portfreigabe am Router - im Programm erklärt unter Hilfe → „KI-Server aus der Ferne (Tailscale)".
 
 Einrichtung auf dem eigenen PC:
 
@@ -42,9 +42,9 @@ Ohne Grafikkarte ist die KI nichts zum Zuschauen, aber die Vollautomatik läuft 
 - **Suchen:** Text, Tags (im Suchfeld werden bekannte Tags blau), Datum („2021" oder „07.2021" reicht), Inhalt (OCR). Ein Wort in Anführungszeichen findet nur genau dieses Wort.
 - **Ordnen:** Dateien per Maus verschieben, umbenennen, löschen (Papierkorb), Standard-Ordnerstruktur.
 - **Werkzeuge:** Dubletten finden, Dateinamen aufräumen, PDF-Inspektor.
-- **Mit KI:** Titel vorschlagen, Tags ergänzen, Ablage-Vorschau (zeigt nur an, ändert nichts), dann die Vollautomatik mit dem Posteingang.
+- **Mit KI:** Titel vorschlagen (Tags nur aus deinem Katalog, per Klick), Ablage-Vorschau (zeigt nur an, ändert nichts), dann die Vollautomatik mit dem Posteingang.
 - **Begleitet erfassen** (Tools → Vollautomatik): den Posteingang Dokument für Dokument durchgehen, KID schlägt vor, du bestätigst oder korrigierst. Gedacht für eine neue oder große Sammlung.
-- **Mails importieren** (Tools → Vollautomatik → „Mails importieren…“): KID sucht beim Öffnen des Fensters Thunderbird und klassisches Outlook und arbeitet nur auf einer Kopie der Mail-Dateien. Alternativ lässt sich eine .pst, .ost, mbox- oder .eml-Datei von Hand wählen. Übernommene Mails landen als PDF im Posteingang, mit der Original-Mail darin. Zum Kennenlernen reicht ein Monat. Stimmt danach etwas in deinem Mail-Programm nicht, bitte sofort melden.
+- **Mails importieren** (Tools → Vollautomatik → „Mails importieren…“): KID sucht beim Öffnen des Fensters Thunderbird und klassisches Outlook und arbeitet nur auf einer Kopie der Mail-Dateien. Alternativ lässt sich eine .pst, .ost, mbox- oder .eml-Datei von Hand wählen, auch ein ganzer Ordner davon. Nach dem Einlesen sucht man wie im Hauptfenster, etwa „Stadtwerke 2024“, und hakt die gewünschten Mails an. Sie kommen als PDF mit der Original-Mail darin in den Posteingang oder direkt in einen gewählten Ordner. Zum Kennenlernen reicht eine Suche nach einem Absender. Stimmt danach etwas in deinem Mail-Programm nicht, bitte sofort melden.
 - **Sammlungs-Wiki und „Frag deine Dokumente“** (einzuschalten je Sammlung unter Datei → Einstellungen → „Wiki“, dann Tools → KI-Helfer): KID sammelt Fakten aus den Dokumenten und beantwortet Fragen in Alltagssprache. Jede Angabe nennt ihr Dokument.
 - **Auf deinem Bildschirm:** Skalierung 125 % oder größere Windows-Textgröße - ist alles lesbar, wird etwas abgeschnitten?
 
@@ -54,7 +54,7 @@ Ohne Grafikkarte ist die KI nichts zum Zuschauen, aber die Vollautomatik läuft 
 - Die Suche nach Thunderbird und Outlook ist neu und bisher nur an nachgebauten Testdaten erprobt. KID liest dort nur und arbeitet auf einer Kopie. Das neue Outlook und Windows Mail halten ihre Mails online oder in eigener Form, KID kann sie nicht übernehmen und sagt das im Fenster.
 - Das Wiki und „Frag deine Dokumente“ können Werte falsch lesen oder Dokumente nicht finden. Wichtige Zahlen bitte im genannten Dokument nachsehen.
 - Windows. Andere Systeme sind nicht getestet.
-- Die KI liest manche Scans falsch (Ziffern, kleine Schrift); Neues im Tag-Katalog landet unter „Neu (KI)" und will gelegentlich aufgeräumt werden.
+- Die KI liest manche Scans falsch (Ziffern, kleine Schrift); neue Tags, die du einträgst, landen im Katalog unter „Neu" und wollen gelegentlich aufgeräumt werden.
 - Die Hilfetexte sind noch nicht in der Endfassung.
 - Es gibt keine automatische Aktualisierung. Das Programm sagt aber beim Start Bescheid, wenn auf der Releases-Seite eine neuere Version liegt (auch von Hand: Hilfe → „Auf neue Version prüfen…"); die neue EXE einfach über die alte kopieren, die Einstellungen bleiben erhalten.
 

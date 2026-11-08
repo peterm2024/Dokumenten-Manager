@@ -2,6 +2,21 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.27 — 2026-11-08
+
+- Mails importieren auf Abruf: Nach dem Einlesen sucht man wie im Hauptfenster (kleine Tippfehler werden verziehen, eine Jahreszahl gilt als Zeitraum) und hakt die Mails an, die in die Sammlung sollen; eine Textvorschau zeigt den Anfang der Mail, Häkchen bleiben über mehrere Suchen erhalten. KI-Einstufung, Regeln je Absender und Beziehungen sind entfallen; Spam, Papierkorb und Entwürfe sind nur ausgeblendet.
+- Mails importieren: Ziel ist der Posteingang (die Vollautomatik legt ab) oder direkt ein gewählter Ordner, ohne KI, mit dem Betreff als Titel. PDF-Anhänge als eigene Dokumente lassen sich abwählen.
+- Mails importieren: Ein Ordner mit vielen .pst-, .ost-, mbox- und .eml-Dateien wird in einem Durchgang gelesen. Archiv-Dateien werden direkt gelesen, nur Dateien eines Mail-Programms werden kopiert. Eine unlesbare Datei wird übersprungen und genannt; hat sich eine Datei seit dem Einlesen verändert, wird vor dem Übernehmen neu eingelesen.
+- Mails importieren: Eigene Adressen schlägt KID aus den gesendeten Mails vor.
+- Mails: Ein Absender ganz in Anführungszeichen („Name <adresse>“) wird richtig erkannt; solche Mails galten bisher als eingegangen.
+- Tags: Die KI vergibt keine Tags mehr von selbst, weder in der Vollautomatik noch in Ablage-Vorschau oder „Begleitet erfassen“. Titel, Datum und Ordner schlägt sie weiter vor.
+- Tags: Das Werkzeug „Tags ergänzen (KI)“ ist entfallen. Der Titel-Vorschlag zeigt passende Tags aus dem Katalog an, ein Doppelklick übernimmt sie.
+- Tag-Katalog: Selbst eingetragene neue Tags kommen gleich in den Katalog, unter „Neu“ (bisher „Neu (KI)“, wird beim Start umbenannt). Warteliste und die Einstellungen „Nur Tags aus dem Katalog vergeben“ und „Neue Tags der KI in den Katalog aufnehmen“ sind entfallen.
+- Speichern: Hält ein anderes Programm ein Dokument nur lesend offen, wird es an Ort und Stelle überschrieben statt mit einer Meldung abzubrechen (Rückschritt aus v0.9.26). Bei einem Fehler kommt das Original zurück.
+- Sammlungs-Wiki: Abgeschnittene KI-Antworten werden verwertet, soweit sie vollständig sind; „Wiki nachlesen“ hält deswegen nicht mehr an.
+- Vorschau: Strg+Mausrad zeigt sofort ein vergrößertes Zwischenbild und zeichnet nach kurzer Ruhe scharf, ohne zurückzuspringen.
+- Alt-Ziehen ohne übertragbare Tags: Hinweis in der Menüleiste statt Meldungsfenster.
+
 ## v0.9.26 — 2026-11-07
 
 - Speichern: Ein Dokument wird jetzt in einem Schritt ersetzt, die neue Fassung wird vorher geprüft. Ein Absturz oder Stromausfall beim Speichern beschädigt das Original nicht mehr. Lässt ein anderes Programm das Ersetzen nicht zu, kommt eine Meldung, und das Dokument bleibt, wie es war.
