@@ -2,6 +2,13 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.28 — 2026-11-09
+
+- Neu: Wiki von Hand (Tools → KI-Helfer → „Wiki…“). Einträge für Personen, Immobilien, Fahrzeuge, Mietverhältnisse, Verträge und Sonstiges mit festen Feldern, Notiz, Verweisen untereinander und Belegen (Dokumente der Sammlung, über ihre Dokument-ID). Datum, Betrag, Fläche und Kennzeichen bekommen eine einheitliche Schreibweise. Es steht nur drin, was man selbst einträgt oder bestätigt.
+- Wiki von Hand: Belege suchen wie im Hauptfenster, anhaken und übernehmen; die Vorschau zeigt die Textstellen mit den Suchwörtern.
+- Wiki von Hand: Auf Wunsch liest die KI die angehakten Dokumente (höchstens 20) und schlägt Werte mit Zitat vor. KID prüft, ob Zitat und Wert im Dokument stehen; übernommen wird nur, was man anhakt, mit dem Dokument als Beleg.
+- Das bisherige automatische Sammlungs-Wiki bleibt vorerst und wird in einer der nächsten Versionen ersetzt.
+
 ## v0.9.27 — 2026-11-08
 
 - Mails importieren auf Abruf: Nach dem Einlesen sucht man wie im Hauptfenster (kleine Tippfehler werden verziehen, eine Jahreszahl gilt als Zeitraum) und hakt die Mails an, die in die Sammlung sollen; eine Textvorschau zeigt den Anfang der Mail, Häkchen bleiben über mehrere Suchen erhalten. KI-Einstufung, Regeln je Absender und Beziehungen sind entfallen; Spam, Papierkorb und Entwürfe sind nur ausgeblendet.
