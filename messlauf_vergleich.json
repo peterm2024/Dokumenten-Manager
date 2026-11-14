@@ -1,0 +1,16 @@
+{
+  "stand": "2026-11-01T16:51",
+  "sammlung": "~\\KID-S4",
+  "cpu_last_prozent": 8,
+  "werte": {
+    "start": 0.83,
+    "ordner_posteingang": 0.313,
+    "ordner_groesster": 0.163,
+    "suche_ohne_volltext": 0.829,
+    "volltext_erste": 2.775,
+    "volltext_haeufig": 1.68,
+    "volltext_tippfehler": 1.907,
+    "volltext_selten": 1.347,
+    "volltext_nichts": 0.994
+  }
+}

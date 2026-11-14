@@ -1,0 +1,11 @@
+# Bewusst minimal: nur Regeln, die auf echte Bugs hindeuten, keine Stil-Vorgaben
+# (Semikolon-Einzeiler, Variablennamen etc. sind hier bewusst nicht erfasst,
+# weil sie den bestehenden Code-Stil des Projekts nicht ändern sollen).
+target-version = "py311"
+
+[lint]
+select = [
+    "F",     # Pyflakes: unbenutzte Imports/Variablen, undefinierte Namen, Redefinitionen
+    "E9",    # Syntaxfehler
+    "E722",  # bare except: fängt versehentlich auch KeyboardInterrupt/SystemExit ab
+]

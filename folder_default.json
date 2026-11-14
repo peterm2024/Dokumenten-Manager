@@ -1,0 +1,16 @@
+{
+    "0_Posteingang": {},
+    "0_Unsicher": {},
+    "[0-9]": {},
+    "A - B - C - D - E": {},
+    "F - G - H - I - J": {
+        "Finanzamt": {}
+    },
+    "K - L - M - N - O": {
+        "Krankenkasse": {}
+    },
+    "P - Q - R - S - T": {
+        "Stadtwerke": {}
+    },
+    "U - V - W - X - Y - Z": {}
+}

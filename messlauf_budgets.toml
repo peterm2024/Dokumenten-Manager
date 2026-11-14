@@ -1,0 +1,55 @@
+# Leistungsbudgets für `python messlauf.py` (01.11.2026, Vorbild perf/budgets.toml bei storytold/photocraft).
+#
+# Gemessen wird die echte Oberfläche mit der künstlichen Sammlung KID-S4 (20.000 Mail-PDFs, Spike S4,
+# spikes/mail_s4/erzeuge_sammlung.py) über eine Einstellungs-Kopie - KID-Test und Peters Einstellungen
+# bleiben unberührt. Jedes Szenario läuft `wiederholungen` Mal, bewertet wird der Median.
+#
+# budget_s  = Ziel; „ueber Budget“ ist nur ein Hinweis, solange `pflicht = false`.
+# Rückschritt = Median mehr als `rueckschritt_prozent` UND mehr als `rueckschritt_min_s` über dem
+# gespeicherten Vergleichswert (messlauf_vergleich.json) - das lässt den Lauf scheitern.
+# Neue Vergleichswerte nur mit `--vergleich-speichern` und nur auf ruhigem Rechner (der Lauf prüft die
+# CPU-Last vorher und verweigert das Speichern sonst).
+
+[einstellungen]
+wiederholungen = 3
+rueckschritt_prozent = 15.0
+rueckschritt_min_s = 0.05
+max_cpu_last_prozent = 30.0
+
+[szenario.start]
+text = "App-Start bis erstes Bild"
+budget_s = 2.0
+
+[szenario.ordner_posteingang]
+text = "Ordner öffnen: Posteingang (5.000 Dokumente)"
+budget_s = 0.5
+pflicht = true
+
+[szenario.ordner_groesster]
+text = "Ordner öffnen: größter Absender"
+budget_s = 0.5
+pflicht = true
+
+[szenario.suche_ohne_volltext]
+text = "Suche „Rechnung“ ohne Volltext"
+budget_s = 2.0
+
+[szenario.volltext_erste]
+text = "Erste Volltextsuche nach dem Start (baut den Wortschatz)"
+budget_s = 4.0
+
+[szenario.volltext_haeufig]
+text = "Volltextsuche „Rechnung“ (sehr viele Treffer)"
+budget_s = 4.0
+
+[szenario.volltext_tippfehler]
+text = "Volltextsuche „Rechnnug“ (unscharf)"
+budget_s = 2.5
+
+[szenario.volltext_selten]
+text = "Volltextsuche „VG-012345“ (ein Treffer)"
+budget_s = 2.0
+
+[szenario.volltext_nichts]
+text = "Volltextsuche „Xylophon“ (kein Treffer)"
+budget_s = 1.5

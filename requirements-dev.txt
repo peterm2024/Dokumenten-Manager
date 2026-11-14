@@ -1,0 +1,8 @@
+# Zusätzliche Werkzeuge nur für die Entwicklung (nicht zum Ausführen der App nötig).
+# Installation: pip install -r requirements-dev.txt
+mkdocs==1.6.1
+mkdocs-material==9.7.6
+mkdocstrings[python]==1.0.4
+mkdocs-include-markdown-plugin==7.3.0
+ruff==0.15.20
+pyinstaller==6.22.2

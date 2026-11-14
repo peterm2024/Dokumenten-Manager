@@ -1,0 +1,29 @@
+#!/bin/sh
+# Vor jedem Push: Unit-Tests und ruff (ARCHITEKTUR_REVIEW.md, R6). Dauert rund eine halbe Minute.
+# Eingerichtet mit: git config core.hooksPath .githooks
+# Geprüft wird der Stand im Arbeitsverzeichnis, echte Daten verlassen den Rechner dabei nicht.
+cd "$(git rev-parse --show-toplevel)" || exit 1
+PY=".venv/Scripts/python.exe"
+if [ ! -x "$PY" ]; then
+    echo "pre-push: $PY fehlt, Tests können nicht laufen." >&2
+    exit 1
+fi
+
+AUSGABE="$(mktemp)"
+trap 'rm -f "$AUSGABE"' EXIT
+
+echo "pre-push: ruff ..."
+if ! "$PY" -m ruff check . >"$AUSGABE" 2>&1; then
+    cat "$AUSGABE" >&2
+    echo "pre-push: ruff meldet Fehler, Push abgebrochen." >&2
+    exit 1
+fi
+
+echo "pre-push: Unit-Tests ..."
+if ! PYTHONIOENCODING=utf-8 "$PY" -m unittest discover -s tests -t . -p "test_*.py" >"$AUSGABE" 2>&1; then
+    grep -E "^(FAIL|ERROR):|^(Ran|FAILED)" "$AUSGABE" >&2
+    echo "pre-push: Tests fehlgeschlagen, Push abgebrochen." >&2
+    exit 1
+fi
+grep -E "^Ran " "$AUSGABE"
+exit 0

@@ -2,7 +2,7 @@
 
 <img src="bilder/icon.png" width="72" align="right" alt="Programmsymbol">
 
-Ein Programm für Windows, das PDF-Dokumente (Rechnungen, Verträge, Bescheide, Scans) in einer normalen Ordnerstruktur auf dem eigenen Rechner verwaltet: Titel, Tags und Datum vergeben, blitzschnell suchen, Dubletten finden, Dateinamen aufräumen, alte Mails übernehmen. Eine optionale lokale KI beschriftet neue Scans, legt sie von selbst ab und beantwortet Fragen zu den Dokumenten.
+Ein Programm für Windows, das PDF-Dokumente (Rechnungen, Verträge, Bescheide, Scans) in einer normalen Ordnerstruktur auf dem eigenen Rechner verwaltet: Titel, Tags und Datum vergeben, blitzschnell suchen, Dubletten finden, Dateinamen aufräumen, alte Mails übernehmen. Eine optionale lokale KI beschriftet neue Scans und legt sie von selbst ab.
 
 **Alles bleibt bei dir.** Titel, Tags und Datum werden direkt in die PDF-Dateien geschrieben (in deren Metadaten, der Inhalt bleibt unverändert). Es gibt keine Datenbank, keinen Online-Dienst, keine Anmeldung. Auch die KI läuft lokal ([Ollama](https://ollama.com)) - auf diesem oder einem anderen Rechner im eigenen Netz.
 
@@ -45,6 +45,10 @@ Ohne KI ist das Programm vollständig nutzbar; die KI-Einträge im Menü sind da
 
 Die Kurzfassung je Version steht in [CHANGELOG.md](CHANGELOG.md), die ausführlichen Texte bei den jeweiligen Releases.
 
+## Quellcode
+
+Der vollständige Quellcode (Python 3, Tkinter, PyMuPDF) liegt in diesem Repo: das Programm in `src/`, die Unit-Tests in `tests/`. Wie man es aus dem Quellcode startet, testet und selbst zur EXE baut, steht in [ENTWICKLER.md](ENTWICKLER.md), Aufbau und Module in [Projekt-Dokumentation.md](Projekt-Dokumentation.md), gelöste Stolperstellen in [FALLSTRICKE_UND_WORKAROUNDS.md](FALLSTRICKE_UND_WORKAROUNDS.md). Jedes Release enthält unter „Source code“ genau den Stand der zugehörigen EXE.
+
 ## Lizenz
 
-GNU Affero General Public License v3.0, siehe [LICENSE](LICENSE). Der Quellcode wird in einem eigenen Schritt veröffentlicht; bis dahin ist er auf Anfrage erhältlich.
+GNU Affero General Public License v3.0, siehe [LICENSE](LICENSE). Mitgelieferte Fremdkomponenten und ihre Lizenzen: [DRITTANBIETER.md](DRITTANBIETER.md).

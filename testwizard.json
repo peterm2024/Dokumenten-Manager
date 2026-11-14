@@ -1,0 +1,7 @@
+{
+  "checkliste": "MANUELLE_TESTS.md",
+  "testordner": "~/KID-Test",
+  "app_start": ["python", "main.py"],
+  "app_knopf": "App starten (main.py)",
+  "titel": "Dokumenten-Manager - Manuelle Tests"
+}

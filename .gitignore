@@ -1,0 +1,69 @@
+# =========================
+# 1. PyInstaller Build-Dateien
+# =========================
+build/
+dist/
+*.spec
+
+# Generierte mkdocs-Dokuwebsite (aus docs/ + mkdocs.yml erzeugt)
+site/
+
+# =========================
+# 2. Python Standard-Ignorierungen
+# =========================
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Virtuelle Umgebungen
+venv/
+.venv/
+env/
+
+# =========================
+# 3. App-spezifische Laufzeitdaten
+# =========================
+# Die Log-Datei (ändert sich ständig)
+dokumenten_manager.log
+dokumenten_manager.log.*
+absturz.txt
+*.kaputt*
+
+# Lokale Einstellungen (z.B. Fenstergröße, Auto-Save)
+# (Hier ggf. den Namen deiner Config-Datei eintragen, z.B. config.json oder settings.ini)
+settings.json
+settings.json.original
+tags.json
+*.tmp
+
+# Tesseract-OCR-Sprachdaten (siehe app_paths.tessdata_dir) - Binärdateien, mehrere MB,
+# einmalig manuell von github.com/tesseract-ocr/tessdata_fast herunterladen
+tessdata/
+
+# =========================
+# 4. Chat-/KI-Exporte (keine Projektdateien, teils sensible Inhalte)
+# =========================
+fhgeniechat_*.json
+
+# =========================
+# 5. OS-spezifische Dateien
+# =========================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# =========================
+# 6. VS Code Einstellungen (deine lokalen Editor-Fenster)
+# =========================
+.vscode/
+
+# wird von build_exe.py vor jedem Release-Build neu erzeugt
+build_stempel.txt
+
+# Fernsteuerung (fernsteuerung.py): Arbeitsordner mit Einstellungs-Kopie und Token
+.fernsteuerung/
+
+# Modellradar aus der Claude-App (1:1-Kopie, gehört nicht ins Repo)
+Modellradar.md
+spikes/mail_s5/profil/

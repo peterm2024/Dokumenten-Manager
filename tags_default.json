@@ -1,0 +1,429 @@
+[
+  {
+    "text": "Dokumentart",
+    "is_structural": true,
+    "children": [
+      {
+        "text": "Rechnung"
+      },
+      {
+        "text": "Angebot"
+      },
+      {
+        "text": "Vertrag"
+      },
+      {
+        "text": "Bescheid"
+      },
+      {
+        "text": "Mahnung"
+      },
+      {
+        "text": "Kündigung"
+      },
+      {
+        "text": "Kontoauszug"
+      },
+      {
+        "text": "Gutschrift"
+      },
+      {
+        "text": "Garantie"
+      },
+      {
+        "text": "Formular"
+      },
+      {
+        "text": "Info"
+      }
+    ]
+  },
+  {
+    "text": "Wohnen & Haus",
+    "is_structural": true,
+    "children": [
+      {
+        "text": "Nebenkosten",
+        "children": [
+          {
+            "text": "Strom"
+          },
+          {
+            "text": "Gas",
+            "children": [
+              {
+                "text": "Erdgas",
+                "is_synonym": true
+              }
+            ]
+          },
+          {
+            "text": "Wasser",
+            "children": [
+              {
+                "text": "Trinkwasser",
+                "is_synonym": true
+              },
+              {
+                "text": "Wasserversorgung",
+                "is_synonym": true
+              }
+            ]
+          },
+          {
+            "text": "Abwasser",
+            "children": [
+              {
+                "text": "Kanalgebühr",
+                "is_synonym": true
+              },
+              {
+                "text": "Schmutzwasser",
+                "is_synonym": true
+              }
+            ]
+          },
+          {
+            "text": "Heizung"
+          },
+          {
+            "text": "Müll",
+            "children": [
+              {
+                "text": "Abfallentsorgung",
+                "is_synonym": true
+              },
+              {
+                "text": "Müllabfuhr",
+                "is_synonym": true
+              },
+              {
+                "text": "Abfallgebühr",
+                "is_synonym": true
+              }
+            ]
+          },
+          {
+            "text": "Kaminkehrer",
+            "children": [
+              {
+                "text": "Schornsteinfeger",
+                "is_synonym": true
+              }
+            ]
+          },
+          {
+            "text": "Zählerstand"
+          },
+          {
+            "text": "Betriebskosten",
+            "is_synonym": true
+          },
+          {
+            "text": "Nebenkostenabrechnung",
+            "is_synonym": true
+          },
+          {
+            "text": "Betriebskostenabrechnung",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Miete & Kaution",
+        "children": [
+          {
+            "text": "Miete",
+            "is_synonym": true
+          },
+          {
+            "text": "Kaution",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Internet & Telefon",
+        "children": [
+          {
+            "text": "Internet",
+            "is_synonym": true
+          },
+          {
+            "text": "Telefon",
+            "is_synonym": true
+          },
+          {
+            "text": "Mobilfunk",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Haus & Garten"
+      },
+      {
+        "text": "Handwerker"
+      },
+      {
+        "text": "Grundsteuer",
+        "children": [
+          {
+            "text": "Grundsteuerbescheid",
+            "is_synonym": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "text": "Versicherung",
+    "is_structural": true,
+    "children": [
+      {
+        "text": "Haftpflicht",
+        "children": [
+          {
+            "text": "Haftpflichtversicherung",
+            "is_synonym": true
+          },
+          {
+            "text": "Privathaftpflicht",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Hausrat",
+        "children": [
+          {
+            "text": "Hausratversicherung",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Gebäudeversicherung",
+        "children": [
+          {
+            "text": "Gebäudebrandversicherung",
+            "is_synonym": true
+          },
+          {
+            "text": "Wohngebäudeversicherung",
+            "is_synonym": true
+          },
+          {
+            "text": "Brandversicherung",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Kfz-Versicherung",
+        "children": [
+          {
+            "text": "Kraftfahrtversicherung",
+            "is_synonym": true
+          },
+          {
+            "text": "Autoversicherung",
+            "is_synonym": true
+          },
+          {
+            "text": "Fahrzeugversicherung",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Krankenversicherung"
+      },
+      {
+        "text": "Pflegeversicherung"
+      },
+      {
+        "text": "Lebensversicherung"
+      },
+      {
+        "text": "Unfallversicherung"
+      }
+    ]
+  },
+  {
+    "text": "Finanzen & Steuern",
+    "is_structural": true,
+    "children": [
+      {
+        "text": "Steuererklärung",
+        "children": [
+          {
+            "text": "Einkommensteuer",
+            "is_synonym": true
+          },
+          {
+            "text": "Einkommensteuererklärung",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Finanzamt"
+      },
+      {
+        "text": "Bank & Konto"
+      },
+      {
+        "text": "Rente"
+      },
+      {
+        "text": "Spendenbescheinigung",
+        "children": [
+          {
+            "text": "Spendenquittung",
+            "is_synonym": true
+          },
+          {
+            "text": "Zuwendungsbestätigung",
+            "is_synonym": true
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "text": "Gesundheit",
+    "is_structural": true,
+    "children": [
+      {
+        "text": "Arzt"
+      },
+      {
+        "text": "Zahnarzt"
+      },
+      {
+        "text": "Krankenkasse"
+      },
+      {
+        "text": "Apotheke & Rezepte",
+        "children": [
+          {
+            "text": "Rezept",
+            "is_synonym": true
+          },
+          {
+            "text": "Medikamente",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Pflege"
+      },
+      {
+        "text": "Krankenhaus"
+      }
+    ]
+  },
+  {
+    "text": "Behörden & Amt",
+    "is_structural": true,
+    "children": [
+      {
+        "text": "Gemeinde"
+      },
+      {
+        "text": "Landratsamt"
+      },
+      {
+        "text": "Rentenversicherung"
+      },
+      {
+        "text": "Ausweis & Pass",
+        "children": [
+          {
+            "text": "Personalausweis",
+            "is_synonym": true
+          },
+          {
+            "text": "Reisepass",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Vollmacht"
+      }
+    ]
+  },
+  {
+    "text": "Fahrzeug & Verkehr",
+    "is_structural": true,
+    "children": [
+      {
+        "text": "Auto"
+      },
+      {
+        "text": "TÜV & Werkstatt",
+        "children": [
+          {
+            "text": "Inspektion",
+            "is_synonym": true
+          },
+          {
+            "text": "Hauptuntersuchung",
+            "is_synonym": true
+          },
+          {
+            "text": "Werkstatt",
+            "is_synonym": true
+          }
+        ]
+      },
+      {
+        "text": "Tanken & Reparatur"
+      },
+      {
+        "text": "ÖPNV & Tickets"
+      }
+    ]
+  },
+  {
+    "text": "Personen",
+    "is_structural": true,
+    "children": [
+      {
+        "text": "Familie"
+      },
+      {
+        "text": "Mieter"
+      },
+      {
+        "text": "Nachbarn"
+      }
+    ]
+  },
+  {
+    "text": "Objekte & Adressen",
+    "is_structural": true,
+    "children": []
+  },
+  {
+    "text": "Sonstiges",
+    "is_structural": true,
+    "children": [
+      {
+        "text": "Einkauf"
+      },
+      {
+        "text": "Reise"
+      },
+      {
+        "text": "Verein"
+      },
+      {
+        "text": "Wichtig"
+      }
+    ]
+  }
+]

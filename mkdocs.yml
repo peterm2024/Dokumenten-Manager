@@ -1,0 +1,28 @@
+site_name: Dokumenten-Manager (KI Edition)
+docs_dir: docs
+site_dir: site
+
+nav:
+  - Start: index.md
+  - Architektur: architektur.md
+  - Fallstricke & Workarounds: fallstricke.md
+  - Changelog: changelog.md
+  - Modul-Referenz: reference.md
+
+theme:
+  name: material
+  language: de
+  palette:
+    scheme: default
+
+plugins:
+  - search
+  - include-markdown
+  - mkdocstrings:
+      handlers:
+        python:
+          paths: [src]
+          options:
+            show_source: false
+            heading_level: 2
+            docstring_style: sphinx
