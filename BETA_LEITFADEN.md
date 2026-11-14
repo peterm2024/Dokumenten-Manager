@@ -16,7 +16,7 @@ Der Dokumenten-Manager verwaltet PDF-Dokumente (Rechnungen, Verträge, Bescheide
 
 ## 3. KI - mit oder ohne
 
-Alles außer den KI-Funktionen läuft ohne weitere Software. Für Titelvorschlag, Ablage-Vorschau, Vollautomatik, Begleitet erfassen, das Sammlungs-Wiki und „Frag deine Dokumente“ braucht es ein [Ollama](https://ollama.com) auf diesem PC oder einem Rechner im Heimnetz. Steht der Server woanders, etwa bei Angehörigen, verbindet [Tailscale](https://tailscale.com) beide Rechner privat und verschlüsselt, ohne Portfreigabe am Router - im Programm erklärt unter Hilfe → „KI-Server aus der Ferne (Tailscale)".
+Alles außer den KI-Funktionen läuft ohne weitere Software. Für Titelvorschlag, Ablage-Vorschau, Vollautomatik, Begleitet erfassen und das Vorlesen fürs Wiki braucht es ein [Ollama](https://ollama.com) auf diesem PC oder einem Rechner im Heimnetz. Steht der Server woanders, etwa bei Angehörigen, verbindet [Tailscale](https://tailscale.com) beide Rechner privat und verschlüsselt, ohne Portfreigabe am Router - im Programm erklärt unter Hilfe → „KI-Server aus der Ferne (Tailscale)".
 
 Einrichtung auf dem eigenen PC:
 
@@ -45,14 +45,14 @@ Ohne Grafikkarte ist die KI nichts zum Zuschauen, aber die Vollautomatik läuft 
 - **Mit KI:** Titel vorschlagen (Tags nur aus deinem Katalog, per Klick), Ablage-Vorschau (zeigt nur an, ändert nichts), dann die Vollautomatik mit dem Posteingang.
 - **Begleitet erfassen** (Tools → Vollautomatik): den Posteingang Dokument für Dokument durchgehen, KID schlägt vor, du bestätigst oder korrigierst. Gedacht für eine neue oder große Sammlung.
 - **Mails importieren** (Tools → Vollautomatik → „Mails importieren…“): KID sucht beim Öffnen des Fensters Thunderbird und klassisches Outlook und arbeitet nur auf einer Kopie der Mail-Dateien. Alternativ lässt sich eine .pst, .ost, mbox- oder .eml-Datei von Hand wählen, auch ein ganzer Ordner davon. Nach dem Einlesen sucht man wie im Hauptfenster, etwa „Stadtwerke 2024“, und hakt die gewünschten Mails an. Sie kommen als PDF mit der Original-Mail darin in den Posteingang oder direkt in einen gewählten Ordner. Zum Kennenlernen reicht eine Suche nach einem Absender. Stimmt danach etwas in deinem Mail-Programm nicht, bitte sofort melden.
-- **Sammlungs-Wiki und „Frag deine Dokumente“** (einzuschalten je Sammlung unter Datei → Einstellungen → „Wiki“, dann Tools → KI-Helfer): KID sammelt Fakten aus den Dokumenten und beantwortet Fragen in Alltagssprache. Jede Angabe nennt ihr Dokument.
+- **Wiki** (Tools → KI-Helfer → „Wiki…“ oder Rechtsklick auf ein Dokument → „Wiki“): ein Nachschlagewerk zu Personen, Firmen, Immobilien, Verträgen und mehr. Die KI listet auf, wer und was in einem Dokument vorkommt, du hakst an, was ins Wiki soll. Jede Angabe nennt ihr Dokument und das Zitat.
 - **Auf deinem Bildschirm:** Skalierung 125 % oder größere Windows-Textgröße - ist alles lesbar, wird etwas abgeschnitten?
 
 ## 5. Bekannte Grenzen
 
 - Nur PDF-Dateien. Andere Dateitypen werden nicht angezeigt, Mails werden beim Import zu PDFs.
 - Die Suche nach Thunderbird und Outlook ist neu und bisher nur an nachgebauten Testdaten erprobt. KID liest dort nur und arbeitet auf einer Kopie. Das neue Outlook und Windows Mail halten ihre Mails online oder in eigener Form, KID kann sie nicht übernehmen und sagt das im Fenster.
-- Das Wiki und „Frag deine Dokumente“ können Werte falsch lesen oder Dokumente nicht finden. Wichtige Zahlen bitte im genannten Dokument nachsehen.
+- Die KI kann beim Vorlesen fürs Wiki Werte falsch lesen oder falsch zuordnen. Vor dem Anhaken bitte das Zitat ansehen, wichtige Zahlen im Dokument nachsehen.
 - Windows. Andere Systeme sind nicht getestet.
 - Die KI liest manche Scans falsch (Ziffern, kleine Schrift); neue Tags, die du einträgst, landen im Katalog unter „Neu" und wollen gelegentlich aufgeräumt werden.
 - Die Hilfetexte sind noch nicht in der Endfassung.

@@ -26,8 +26,7 @@ Das Programm ist in der Beta-Phase. Wer mittestet, findet in [BETA_LEITFADEN.md]
 - **Aufräumen:** Dubletten finden (doppelt gescannt oder kopiert), Dateinamen vereinheitlichen, PDF-Inspektor.
 - **Mails gezielt holen:** Aus Thunderbird, klassischem Outlook (.pst/.ost), mbox- oder .eml-Dateien, auch aus einem Ordner voller Jahres-Archive. Nach dem Einlesen suchst du wie im Hauptfenster, etwa „Stadtwerke 2024“, und hakst an, was in die Sammlung soll - in den Posteingang oder direkt in einen Ordner. Übernommene Mails werden PDFs mit der Original-Mail darin, Anhänge behalten den Bezug zu ihrer Mail. KID liest nur und verändert an den Mail-Dateien nichts. Die Suche nach den Mail-Programmen ist neu und noch wenig erprobt.
 - **KI (optional):** Titel vorschlagen, Ablage-Vorschau, und eine Vollautomatik, die neue Scans aus dem Posteingang beschriftet und einsortiert - gedacht für Angehörige, die nur noch den Scanner bedienen. „Begleitet erfassen“ geht den Posteingang Dokument für Dokument mit dir durch, gedacht für eine neue oder große Sammlung.
-- **Wiki von Hand (neu):** Personen, Immobilien, Fahrzeuge, Mietverhältnisse und Verträge mit festen Feldern, jede Angabe mit dem Dokument, aus dem sie stammt. Auf Wunsch liest die KI ausgesuchte Dokumente und schlägt Werte mit Zitat vor; übernommen wird nur, was man anhakt.
-- **Sammlungs-Wiki und Fragen (optional, je Sammlung einzuschalten):** KID sammelt Fakten aus den Dokumenten, jeweils mit Zitat, und zeigt sie als Seiten im Browser. „Frag deine Dokumente“ beantwortet Fragen in Alltagssprache, jede Angabe nennt ihr Dokument. Fragen und Antworten werden nicht gespeichert.
+- **Wiki (neu aufgebaut):** Ein Nachschlagewerk zu Personen, Firmen, Immobilien, Verträgen und mehr, in Schubladen, die du selbst anlegst. Per Rechtsklick auf ein Dokument listet die KI auf, wer und was darin vorkommt, jede Angabe mit Zitat; übernommen wird nur, was du anhakst.
 
 ## KI: Was man braucht
 

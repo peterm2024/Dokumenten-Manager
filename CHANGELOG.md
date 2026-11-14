@@ -2,6 +2,17 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.29 — 2026-11-14
+
+- Mails importieren: Die Liste steht nach wenigen Sekunden da, den Text liest KID im Hintergrund nach - die gerade sichtbaren Mails zuerst. Eine laufende Suche bekommt neue Treffer von selbst dazu. Eine große .pst-Datei (15.000 Mails) ist in etwa einer halben Minute durchsuchbar statt nach mehreren Minuten.
+- Mails importieren: Die drei Schritte stehen als Reiter („Woher?“, „Suchen“, „Übernehmen“), das Fenster braucht weniger Platz.
+- Mails importieren: Newsletter lassen sich ausblenden. Erkannt am Abmeldelink, an Absendern wie newsletter@… und am Betreff; per Rechtsklick auch ganze Absender oder Domänen. Ausgeblendet wird nur auf Wunsch, weil Shops Rechnungen auf demselben Weg schicken.
+- Mails importieren: Eine schon übernommene Mail, die man im Hauptfenster gelöscht hat, bleibt ausgegraut. Per Rechtsklick „Erneut übernehmen…“ kommt sie bewusst noch einmal.
+- Wiki neu aufgebaut: Statt fester Felder gibt es Einträge in Schubladen (Person, Firma, Immobilie, Vertrag …, selbst erweiterbar, umbenennbar und zusammenlegbar) mit kurzen freien Angaben, Verbindungen untereinander und Dokumenten als Beleg. Ein Wiki aus v0.9.28 wird beim ersten Öffnen als `wissen_alt.sqlite` beiseitegelegt; das neue beginnt leer.
+- Wiki: Rechtsklick auf ein Dokument → „Wiki“ zeigt die Einträge, in denen es Beleg ist, legt einen neuen Eintrag daraus an oder lässt die KI lesen. Die KI listet auf, wer und was im Dokument vorkommt, jede Angabe mit Zitat; ins Wiki kommt nur, was man anhakt. Was man abhakt oder später entfernt, schlägt sie für dieses Dokument nicht wieder vor.
+- Wiki: Das Suchfeld findet Einträge auch über ihre Angaben, etwa eine Telefon- oder Kundennummer. Zwei Einträge, die dasselbe meinen, lassen sich zusammenlegen.
+- Entfallen: das automatische Sammlungs-Wiki samt „Wiki nachlesen“, „Rückfragen beantworten“, „Wiki öffnen“, „Was die KI gelesen hat“, dem Reiter „Wiki“ der Einstellungen und „Frag deine Dokumente“. Der alte Ordner „Wiki“ im Daten-Ordner wird nicht mehr gelesen und kann von Hand gelöscht werden. „Frag deine Dokumente“ soll später auf dem neuen Wiki neu entstehen.
+
 ## v0.9.28 — 2026-11-09
 
 - Neu: Wiki von Hand (Tools → KI-Helfer → „Wiki…“). Einträge für Personen, Immobilien, Fahrzeuge, Mietverhältnisse, Verträge und Sonstiges mit festen Feldern, Notiz, Verweisen untereinander und Belegen (Dokumente der Sammlung, über ihre Dokument-ID). Datum, Betrag, Fläche und Kennzeichen bekommen eine einheitliche Schreibweise. Es steht nur drin, was man selbst einträgt oder bestätigt.
