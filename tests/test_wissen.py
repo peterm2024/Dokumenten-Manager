@@ -285,7 +285,7 @@ class TestWissen(unittest.TestCase):
         e = self.w.speichere(self.art("Person"), "Max Mustermann")
         self.w.angabe_hinzu(e, "Telefon: 01234/5678", "AAAA-0001", "Rechnung", "Tel.: 01234/5678")
         con = sqlite3.connect(self.w.pfad)
-        con.executescript("DROP TABLE abgelehnt; PRAGMA user_version = 2;")
+        con.executescript("DROP TABLE abgelehnt; DROP TABLE merkmal_aus; PRAGMA user_version = 2;")
         con.close()
         with self.assertNoLogs("DocManager", "INFO"):                        # nichts beiseitegelegt
             self.assertEqual([a["text"] for a in self.w.lade(e)["angaben"]], ["Telefon: 01234/5678"])
@@ -295,6 +295,39 @@ class TestWissen(unittest.TestCase):
         con = sqlite3.connect(self.w.pfad)
         self.addCleanup(con.close)
         self.assertEqual(con.execute("PRAGMA user_version").fetchone()[0], wissen.SCHEMA)
+
+    def test_datei_vom_13_11_bekommt_die_ausgeschlossenen_merkmale(self):
+        # Aufbau vom 13.11.2026 (user_version 3): nur die Tabelle merkmal_aus kommt dazu, Abgelehntes bleibt
+        self.w.ablehnen("AAAA-0001", [{"text": "Telefon: 01234/5678", "zitat": "Tel."}])
+        con = sqlite3.connect(self.w.pfad)
+        con.executescript("DROP TABLE merkmal_aus; PRAGMA user_version = 3;")
+        con.close()
+        self.assertTrue(self.w.merkmal_ausschliessen("S - T\\Stadtwerke Musterstadt", "Nummer", "47110815"))
+        self.assertEqual(len(self.w.abgelehnte(["AAAA-0001"])["AAAA-0001"]), 1)
+
+    def test_ausgeschlossene_merkmale(self):
+        ordner = "S - T\\Stadtwerke Musterstadt"
+        self.assertEqual(self.w.ausgeschlossene_merkmale(), [])                        # ohne Datei leer ...
+        self.assertFalse(self.w.merkmal_zulassen(ordner, "Nummer", "47110815"))
+        self.assertFalse(os.path.exists(self.w.pfad))                                 # ... und keine angelegt
+        self.assertTrue(self.w.merkmal_ausschliessen(ordner, "Nummer", "47110815"))
+        self.assertFalse(self.w.merkmal_ausschliessen(ordner.upper(), "Nummer", "47110815"))   # Ordner: Groß/klein egal
+        self.w.merkmal_ausschliessen(ordner, "IBAN", "DE12345678901234567890")
+        self.assertEqual(self.w.ausgeschlossene_merkmale(),
+                         [(ordner, "Nummer", "47110815"), (ordner, "IBAN", "DE12345678901234567890")])
+        self.assertTrue(self.w.merkmal_zulassen(ordner.lower(), "Nummer", "47110815"))
+        self.assertEqual(self.w.ausgeschlossene_merkmale(), [(ordner, "IBAN", "DE12345678901234567890")])
+        with self.assertRaises(wissen.Eingabefehler):
+            self.w.merkmal_ausschliessen(ordner, "Nummer", "")
+        self.assertEqual(wissen.ausgeschlossene_merkmale(self.sammlung), [(ordner, "IBAN", "DE12345678901234567890")])
+
+    def test_ausgeschlossene_merkmale_fehler_haelt_die_ablage_nicht_auf(self):
+        from unittest.mock import MagicMock, patch
+        logger = MagicMock()
+        with patch.object(wissen.Wissen, "ausgeschlossene_merkmale", side_effect=sqlite3.DatabaseError("kaputt")):
+            self.assertEqual(wissen.ausgeschlossene_merkmale(self.sammlung, logger), [])
+        logger.warning.assert_called_once()
+        self.assertEqual(wissen.ausgeschlossene_merkmale(None), [])
 
     def test_alte_datei_wird_beiseitegelegt(self):
         # Aufbau bis 12.11.2026 (feste Felder, user_version 1): beiseite als wissen_alt.sqlite, leer neu beginnen

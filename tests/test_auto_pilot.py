@@ -1678,23 +1678,17 @@ class TestDoppelordnerBremse(unittest.TestCase):
             self.assertTrue(any(p.startswith(("Ähnlicher Ordner vorhanden", "Absender nur als Kürzel"))
                                 for p in e["probleme"]), e["probleme"])
 
-    def test_ein_gemeinsames_wort_und_beide_mit_eigenen_woertern_gibt_neuen_ordner(self):
-        # Mail-Lauf 05.11.2026: 11 von 17 PDFs in 0_Unsicher. Der Preis ist ein gelegentlicher Doppelordner
-        for absender, erwartet in (("Wasserversorgungsgruppe Musterdorf", "Wasserversorgungsgruppe Musterdorf"),
-                                   ("Zweckverband Musterdorf", "Zweckverband Musterdorf")):
+    def test_ein_gemeinsames_wort_bleibt_rueckfrage(self):
+        """FALLSTRICKE #129 (Etappe 9, 14.11.2026): Ein gemeinsames Wort bei eigenen Wörtern auf beiden Seiten galt
+        seit 05.11. als „verschiedene Absender, neuer Ordner ohne Rückfrage“. In einer bestehenden Sammlung ist der
+        ähnliche Ordner aber oft genau der richtige (Menschen kürzen: 'WZV Musterdorf'), Korpus: 20 still falsch mehr.
+        Jetzt wieder: ähnlicher Ordner vorgewählt, der Mensch entscheidet."""
+        for absender in ("Wasserversorgungsgruppe Musterdorf", "Zweckverband Musterdorf"):
             e = self._entscheidung(absender)
-            self.assertTrue(e["sicher"], e["probleme"])
-            self.assertTrue(e["ordner_neu"], absender)
-            self.assertTrue(e["zielordner"].endswith(erwartet), e["zielordner"])
-
-    def test_name_steckt_ganz_im_ordner_bleibt_aehnlich(self):
-        for name, ordner in (("Musterstadt", "Bürgerbüro Musterstadt"), ("Kabel Vivafone", "Vivafone Kabel Deutschland"),
-                             ("Beispiel Musterwerke Nord", "Musterwerke")):
-            self.assertFalse(auto_pilot._verschiedene_absender(name, ordner), (name, ordner))
-        self.assertTrue(auto_pilot._verschiedene_absender("Landratsamt Musterstadt", "Bürgerbüro Musterstadt"))
-        self.assertTrue(auto_pilot._verschiedene_absender("Kaminkehrer Abcdef", "Abcdef (Bezirk) Nord"))
-        # zwei gemeinsame Wörter sind nicht mehr „nur ein Wort“
-        self.assertFalse(auto_pilot._verschiedene_absender("Stadtwerke Musterstadt Süd", "Stadtwerke Musterstadt Nord"))
+            self.assertFalse(e["sicher"], absender)
+            self.assertFalse(e["ordner_neu"], absender)
+            self.assertTrue(e["zielordner"].endswith("WZV Musterdorf"), e["zielordner"])
+            self.assertTrue(any(p.startswith("Ähnlicher Ordner vorhanden") for p in e["probleme"]), e["probleme"])
 
     def test_bester_kandidat_nach_anteil(self):
         # ELSTER (1 von 1 Wort) schlägt 'Bayr. Landesamt f. Statistik' (1 von 2)
@@ -1741,11 +1735,13 @@ class TestDoppelordnerBremse(unittest.TestCase):
         self.assertEqual(e["zielordner"], "U - V - W\\Versicherung")
         self.assertTrue(any(p.startswith("Ähnlicher Ordner vorhanden: 'F - G - H\\HKV Versicherung AG'")
                             for p in e["probleme"]), e["probleme"])
-        # Zwei verschiedene Namen mit nur dem Gattungswort gemeinsam: neuer Ordner ohne Rückfrage
+        # Zwei Namen mit nur dem Gattungswort gemeinsam: Rückfrage, der neue Ordner ist vorgewählt (FALLSTRICKE #83;
+        # vom 05.11. bis 14.11.2026 ohne Rückfrage, zurückgenommen mit FALLSTRICKE #129)
         e = auto_pilot.baue_entscheidung(
             "dok.pdf", _ki_antwort(absender="Versicherungskasse Musterland", ordnername="Versicherungskasse Musterland"),
             ordner)
-        self.assertTrue(e["sicher"], e["probleme"])
+        self.assertFalse(e["sicher"])
+        self.assertTrue(e["ordner_neu"])
         self.assertEqual(e["zielordner"], "U - V - W\\Versicherungskasse Musterland")
 
     def test_herkunftswort_waehlt_nicht_vor(self):
@@ -1769,13 +1765,14 @@ class TestDoppelordnerBremse(unittest.TestCase):
         # ersten Musterstadt-Ordner vorgewählt, solange der Ort erst in EINEM Ordner stand
         ordner = ["A - B - C", "A - B - C\\Bürgerbüro Musterstadt", "L - M - N"]
         e = auto_pilot.baue_entscheidung(
-            "dok.pdf", _ki_antwort(absender="Musterstadt", ordnername="Musterstadt", ort="12345 Musterstadt"), ordner)
+            "dok.pdf", _ki_antwort(absender="Landratsamt Musterstadt", ordnername="Landratsamt Musterstadt",
+                                   ort="12345 Musterstadt"), ordner)
         self.assertFalse(e["sicher"])   # die Bremse bleibt
         self.assertTrue(e["ordner_neu"])
-        self.assertEqual(e["zielordner"], "L - M - N\\Musterstadt")
+        self.assertEqual(e["zielordner"], "L - M - N\\Landratsamt Musterstadt")
         # ohne Ortsangabe der KI bleibt es bei der Vorwahl, ein echtes Namenswort wählt weiter vor
         e = auto_pilot.baue_entscheidung(
-            "dok.pdf", _ki_antwort(absender="Musterstadt", ordnername="Musterstadt"), ordner)
+            "dok.pdf", _ki_antwort(absender="Landratsamt Musterstadt", ordnername="Landratsamt Musterstadt"), ordner)
         self.assertEqual(e["zielordner"], "A - B - C\\Bürgerbüro Musterstadt")
         self.assertEqual(auto_pilot.finde_aehnlichen_ordner(
             ["Bürgerbüro der Stadt"], ordner, ohne_gattungswoerter=True, ortswoerter={"musterstadt"}),
@@ -1791,14 +1788,16 @@ class TestDoppelordnerBremse(unittest.TestCase):
         auto_pilot.merke_orte(orte, None)                                    # Lesefehler
         self.assertEqual(orte, {"musterstadt"})
         e = auto_pilot.baue_entscheidung(
-            "dok.pdf", _ki_antwort(absender="Musterstadt", ordnername="Musterstadt"), ordner, orte=orte)
+            "dok.pdf", _ki_antwort(absender="Landratsamt Musterstadt", ordnername="Landratsamt Musterstadt"),
+            ordner, orte=orte)
         self.assertFalse(e["sicher"])
-        self.assertEqual(e["zielordner"], "L - M - N\\Musterstadt")
+        self.assertEqual(e["zielordner"], "L - M - N\\Landratsamt Musterstadt")
         # über die Stapel-Bausteine gereicht
         gelesen = {"pdf_path": "dok.pdf", "schreibschutz": None, "png": b"x",
-                   "ki_antwort": _ki_antwort(absender="Musterstadt", ordnername="Musterstadt")}
+                   "ki_antwort": _ki_antwort(absender="Landratsamt Musterstadt",
+                                             ordnername="Landratsamt Musterstadt")}
         e = auto_pilot.entscheide_im_stapel(gelesen, ordner, "http://x", orte=orte)
-        self.assertEqual(e["zielordner"], "L - M - N\\Musterstadt")
+        self.assertEqual(e["zielordner"], "L - M - N\\Landratsamt Musterstadt")
 
 
 class TestZweitmeinungOrdnerwahl(unittest.TestCase):
@@ -1915,6 +1914,29 @@ class TestZweitmeinungOrdnerwahl(unittest.TestCase):
             auto_pilot.analysiere_dokument("dok.pdf", [], self.ORDNER, "http://x", "m",
                                            entscheidungsmodell="clef-flash:9b")
         wahl.assert_not_called()
+
+    def test_zweitmeinung_standardmaessig_an_wenn_der_server_das_modell_hat(self):
+        """15.11.2026 (vor v0.9.30): ohne Eintrag gilt clef-flash:9b, aber nur mit dem Modell auf dem Server; ein
+        eingetragener Wert gilt, wie er ist - auch leer (bewusst aus)."""
+        from unittest.mock import patch
+        mit, ohne = ["qwen3.5:9b", "clef-flash:9b"], ["qwen3.5:9b"]
+        with patch("ollama_client.list_models", return_value=mit):
+            self.assertEqual(auto_pilot.wirksames_entscheidungsmodell({}, "http://x"), "clef-flash:9b")
+        with patch("ollama_client.list_models", return_value=ohne):
+            self.assertEqual(auto_pilot.wirksames_entscheidungsmodell({}, "http://x"), "")
+        with patch("ollama_client.list_models", side_effect=OSError("weg")):
+            self.assertEqual(auto_pilot.wirksames_entscheidungsmodell({}, "http://x"), "")
+        with patch("ollama_client.list_models", return_value=mit) as modelle:
+            self.assertEqual(auto_pilot.wirksames_entscheidungsmodell({"ki_entscheidungsmodell": ""}, "http://x"), "")
+            self.assertEqual(auto_pilot.wirksames_entscheidungsmodell({"ki_entscheidungsmodell": " anderes:4b "},
+                                                                      "http://x"), "anderes:4b")
+        modelle.assert_not_called()
+
+    def test_feld_ordnerwahl_speichert_nur_eine_aenderung(self):
+        from tools.settings_editor import wahl_aenderung
+        self.assertIsNone(wahl_aenderung("clef-flash:9b", "clef-flash:9b "))   # nur durchgeklickt: nichts festschreiben
+        self.assertEqual(wahl_aenderung("clef-flash:9b", ""), "")               # geleert = bewusst aus
+        self.assertEqual(wahl_aenderung("", "anderes:4b"), "anderes:4b")
 
     def test_stapel_bausteine_nutzen_die_vorab_geholte_rangliste(self):
         # Stapelbetrieb je Modell: lies_dokument (Lesemodell) und hole_zweitmeinung (Entscheidungsmodell)

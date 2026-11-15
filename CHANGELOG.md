@@ -2,6 +2,13 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.30 — 2026-11-15
+
+- Vollautomatik: Hat ein neuer Absender mit einem vorhandenen Ordner nur ein Wort gemeinsam, fragt KID wieder nach (der ähnliche Ordner ist vorgewählt), statt ohne Rückfrage einen neuen Ordner anzulegen. In gewachsenen Sammlungen war der ähnliche Ordner oft der richtige; gemessen an 403 Dokumenten landen so 20 weniger still im falschen Ordner. In einer ganz neuen Sammlung gibt es dafür mehr Rückfragen (FALLSTRICKE #129).
+- Vollautomatik und Ablage-Vorschau: Ordner-Steckbrief. KID merkt sich je Ordner, welche Kunden- und Vertragsnummern, IBANs und Adressen in seinen Dokumenten immer wieder stehen. Trägt ein neues Dokument dieselben Nummern, legt KID es nicht still in einen anderen oder neuen Ordner (etwa nach einer Umbenennung der Firma), sondern fragt mit dem passenden Ordner vorgewählt nach; stimmt ein zweiter Hinweis zu, legt es direkt dort ab. Gezählt wird ohne KI aus dem Text der abgelegten Dokumente. Gemessen an 202 Dokumenten einer gefüllten Sammlung: still falsch 12 → 9, richtig 130 → 135.
+- Wiki: Neuer Bereich „Ablageordner…“ zeigt je Ordner die Nummern, IBANs und Adressen, an denen KID seine Dokumente wiedererkennt, mit den Dokumenten, in denen sie stehen. Ein Merkmal, das nicht zum Ordner gehört, lässt sich ausschließen und wieder zulassen.
+- Vollautomatik: Die Zweitmeinung zur Ordnerwahl ist jetzt von Haus aus an, sofern der KI-Server das Modell clef-flash:9b hat (sonst bleibt sie still aus). Gemessen an 403 Dokumenten landen damit 45 → 24 still im falschen Ordner; dafür kommen mehr Dokumente als Rückfrage, und jedes dauert einige Sekunden länger. Abschalten: Einstellungen → KI → Ordnerwahl leeren.
+
 ## v0.9.29 — 2026-11-14
 
 - Mails importieren: Die Liste steht nach wenigen Sekunden da, den Text liest KID im Hintergrund nach - die gerade sichtbaren Mails zuerst. Eine laufende Suche bekommt neue Treffer von selbst dazu. Eine große .pst-Datei (15.000 Mails) ist in etwa einer halben Minute durchsuchbar statt nach mehreren Minuten.

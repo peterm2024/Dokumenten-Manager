@@ -409,6 +409,30 @@ class IndexManager:
         finally:
             con.close()
 
+    def ablage_texte(self):
+        """
+        (rel_path, text) aller PDFs mit Text - Grundlage der Ordner-Steckbriefe (ordner_steckbrief.lade). Text =
+        Textebene, ohne sie der OCR-Text (wie der Kenntext von wiki_text). Gleicht Index UND Volltext-Cache vorher mit
+        der Platte ab: Den Cache füllt sonst nur die Volltextsuche, frisch Abgelegtes fehlte (FALLSTRICKE #127). Eigene,
+        kurzlebige Verbindung, aus jedem Thread (Vollautomatik). Leer ohne Hauptordner.
+        """
+        master = getattr(self.app, "master_folder", None)
+        if not master or not os.path.isdir(master):
+            return []
+        con = self._open_connection(app_paths.index_path(master))
+        try:
+            self._abgleich(con, os.path.abspath(master))
+            self._ensure_fulltext_baseline(con, os.path.abspath(master))
+            zeilen = con.execute("SELECT rel_path, text, text_ocr FROM fulltext").fetchall()
+        finally:
+            con.close()
+        aus = []
+        for rel_path, text, text_ocr in zeilen:
+            text = text if text and text.strip() else text_ocr
+            if text and text.strip():
+                aus.append((rel_path, text))
+        return aus
+
     def mail_verwandte(self, mail_id, eigener_rel_path):
         """
         Die übrigen Dokumente derselben Mail (rel_paths, sortiert): die Anhänge einer Mail oder die Mail und die

@@ -20,6 +20,9 @@ Rechtsklick in der Dokumentenliste (FAHRPLAN Etappe 6b): Untermenü „🛠 Wiki
 Dokumente Beleg sind (öffnet sie hier), „Neuer Eintrag aus dem Dokument“ (beim Speichern werden sie Belege) und „Zu
 Eintrag hinzufügen“. Inhalt als reine Liste in `wiki_menue`.
 
+„Ablageordner…“ links unter der Liste (15.11.2026, KONZEPT_ORDNER_STECKBRIEF.md Schritt 3) öffnet die Steckbriefe der
+Ablageordner mit „Merkmal ausschließen“ (tools/wiki_ablageordner.py).
+
 KI (Schritt N3): „Von der KI lesen lassen…“ - im Rechtsklick für die markierten Dokumente, bei den Belegen für die
 Belege des Eintrags - öffnet das Fenster „Aus dem Dokument“ (tools/wiki_dinge.py): Die KI listet auf, wer und was in
 den Dokumenten vorkommt, der Mensch hakt an. Ins Protokoll nur Zahlen.
@@ -35,6 +38,7 @@ import app_paths
 import wissen
 from pdf_handler import PDFHandler
 from tools.base_tool import BaseTool, ToolContext
+from tools.wiki_ablageordner import AblageordnerFenster
 from tools.wiki_dinge import DingeFenster, dokumente_aus_belegen
 from tools.wiki_schubladen import SchubladenFenster
 from tools.wiki_suche import BelegSuche
@@ -153,6 +157,10 @@ class WikiFenster(tk.Toplevel):
         teiler.add(links, weight=1)
         teiler.add(rechts, weight=3)
 
+        btn_ordner = ttk.Button(links, text="Ablageordner…", command=self._ablageordner)
+        btn_ordner.pack(side=tk.BOTTOM, fill=tk.X, pady=(6, 0))
+        Tooltip(btn_ordner, "Je Ablageordner die Nummern, IBANs und Adressen, an denen die Vollautomatik seine "
+                            "Dokumente wiedererkennt (Ordner-Steckbrief) - falsche lassen sich ausschließen.")
         self.btn_neu = ttk.Button(links, text="Neuer Eintrag…", command=self._neu)
         self.btn_neu.pack(side=tk.BOTTOM, fill=tk.X, pady=(6, 0))
         self.var_filter = tk.StringVar()
@@ -500,6 +508,11 @@ class WikiFenster(tk.Toplevel):
             return None
         self.schubladen = SchubladenFenster(self)
         return self.schubladen
+
+    def _ablageordner(self):
+        """„Ablageordner…“: Ordner-Steckbriefe ansehen und Merkmale ausschließen (tools/wiki_ablageordner.py), höchstens
+        ein Fenster je Sammlung."""
+        return UIUtils.einzelfenster(("ablageordner", self.app.master_folder), lambda: AblageordnerFenster(self))
 
     def schubladen_geaendert(self):
         """Eine Schublade wurde umbenannt, zusammengelegt, angelegt oder gelöscht: Liste und Eintrag neu zeigen. Ein

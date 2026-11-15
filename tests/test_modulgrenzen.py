@@ -18,7 +18,7 @@ GUI_FREI = {
     "config", "dateinamen", "dubletten", "dubletten_geprueft", "dubletten_pruefung", "folder_monitor",
     "index_manager", "mail_import", "mail_lesen", "mail_pst", "mail_quellen", "menue_hilfe", "ollama_client", "ordner_aliase", "papierkorb_herkunft", "scan_date", "server_wecken",
     "spell_correct", "suchsyntax", "tag_ignorierliste", "text_quality",
-    "wissen", "wissen_ki", "zuletzt_benutzt",
+    "wissen", "wissen_ki", "zuletzt_benutzt", "ordner_steckbrief",
 }
 
 # PyMuPDF nur über pdf_handler; file_operations prüft nur, ob es installiert ist (CLAUDE.md, ruff-Abschnitt).
@@ -28,7 +28,7 @@ FITZ_ERLAUBT = {"pdf_handler", "file_operations"}
 # Nur Standardbibliothek + eigene Module (dünner HTTP-Client, läuft auch ohne Zusatzpakete)
 NUR_STANDARD = {"ollama_client", "app_paths", "config", "spell_correct", "scan_date", "aktivitaet", "server_wecken",
                 "mail_lesen", "mail_quellen", "sicher_speichern", "einzelstart", "personen_namen",
-                "suchsyntax", "wissen", "wissen_ki"}
+                "suchsyntax", "wissen", "wissen_ki", "ordner_steckbrief"}
 
 # Einzelne verbotene Kanten: (Modul, darf nicht importieren, Grund)
 VERBOTEN = [

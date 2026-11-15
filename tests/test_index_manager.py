@@ -168,6 +168,20 @@ class TestIndexManager(unittest.TestCase):
             con.execute("UPDATE fulltext SET text_ocr = 'OCR a', text_erweitert = 'korrigiert' WHERE rel_path = 'a.pdf'")
         self.assertEqual(self.manager.wiki_text("a.pdf"), ("OCR a", "OCR a"))
 
+    @patch("index_manager.PDFHandler.get_fulltext", side_effect=lambda pfad: "" if pfad.endswith("a.pdf") else "Text b")
+    @patch("index_manager.PDFHandler.get_metadata", return_value={"title": "", "keywords": "", "KID_DokumentenDatum": ""})
+    def test_ablage_texte_fuer_die_steckbriefe(self, _meta, _text):
+        """Ordner-Steckbrief: noch nie gesucht, der Cache ist leer - die Texte kommen trotzdem (FALLSTRICKE #127);
+        ohne Textebene der OCR-Text, ganz ohne Text fällt das Dokument weg."""
+        b = os.path.join("Ordner", "b.pdf")
+        self.assertEqual(self.manager.ablage_texte(), [(b, "Text b")])
+        con = self.manager._connect()
+        with con:
+            con.execute("UPDATE fulltext SET text_ocr = 'OCR a' WHERE rel_path = 'a.pdf'")
+        self.assertEqual(dict(self.manager.ablage_texte()), {"a.pdf": "OCR a", b: "Text b"})
+        self.mock_app.master_folder = None
+        self.assertEqual(self.manager.ablage_texte(), [])
+
     @patch("index_manager.PDFHandler.get_metadata")
     def test_mail_verwandte_finden_sich_ueber_ordner_hinweg(self, mock_meta):
         # Peter 05.11.2026: Mail und Anhang liegen oft in verschiedenen Ordnern, nur KID_MAILID verbindet sie

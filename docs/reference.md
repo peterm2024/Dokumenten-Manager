@@ -69,6 +69,7 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 ::: begleitet
 ::: ordner_aliase
 ::: ablage_gedaechtnis
+::: ordner_steckbrief
 ::: tag_ignorierliste
 ::: dateinamen
 
@@ -114,3 +115,4 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 ::: tools.wiki_suche
 ::: tools.wiki_dinge
 ::: tools.wiki_schubladen
+::: tools.wiki_ablageordner

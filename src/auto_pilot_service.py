@@ -37,8 +37,10 @@ import auto_pilot
 import dubletten_pruefung
 import ollama_client
 import ordner_aliase
+import ordner_steckbrief
 import tag_ignorierliste
 import vollautomatik_fenster
+import wissen
 
 RUHEZEIT_NACH_EREIGNIS = 3.0       # Sekunden ohne weiteres Dateisystem-Ereignis, bevor eine Runde startet
 STABIL_MINDESTALTER = 5.0          # Sekunden seit der letzten Änderung, bevor eine Datei als fertig gilt
@@ -65,6 +67,7 @@ class AutoPilotService:
         self._in_runde = False         # eine_runde läuft gerade (beschaeftigt())
         self._unfertige = 0            # Posteingang-Dateien, die in der letzten Runde noch nicht fertig waren
         self._naechster_versuch = {}   # Pfad -> time.monotonic(), vor dem nicht erneut versucht wird
+        self._entscheidungsmodell = ""  # Zweitmeinung dieser Runde (auto_pilot.wirksames_entscheidungsmodell)
         self._server_gemeldet = False  # "nicht erreichbar" steht schon im Log
         self._cpu_gemeldet = False     # "rechnet ohne Grafikkarte" steht schon im Log/Protokoll
         self._cpu_erlaubt_gemeldet = False  # dito für den zugelassenen, langsamen CPU-Betrieb
@@ -245,6 +248,12 @@ class AutoPilotService:
         index_manager = getattr(self.app, "index_manager", None)
         gedaechtnis = ablage_gedaechtnis.lade(index_manager, auto_pilot.ordner_fuer_zweitmeinung(ordnerliste),
                                               getattr(self.app, "logger", None))
+        # Ordner-Steckbriefe (Etappe 9): beim ersten Mal liest der Abgleich den Volltext der ganzen Sammlung
+        with aktivitaet.phase("Vollautomatik: Ordner-Steckbriefe aus dem Volltext…"):
+            steckbriefe = ordner_steckbrief.lade(
+                index_manager, auto_pilot.ordner_fuer_zweitmeinung(ordnerliste),
+                ausgeschlossen=wissen.ausgeschlossene_merkmale(master, getattr(self.app, "logger", None)),
+                logger=getattr(self.app, "logger", None))
         vocabulary = None
         try:
             basis = index_manager.wortschatz_der_sammlung() if index_manager is not None else None
@@ -252,6 +261,8 @@ class AutoPilotService:
         except Exception as e:
             self._log("warning", f"Vollautomatik: Titel-Wortschatz nicht verfügbar: {e}")
 
+        # Zweitmeinung: je Runde einmal bestimmt (Standard an, wenn der Server das Modell hat - 15.11.2026)
+        self._entscheidungsmodell = auto_pilot.wirksames_entscheidungsmodell(self.app.config, base_url)
         anzahl = 0
         self._status("runde", gesamt=len(kandidaten))
         kontext = dict(known_tags=known_tags, kategorien=kategorien, tag_eltern=tag_eltern, synonyme=synonyme,
@@ -273,7 +284,8 @@ class AutoPilotService:
                                     aliase, kategorien, ignorierte, nummer=nummer, gesamt=len(kandidaten),
                                     merkmale=merkmale, tag_eltern=tag_eltern, synonyme=synonyme,
                                     gedaechtnis=gedaechtnis, gelesen=gelesen,
-                                    rangliste=ranglisten.get(gelesen["pdf_path"]), ordner_stand=ordner_stand):
+                                    rangliste=ranglisten.get(gelesen["pdf_path"]), ordner_stand=ordner_stand,
+                                    steckbriefe=steckbriefe):
                     anzahl += 1
         self._status("warten")
         return anzahl
@@ -336,16 +348,17 @@ class AutoPilotService:
                 phase.melde(f"Vollautomatik: Zweitmeinung zum Ordner für {aktivitaet.kurz(os.path.basename(gelesen['pdf_path']))}…")
             return auto_pilot.zweitmeinungen_fuer_stapel(
                 [gelesen for _, gelesen in stapel], ordnerliste, base_url,
-                self.app.config.get("ki_entscheidungsmodell", ""), abbrechen=self._abbrechen, vor_abruf=vor_abruf,
+                self._entscheidungsmodell, abbrechen=self._abbrechen, vor_abruf=vor_abruf,
                 **kontext)
 
     def _verarbeite(self, pfad, master, known_tags, ordnerliste, base_url, model, vocabulary, aliase, kategorien=None,
                     ignorierte=None, nummer=None, gesamt=None, merkmale=None, tag_eltern=None, synonyme=None,
-                    gedaechtnis=None, gelesen=None, rangliste=None, ordner_stand=None):
+                    gedaechtnis=None, gelesen=None, rangliste=None, ordner_stand=None, steckbriefe=None):
         """
         Phase 3: ein gelesenes Dokument (lies_dokument) entscheiden, auf Dubletten prüfen und ablegen.
         :param rangliste: in Phase 2 geholte Zweitmeinung (oder Exception), None = bei Bedarf hier holen
         :param ordner_stand: Länge der Ordnerliste, als die Zweitmeinung geholt wurde
+        :param steckbriefe: Ordner-Steckbriefe der Runde, lernen wie das Gedächtnis jede sichere Ablage sofort mit
         """
         name = os.path.basename(pfad)
         self._status("ablage", pfad=pfad, nummer=nummer, gesamt=gesamt)
@@ -356,8 +369,8 @@ class AutoPilotService:
                               if nummer else f"Vollautomatik legt ab: {aktivitaet.kurz(name)}…"):
             # Veraltete Zweitmeinung (neue Ordner seit Phase 2) holt entscheide_im_stapel neu
             entscheidung = auto_pilot.entscheide_im_stapel(
-                gelesen, ordnerliste, base_url, entscheidungsmodell=self.app.config.get("ki_entscheidungsmodell", ""),
-                rangliste=rangliste, ordner_stand=ordner_stand, **regeln)
+                gelesen, ordnerliste, base_url, entscheidungsmodell=self._entscheidungsmodell,
+                rangliste=rangliste, ordner_stand=ordner_stand, steckbriefe=steckbriefe, **regeln)
         if entscheidung.get("zweitmeinung_fehler"):
             # Ohne Zweitmeinung entscheidet die Regel-Logik allein - wie vor dem 27.10.2026
             self._log("warning", f"Vollautomatik: Zweitmeinung zum Ordner fehlgeschlagen für {name}: "
@@ -411,11 +424,15 @@ class AutoPilotService:
                 vermerk += "  (Synonym: " + ", ".join(f"{a} -> {n}" for a, n in entscheidung["tag_ersetzungen"]) + ")"
             if entscheidung.get("ordner_gedaechtnis"):
                 vermerk += f"  (Ordner aus dem Gedächtnis: {entscheidung['ordner_gedaechtnis']} Dokumente dieses Absenders)"
+            if entscheidung.get("ordner_hinweis") == auto_pilot.STECKBRIEF_HINWEIS:
+                vermerk += "  (Ordner aus dem Steckbrief)"     # nie die Nummern selbst - das Protokoll lesen Angehörige
             self._log("info", f"Vollautomatik: {pfad} -> {ergebnis['neuer_pfad']}{vermerk}")
             self._protokolliere(master, f"abgelegt  {name}  ->  {ziel_rel}{vermerk}")
             if gedaechtnis is not None and not entscheidung.get("ordner_sammel"):
                 # Gilt ab dem nächsten Dokument dieser Runde - der Index kennt die Ablage erst später
                 gedaechtnis.stimme(entscheidung["absender"], entscheidung["zielordner"])
+            if steckbriefe is not None and not entscheidung.get("ordner_sammel"):
+                steckbriefe.hinzu(entscheidung["zielordner"], (gelesen or {}).get("merkmale") or ())
             if entscheidung["ordner_neu"] and not entscheidung.get("ordner_sammel") and entscheidung["zielordner"] not in ordnerliste:
                 # Varianten-Zusammenführung wie im Vorschau-Tool - NUR für tatsächlich angelegte Ordner.
                 # Ein unsicher vorgeschlagener Ordner existiert nicht; in der Liste hielt ihn das nächste

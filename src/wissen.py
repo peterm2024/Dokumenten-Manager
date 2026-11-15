@@ -16,6 +16,11 @@ Abgelehntes (13.11.2026): Was der Mensch aus einem Dokument nicht ins Wiki wollt
 abgehakt, oder eine Angabe aus einem Dokument entfernt), steht je Dokument-ID in `abgelehnt` (`ablehnen`,
 `abgelehnte`). Ein neuer Lauf über dasselbe Dokument schlägt es nicht wieder vor (tools/wiki_dinge.py).
 
+Ausgeschlossene Merkmale (15.11.2026, KONZEPT_ORDNER_STECKBRIEF.md Schritt 3): Der Ordner-Steckbrief wird berechnet,
+nicht gespeichert; hier steht nur, welches Merkmal (Art, Wert) der Mensch für einen Ablageordner verworfen hat
+(`merkmal_ausschliessen`, `merkmal_zulassen`, `ausgeschlossene_merkmale`). Der Ordner steht mit seinem Namen in der
+Sammlung - nach dem Umbenennen gilt der Ausschluss nicht mehr (dann bildet sich auch der Steckbrief neu).
+
 Bis 12.11.2026 hatte jede Art feste Felder (Kennzeichen, Halter …). Peters Test an einer Rechnung zeigte: Dokumente
 passen selten in ein Schema. Eine Datei im alten Aufbau wird beim ersten Zugriff als `wissen_alt.sqlite` beiseitegelegt
 und leer neu begonnen (Peter: keine Rücksicht auf vorhandene Einträge). Neuere Dateien werden nur nachgerüstet
@@ -38,7 +43,7 @@ import app_paths
 
 START_ARTEN = ("Person", "Firma", "Behörde", "Immobilie", "Fahrzeug", "Vertrag", "Versicherung", "Sonstiges")
 MAX_ANGABE = 300                      # Zeichen je Angabe - eine Zeile, kein Aufsatz
-SCHEMA = 3                            # 3 (13.11.2026): Tabelle `abgelehnt`
+SCHEMA = 4                            # 3 (13.11.2026): Tabelle `abgelehnt`; 4 (15.11.2026): `merkmal_aus`
 ALTER_AUFBAU = 2                      # darunter: feste Felder (bis 12.11.2026), wird beiseitegelegt
 _TABELLEN = """
 CREATE TABLE art (
@@ -63,7 +68,13 @@ CREATE TABLE abgelehnt (
     id INTEGER PRIMARY KEY, kid_id TEXT NOT NULL, text TEXT NOT NULL, zitat TEXT NOT NULL DEFAULT '',
     wann TEXT NOT NULL, UNIQUE (kid_id, text, zitat));
 """
-_NACHRUESTEN = {2: _ABGELEHNT}                # von Version n auf n + 1, ohne vorhandene Daten anzufassen
+# Merkmale, die der Mensch aus dem Steckbrief eines Ablageordners verworfen hat (Schritt 3 Ordner-Steckbrief)
+_MERKMAL_AUS = """
+CREATE TABLE merkmal_aus (
+    id INTEGER PRIMARY KEY, ordner TEXT NOT NULL COLLATE NOCASE, art TEXT NOT NULL, wert TEXT NOT NULL,
+    wann TEXT NOT NULL, UNIQUE (ordner, art, wert));
+"""
+_NACHRUESTEN = {2: _ABGELEHNT, 3: _MERKMAL_AUS}  # von Version n auf n + 1, ohne vorhandene Daten anzufassen
 
 
 def _leer(text):
@@ -137,7 +148,7 @@ class Wissen:
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys = ON")
         if version == 0:
-            con.executescript("BEGIN;" + _TABELLEN + _ABGELEHNT + "".join(
+            con.executescript("BEGIN;" + _TABELLEN + _ABGELEHNT + _MERKMAL_AUS + "".join(
                 f"INSERT INTO art (name, reihe) VALUES ('{name}', {n});" for n, name in enumerate(START_ARTEN))
                 + f"PRAGMA user_version = {SCHEMA}; COMMIT;")
         elif version < SCHEMA:                                  # neuerer Aufbau: nur nachrüsten, alles bleibt
@@ -471,6 +482,27 @@ class Wissen:
             return ergebnis
         return self._lies(arbeit, {})
 
+    # ------------------------------------------------------------ Ordner-Steckbrief: ausgeschlossene Merkmale
+    def merkmal_ausschliessen(self, ordner, art, wert):
+        """Das Merkmal zählt für diesen Ablageordner nicht mehr (ordner_steckbrief.Steckbriefe(ausgeschlossen=)).
+        :return: True, wenn neu"""
+        if not ordner or not art or not wert:
+            raise Eingabefehler("Ordner und Merkmal fehlen.")
+        return self._mit(lambda con: con.execute(
+            "INSERT OR IGNORE INTO merkmal_aus (ordner, art, wert, wann) VALUES (?, ?, ?, ?)",
+            (ordner, art, wert, _jetzt())).rowcount == 1)
+
+    def merkmal_zulassen(self, ordner, art, wert):
+        """Ein ausgeschlossenes Merkmal zählt wieder. :return: True, wenn es ausgeschlossen war"""
+        return self._lies(lambda con: con.execute(
+            "DELETE FROM merkmal_aus WHERE ordner = ? AND art = ? AND wert = ?", (ordner, art, wert)).rowcount == 1,
+            False)
+
+    def ausgeschlossene_merkmale(self):
+        """[(ordner, art, wert)] - für ordner_steckbrief.lade. Liest nur, ohne Datei leer."""
+        return self._lies(lambda con: [(z["ordner"], z["art"], z["wert"]) for z in con.execute(
+            "SELECT ordner, art, wert FROM merkmal_aus ORDER BY id")], [])
+
     # ------------------------------------------------------------ Schreiben: Belege, Verbindungen
     def beleg_hinzu(self, eintrag_id, kid_id, titel=""):
         """Ein Dokument (über seine KID_ID) als Beleg. Doppelt eingetragen wird nichts. :return: True, wenn neu"""
@@ -508,3 +540,14 @@ class Wissen:
 
     def trenne(self, a, b):
         self._mit(lambda con: con.execute("DELETE FROM verbindung WHERE a = ? AND b = ?", (min(a, b), max(a, b))))
+
+
+def ausgeschlossene_merkmale(master_folder, logger=None):
+    """Für Vollautomatik und Ablage-Vorschau: die ausgeschlossenen Steckbrief-Merkmale der Sammlung. Ein Fehler
+    (Datei gesperrt, kaputt) liefert [] - die Ablage darf am Wiki nie hängen bleiben."""
+    try:
+        return Wissen(master_folder).ausgeschlossene_merkmale() if master_folder else []
+    except Exception as e:                                   # noqa: BLE001
+        if logger is not None:
+            logger.warning(f"Wiki: ausgeschlossene Merkmale nicht lesbar ({type(e).__name__})")
+        return []

@@ -5,6 +5,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import aktivitaet
 import app_paths
+import auto_pilot
 import bestaetigung
 import ollama_client
 import server_wecken
@@ -14,6 +15,13 @@ from dokument_eigenschaften import EINSTELLUNG_DETAILS, EINSTELLUNG_FELDER
 from preview_manager import EINSTELLUNG_NACHLAUF
 from tools.base_tool import BaseTool, ToolContext
 from ui_utils import UIUtils, ProgressDialog
+
+
+def wahl_aenderung(angezeigt, eingabe):
+    """Feld „Ordnerwahl“: der zu speichernde Wert oder None, wenn sich nichts geändert hat (dann bleibt ein fehlender
+    Eintrag fehlend und der Standard samt Prüfung „hat der Server das Modell?“ gilt weiter)."""
+    eingabe = (eingabe or "").strip()
+    return None if eingabe == (angezeigt or "").strip() else eingabe
 
 
 # ==========================================
@@ -94,6 +102,12 @@ class SettingsEditorWindow(tk.Toplevel):
         frame = ttk.Frame(self.notebook, padding=12)
         self.notebook.add(frame, text=titel)
         return frame
+
+    def _entscheidungsmodell_uebernehmen(self):
+        neu = wahl_aenderung(self._wahl_angezeigt, self.var_entscheidungsmodell.get())
+        if neu is not None:
+            self.app.config.set("ki_entscheidungsmodell", neu)
+            self._wahl_angezeigt = neu
 
     def _hinweis(self, parent, text, einzug=28, pady=(0, 8), breite=580):
         """Graue Erklärungszeile unter einer Option - in Klartext, was die Option bewirkt."""
@@ -419,13 +433,17 @@ class SettingsEditorWindow(tk.Toplevel):
         row_wahl = ttk.Frame(tab)
         row_wahl.pack(fill=tk.X, padx=8, pady=(2, 0))
         ttk.Label(row_wahl, text="Ordnerwahl:", width=16).pack(side=tk.LEFT)
-        self.var_entscheidungsmodell = tk.StringVar(value=self.app.config.get("ki_entscheidungsmodell", ""))
+        # Seit 15.11.2026 standardmäßig an (auto_pilot.wirksames_entscheidungsmodell): ohne Eintrag steht das Standard-
+        # modell im Feld, gespeichert wird nur eine echte Änderung - sonst schriebe schon das Durchklicken den Wert fest
+        # und das Modell gälte auch auf einem Server, der es nicht hat.
+        self._wahl_angezeigt = self.app.config.get("ki_entscheidungsmodell", auto_pilot.STANDARD_ENTSCHEIDUNGSMODELL)
+        self.var_entscheidungsmodell = tk.StringVar(value=self._wahl_angezeigt)
         entry_wahl = ttk.Entry(row_wahl, textvariable=self.var_entscheidungsmodell)
         entry_wahl.pack(side=tk.LEFT, fill=tk.X, expand=True)
         for ereignis in ("<FocusOut>", "<Return>"):
-            entry_wahl.bind(ereignis, lambda e: self.app.config.set("ki_entscheidungsmodell",
-                                                                     self.var_entscheidungsmodell.get().strip()))
-        self._hinweis(tab, "Optional, z.B. clef-flash:9b: ein Entscheidungsmodell prüft bei der Vollautomatik den "
+            entry_wahl.bind(ereignis, lambda e: self._entscheidungsmodell_uebernehmen())
+        self._hinweis(tab, "Voreingestellt clef-flash:9b (gilt nur, wenn der KI-Server es hat): ein Entscheidungsmodell "
+                           "prüft bei der Vollautomatik den "
                            "Zielordner nach. Widerspricht es deutlich, bleibt das Dokument zur Prüfung liegen; ist es "
                            "sich sehr sicher, darf es einen unklaren Fall entscheiden. Leer = aus. Kostet je Dokument "
                            "einige Sekunden (Modellwechsel auf dem Server).", einzug=8 + 16 * 7, pady=(0, 4), breite=540)

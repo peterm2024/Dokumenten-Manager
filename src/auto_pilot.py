@@ -24,6 +24,7 @@ import app_paths
 import mail_lesen
 import ollama_client
 import ordner_aliase
+import ordner_steckbrief
 import scan_date
 import spell_correct
 from pdf_handler import PDFHandler
@@ -493,26 +494,10 @@ def finde_aehnlichen_ordner(namen, vorhandene_ordner, ohne_gattungswoerter=False
     return bester
 
 
-def _verschiedene_absender(name, ordner):
-    """
-    Teilen ein neuer Name und ein vorhandener Ordner genau ein Wort, und hat jeder noch eigene Wörter, sind es
-    verschiedene Absender: 'MVZ Musterstadt' neben 'Bürgerbüro Musterstadt'. Echter Mail-Lauf 05.11.2026: 11 von 17
-    PDFs in 0_Unsicher waren solche Fälle; Korpus: 52 Dokumente mehr ohne Rückfrage, 17 falsche Vorauswahlen weg,
-    dafür 6 Doppelordner mehr ('Zweckverband Musterdorf' neben 'WZV Musterdorf'). Ein Doppelordner ist sichtbar und
-    schnell behoben. Steckt ein Name ganz im anderen, bleibt es ähnlich ('Vivafone' / 'Vivafone Kabel').
-    """
-    eigene = _namenswoerter(name)
-    fremde = _namenswoerter(re.sub(r"\([^)]*\)", " ", os.path.basename(ordner)))
-    gleiche_eigene = {w for w in eigene if any(_woerter_aehnlich(w, f) for f in fremde)}
-    gleiche_fremde = {f for f in fremde if any(_woerter_aehnlich(w, f) for w in eigene)}
-    return len(gleiche_fremde) == 1 and bool(eigene - gleiche_eigene) and bool(fremde - gleiche_fremde)
-
-
-def _aehnlicher_ordner(namen, vorhandene_ordner, **optionen):
-    """finde_aehnlichen_ordner ohne Ordner, die laut _verschiedene_absender zu jemand anderem gehören.
-    :param namen: Absender und vorgeschlagener Ordnername (der steht zuletzt und wird verglichen)"""
-    treffer = finde_aehnlichen_ordner(namen, vorhandene_ordner, **optionen)
-    return None if treffer and _verschiedene_absender(namen[-1], treffer) else treffer
+# Entfernt 14.11.2026 (Etappe 9, FALLSTRICKE #129): `_verschiedene_absender` - „teilen zwei Namen nur ein Wort, sind es
+# verschiedene Absender, neuer Ordner ohne Rückfrage“. In einer frischen Sammlung 53 Rückfragen weniger, in einer
+# bestehenden 20 still falsch abgelegte Dokumente mehr: Menschen benennen Ordner kürzer, als die KI den Absender liest,
+# die Regel verwarf gerade den richtigen Ordner, und das Ablage-Gedächtnis schickte die weiteren Briefe hinterher.
 
 
 _NUR_ADRESSE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
@@ -1426,12 +1411,12 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
                 f"'{absender}' - Zielordner anklicken, dann merkt sich die Automatik den Ordner (Alias)")
             # Ein ähnlicher vorhandener Ordner ('ElsterOnline' -> 'ELSTER') ist schon vorgewählt,
             # dann reicht in der Ablage-Vorschau Enter (Betatest 25.10.2026).
-            zielordner = _aehnlicher_ordner(vergleichsnamen, vorhandene_ordner)
+            zielordner = finde_aehnlichen_ordner(vergleichsnamen, vorhandene_ordner)
         else:
             gruppe = finde_buchstabengruppe(ordnername, vorhandene_ordner)
             neuer_ordner = os.path.join(gruppe, ordnername) if gruppe else ordnername
-            aehnlich = _aehnlicher_ordner(vergleichsnamen, vorhandene_ordner)
-            vorwahl = aehnlich and _aehnlicher_ordner(
+            aehnlich = finde_aehnlichen_ordner(vergleichsnamen, vorhandene_ordner)
+            vorwahl = aehnlich and finde_aehnlichen_ordner(
                 vergleichsnamen, vorhandene_ordner, ohne_gattungswoerter=True,
                 ortswoerter=ortswoerter_des_dokuments(ki_antwort) | set(orte or ()))
             if ki_antwort.get("einzelne_mail"):
@@ -1508,8 +1493,11 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
 # den Zielordner-Klick, der Klick räumte ihn aber nicht weg - die Zeile blieb gelb.
 _PROBLEM_AEHNLICHER_ORDNER = "Ähnlicher Ordner vorhanden:"
 _PROBLEM_ZWEITMEINUNG = "Zweitmeinung zum Ordner:"
+_PROBLEM_STECKBRIEF = "Ordner-Steckbrief:"
 _ORDNER_PROBLEM_PRAEFIXE = ("Absendername zu kurz für einen Ordner", "kein Zielordner und kein Absender erkannt",
-                            "Absender nur als Kürzel", _PROBLEM_AEHNLICHER_ORDNER, _PROBLEM_ZWEITMEINUNG)
+                            "Absender nur als Kürzel", _PROBLEM_AEHNLICHER_ORDNER, _PROBLEM_ZWEITMEINUNG,
+                            _PROBLEM_STECKBRIEF)
+STECKBRIEF_HINWEIS = "Ordner-Steckbrief"
 
 # Zweitmeinung eines Entscheidungsmodells zur Ordnerwahl (ollama_client.waehle_ordner,
 # Modell-Prüfstand 27.10.2026 am Bestand von 403 Dokumenten). Grundregel bleibt: die KI
@@ -1566,6 +1554,57 @@ def wende_zweitmeinung_an(entscheidung, rangliste, vorhandene_ordner):
     neu["ordner_per_alias"] = False
     neu["ordner_hinweis"] = ZWEITMEINUNG_HINWEIS
     return neu
+
+
+def wende_steckbrief_an(entscheidung, vorschlag, rangliste, vorhandene_ordner, merkmale=0):
+    """
+    Regel D des Ordner-Steckbriefs (KONZEPT_ORDNER_STECKBRIEF.md; Korpus mit Zweitmeinung: 243 richtig / 24 still
+    falsch / 136 unsicher -> 276 / 20 / 107). Der Steckbrief allein lag nur zu 81 % richtig (er lernt auch aus
+    Fehlablagen), deshalb entscheidet er nie allein:
+    - Sperre: Eine sichere Ablage in einen anderen Ordner wird zur Rückfrage, der Steckbrief-Ordner ist vorgewählt.
+    - Bestätigung: Ist die Entscheidung nur wegen der Ordnerwahl unsicher und stimmt ein zweites Signal zu - die
+      Vorwahl der Regeln oder der erste Platz der Zweitmeinung -, gilt der Steckbrief-Ordner.
+    - Sonst: Der Steckbrief-Ordner ist vorgewählt, der Mensch bestätigt.
+    Alias- und Sammelordner bleiben unberührt (die hat der Mensch bzw. E17 festgelegt). Liefert eine Kopie.
+    :param vorschlag: Ordner aus ordner_steckbrief.Steckbriefe.vorschlag (muss in vorhandene_ordner stehen)
+    :param rangliste: Zweitmeinung [(ordner, p), ...] oder None
+    :param merkmale: Anzahl passender Merkmale (nur für den Hinweis)
+    """
+    if (not vorschlag or vorschlag not in vorhandene_ordner or entscheidung.get("ordner_per_alias")
+            or entscheidung.get("ordner_sammel")):
+        return entscheidung
+    ziel = entscheidung.get("zielordner") or ""
+    if _gleicher_ordner(ziel, vorschlag):
+        if entscheidung["sicher"]:
+            return entscheidung
+        zustimmung = True
+    else:
+        zustimmung = bool(rangliste) and _gleicher_ordner(rangliste[0][0], vorschlag)
+    hinweis = (f"{_PROBLEM_STECKBRIEF} {merkmale} Merkmal{'e' if merkmale != 1 else ''} (Nummern, Adressen) wie "
+               f"in '{vorschlag}'")
+    ordner_probleme = [p for p in entscheidung["probleme"] if p.startswith(_ORDNER_PROBLEM_PRAEFIXE)]
+    if not entscheidung["sicher"] and zustimmung and ordner_probleme:
+        neu = wende_zielordner_an(entscheidung, vorschlag, vorhandene_ordner)
+        neu["ordner_per_alias"] = False
+        neu["ordner_hinweis"] = STECKBRIEF_HINWEIS
+        return neu
+    if _gleicher_ordner(ziel, vorschlag):
+        return entscheidung          # schon vorgewählt, aus anderem Grund unsicher (z.B. kein Datum)
+    neu = dict(entscheidung)
+    neu["zielordner"] = vorschlag
+    neu["ordner_neu"] = False
+    neu["ordner_gedaechtnis"] = 0
+    neu["sicher"] = False
+    neu["neuer_dateiname"] = ""
+    neu["probleme"] = list(entscheidung["probleme"]) + [
+        f"{hinweis}" + (f" - KID wollte nach '{ziel}'" if ziel else "") + " - Zielordner anklicken und bestätigen"]
+    return neu
+
+
+def _gleicher_ordner(a, b):
+    return bool(a) and bool(b) and os.path.normcase(os.path.normpath(a)) == os.path.normcase(os.path.normpath(b))
+
+
 _PROBLEM_KEIN_TITEL = "kein Titel erkannt"
 _PROBLEM_KEINE_TAGS = "keine Tags erkannt"
 _PROBLEM_KEIN_DATUM = "kein plausibles Dokumentdatum erkannt"
@@ -1925,8 +1964,9 @@ def analysiere_dokument(pdf_path, known_tags, vorhandene_ordner, base_url, model
 def lies_dokument(pdf_path, known_tags, base_url, model, kategorien=None):
     """
     Lesemodell-Teil: Schreibschutz prüfen, Seite 1 rendern, KI befragen. Wirft Verbindungs-/
-    Serverfehler des KI-Aufrufs weiter. :return: {"pdf_path", "schreibschutz", "png", "ki_antwort"}
-    (png None = Seite nicht darstellbar, dann ohne KI-Aufruf)
+    Serverfehler des KI-Aufrufs weiter. :return: {"pdf_path", "schreibschutz", "png", "ki_antwort", "merkmale"}
+    (png None = Seite nicht darstellbar, dann ohne KI-Aufruf; merkmale = Nummern/Adressen aus der Textebene für
+    den Ordner-Steckbrief, leer ohne Textebene - kein OCR, das kostete je Dokument Sekunden)
     """
     schreibschutz = PDFHandler.get_write_protection(pdf_path)
     png = PDFHandler.render_page_png(pdf_path)
@@ -1935,7 +1975,8 @@ def lies_dokument(pdf_path, known_tags, base_url, model, kategorien=None):
         ki_antwort = ollama_client.suggest_filing(
             png, known_tags=known_tags, base_url=base_url, model=model, kategorien=kategorien)
         ki_antwort = mit_mailkopf(ki_antwort, PDFHandler.get_metadata(pdf_path))
-    return {"pdf_path": pdf_path, "schreibschutz": schreibschutz, "png": png, "ki_antwort": ki_antwort}
+    return {"pdf_path": pdf_path, "schreibschutz": schreibschutz, "png": png, "ki_antwort": ki_antwort,
+            "merkmale": ordner_steckbrief.merkmale(PDFHandler.get_fulltext(pdf_path))}
 
 
 def mit_mailkopf(ki_antwort, meta):
@@ -1986,6 +2027,29 @@ def braucht_zweitmeinung(entscheidung):
     return entscheidung["sicher"] or any(p.startswith(_ORDNER_PROBLEM_PRAEFIXE) for p in entscheidung["probleme"])
 
 
+STANDARD_ENTSCHEIDUNGSMODELL = "clef-flash:9b"
+
+
+def wirksames_entscheidungsmodell(config, base_url):
+    """
+    Modell der Zweitmeinung zur Ordnerwahl, "" = aus. Seit 15.11.2026 (Peter, vor v0.9.30) standardmäßig an: Steht
+    `ki_entscheidungsmodell` nicht in settings.json, gilt STANDARD_ENTSCHEIDUNGSMODELL - aber nur, wenn der KI-Server es
+    hat; sonst aus, statt bei jedem Dokument an einem fehlenden Modell zu scheitern (Beta-Tester mit eigenem Server).
+    Ein eingetragener Wert gilt, wie er ist: ein bewusst geleertes Feld bleibt aus. Gemessen (Etappe 9): mit
+    Zweitmeinung still falsch 45 -> 24 im Bestand, in Themenordnern 25 -> 15.
+    :param config: hat get(key, default) wie config.Config
+    """
+    wert = config.get("ki_entscheidungsmodell", None)
+    if wert is not None:
+        return str(wert).strip()
+    try:
+        namen = ollama_client.list_models(base_url)
+    except Exception:                                     # Server weg: dann gibt es ohnehin keine Ablage
+        return ""
+    return (STANDARD_ENTSCHEIDUNGSMODELL
+            if any(ollama_client._passt_modellname(n, STANDARD_ENTSCHEIDUNGSMODELL) for n in namen) else "")
+
+
 def hole_zweitmeinung(gelesen, vorhandene_ordner, base_url, entscheidungsmodell):
     """Entscheidungsmodell-Teil: Rangliste [(ordner, p), ...] zur Seite 1 des gelesenen Dokuments.
     Wirft Fehler weiter."""
@@ -1996,12 +2060,14 @@ def hole_zweitmeinung(gelesen, vorhandene_ordner, base_url, entscheidungsmodell)
 def entscheide_gelesen(gelesen, vorhandene_ordner, base_url, vocabulary=None, aliase=None, known_tags=None,
                        kategorien=None, ignorierte_tags=None, tag_eltern=None,
                        synonyme=None, entscheidungsmodell="", gedaechtnis=None, rangliste=None,
-                       orte=None):
+                       orte=None, steckbriefe=None):
     """
     Entscheidung aus einem gelesenen Dokument (lies_dokument) bauen und - mit entscheidungsmodell -
     die Zweitmeinung verrechnen. Eine im Stapel schon geholte Zweitmeinung kommt als rangliste
     (Liste oder Exception); fehlt sie, wird sie hier geholt. Scheitert nur die Zweitmeinung, bleibt
     es bei der Regel-Logik, der Grund steht in "zweitmeinung_fehler".
+    :param steckbriefe: ordner_steckbrief.Steckbriefe - danach Regel D (wende_steckbrief_an), so gemessen im
+        ablage_messlauf: nach der Zweitmeinung, deren erster Platz als zweites Signal zählt
     """
     if gelesen["png"] is None:
         return {
@@ -2024,6 +2090,10 @@ def entscheide_gelesen(gelesen, vorhandene_ordner, base_url, vocabulary=None, al
             entscheidung = wende_zweitmeinung_an(entscheidung, rangliste, vorhandene_ordner)
         except Exception as e:
             entscheidung = dict(entscheidung, zweitmeinung_fehler=str(e))
+    if steckbriefe is not None and gelesen.get("merkmale"):
+        vorschlag, anzahl = steckbriefe.vorschlag(gelesen["merkmale"])
+        entscheidung = wende_steckbrief_an(entscheidung, vorschlag, rangliste if isinstance(rangliste, list) else None,
+                                           vorhandene_ordner, anzahl)
     return entscheidung
 
 
@@ -2060,9 +2130,11 @@ def zweitmeinungen_fuer_stapel(stapel, vorhandene_ordner, base_url, entscheidung
 
 
 def entscheide_im_stapel(gelesen, vorhandene_ordner, base_url, entscheidungsmodell="", rangliste=None,
-                         ordner_stand=None, **regeln):
+                         ordner_stand=None, steckbriefe=None, **regeln):
     """
     Phase 3 des Stapelbetriebs: wie entscheide_gelesen mit der in Phase 2 geholten Rangliste.
+    :param steckbriefe: nur für die endgültige Entscheidung - ob eine Zweitmeinung nötig ist, entscheidet wie in
+        Phase 2 die Regel-Logik allein
     :param ordner_stand: Länge der Ordnerliste, als die Rangliste geholt wurde. Sind seitdem im selben
         Stapel neue Ordner entstanden und will dieses Dokument wieder einen NEUEN Ordner anlegen, wird
         die Zweitmeinung mit der aktuellen Liste neu geholt - sonst kann das Entscheidungsmodell den
@@ -2073,4 +2145,4 @@ def entscheide_im_stapel(gelesen, vorhandene_ordner, base_url, entscheidungsmode
         if entscheide_gelesen(gelesen, vorhandene_ordner, base_url, **regeln)["ordner_neu"]:
             rangliste = None
     return entscheide_gelesen(gelesen, vorhandene_ordner, base_url, entscheidungsmodell=entscheidungsmodell,
-                              rangliste=rangliste, **regeln)
+                              rangliste=rangliste, steckbriefe=steckbriefe, **regeln)

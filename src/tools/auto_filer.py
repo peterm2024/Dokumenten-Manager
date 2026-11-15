@@ -42,7 +42,9 @@ import auto_pilot
 import dubletten_pruefung
 import ollama_client
 import ordner_aliase
+import ordner_steckbrief
 import tag_ignorierliste
+import wissen
 from auto_pilot_service import STAPEL_GROESSE
 from tools.base_tool import BaseTool, ToolContext
 from ui_utils import UIUtils, ProgressDialog
@@ -489,7 +491,13 @@ class AutoFilerPreviewWindow(tk.Toplevel):
             gedaechtnis = ablage_gedaechtnis.lade(getattr(self.app, "index_manager", None),
                                                   auto_pilot.ordner_fuer_zweitmeinung(ordnerliste),
                                                   getattr(self.app, "logger", None))
-            entscheidungsmodell = self.app.config.get("ki_entscheidungsmodell", "")
+            # Ordner-Steckbriefe (Etappe 9) - wie das Gedächtnis nur aus dem Bestand, die Vorschau lernt nichts dazu
+            self.after(0, dialog.update_progress, 0, len(items), "Ordner-Steckbriefe aus dem Volltext…")
+            steckbriefe = ordner_steckbrief.lade(
+                getattr(self.app, "index_manager", None), auto_pilot.ordner_fuer_zweitmeinung(ordnerliste),
+                ausgeschlossen=wissen.ausgeschlossene_merkmale(self.app.master_folder, getattr(self.app, "logger", None)),
+                logger=getattr(self.app, "logger", None))
+            entscheidungsmodell = auto_pilot.wirksames_entscheidungsmodell(self.app.config, base_url)
 
             def regeln():
                 # Frisch je Aufruf: ein während der Analyse gesetzter Alias ersetzt self.aliase, und
@@ -533,7 +541,8 @@ class AutoFilerPreviewWindow(tk.Toplevel):
                         try:
                             entscheidung = auto_pilot.entscheide_im_stapel(
                                 gelesen, ordnerliste, base_url, entscheidungsmodell=entscheidungsmodell,
-                                rangliste=ranglisten.get(path), ordner_stand=ordner_stand, **regeln())
+                                rangliste=ranglisten.get(path), ordner_stand=ordner_stand, steckbriefe=steckbriefe,
+                                **regeln())
                         except Exception as e:
                             if hasattr(self.app, "logger") and self.app.logger:
                                 self.app.logger.warning(f"Vollautomatik-Analyse fehlgeschlagen für {path}: {e}")

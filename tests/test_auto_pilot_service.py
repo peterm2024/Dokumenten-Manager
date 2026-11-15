@@ -89,6 +89,10 @@ class TestAutoPilotService(unittest.TestCase):
         self.gpu = patch("ollama_client.gpu_status", return_value=("gpu", "5,5 GB im Grafikspeicher"))
         self.gpu.start()
         self.addCleanup(self.gpu.stop)
+        # Zweitmeinung standardmäßig an, wenn der Server das Modell hat (15.11.2026) - im Test hat er es nicht
+        self.modelle = patch("ollama_client.list_models", return_value=[])
+        self.modelle.start()
+        self.addCleanup(self.modelle.stop)
 
     def _lege_pdf(self, name="scan.pdf"):
         pfad = os.path.join(self.posteingang, name)
@@ -126,6 +130,56 @@ class TestAutoPilotService(unittest.TestCase):
         with open(app_paths.protokoll_path(self.master), encoding="utf-8") as f:
             protokoll = f.read()
         self.assertIn("abgelegt  scan.pdf", protokoll)
+
+    def test_steckbrief_lernt_jede_sichere_ablage_sofort_mit(self):
+        """Ordner-Steckbrief (Etappe 9): wie das Gedächtnis zählt eine sichere Ablage ab dem nächsten Dokument der
+        Runde; ins Protokoll kommt nur „Ordner aus dem Steckbrief“, nie eine Nummer."""
+        for name in ("a.pdf", "b.pdf", "c.pdf"):
+            self._lege_pdf(name)
+        nummer = ("Nummer", "4711999")
+        vorschlaege = []
+
+        def entscheide(gelesen, ordnerliste, *a, **k):
+            vorschlaege.append(k["steckbriefe"].vorschlag(gelesen["merkmale"])[0])
+            return dict(_entscheidung(gelesen["pdf_path"]), ordner_hinweis="Ordner-Steckbrief")
+        with patch("auto_pilot.lies_dokument", side_effect=lambda pfad, *a, **k: {
+                    "pdf_path": pfad, "png": b"png", "schreibschutz": None, "ki_antwort": {}, "merkmale": {nummer}}), \
+                patch("auto_pilot.entscheide_gelesen", side_effect=entscheide), \
+                patch("auto_pilot.fuehre_entscheidung_aus", return_value={
+                    "erfolg": True, "neuer_pfad": os.path.join(self.master, "Gentilia", "x.pdf"), "fehler": None}), \
+                patch("ollama_client.is_reachable", return_value=True):
+            self.assertEqual(self.dienst.eine_runde(), 3)
+        self.assertEqual(vorschlaege, [None, None, "Gentilia"])     # ab zwei Dokumenten gehört die Nummer dazu
+        with open(app_paths.protokoll_path(self.master), encoding="utf-8") as f:
+            protokoll = f.read()
+        self.assertEqual(protokoll.count("(Ordner aus dem Steckbrief)"), 3)
+        self.assertNotIn("4711999", protokoll)
+
+    def test_im_wiki_ausgeschlossenes_merkmal_zaehlt_nicht(self):
+        """Schritt 3: „Ausschließen“ im Wiki-Bereich Ablageordner gilt ab der nächsten Runde der Vollautomatik."""
+        import wissen
+        self._lege_pdf()
+        text = "Kundennummer: 4711 999"
+        self.app.index_manager.ablage_texte.return_value = [(os.path.join("Gentilia", "a.pdf"), text),
+                                                            (os.path.join("Gentilia", "b.pdf"), text)]
+        vorschlaege = []
+
+        def entscheide(gelesen, ordnerliste, *a, **k):
+            vorschlaege.append(k["steckbriefe"].vorschlag({("Nummer", "4711999")})[0])
+            return _entscheidung(gelesen["pdf_path"], sicher=False)
+        pipeline = ExitStack()
+        pipeline.enter_context(patch("auto_pilot.lies_dokument", side_effect=lambda pfad, *a, **k: {
+            "pdf_path": pfad, "png": b"png", "schreibschutz": None, "ki_antwort": {}, "merkmale": set()}))
+        pipeline.enter_context(patch("auto_pilot.entscheide_gelesen", side_effect=entscheide))
+        pipeline.enter_context(patch("auto_pilot.fuehre_entscheidung_aus", return_value={
+            "erfolg": False, "neuer_pfad": "", "fehler": "nur Test"}))
+        pipeline.enter_context(patch("ollama_client.is_reachable", return_value=True))
+        with pipeline:
+            self.dienst.eine_runde()
+            wissen.Wissen(self.master).merkmal_ausschliessen("Gentilia", "Nummer", "4711999")
+            self.dienst._naechster_versuch.clear()                 # die gescheiterte Ablage gleich noch einmal
+            self.dienst.eine_runde()
+        self.assertEqual(vorschlaege, ["Gentilia", None])
 
     def test_datei_mit_offener_eingabe_wird_uebersprungen(self):
         """
@@ -475,6 +529,19 @@ class TestAutoPilotService(unittest.TestCase):
             self.assertEqual(self.dienst.eine_runde(), 1)
         self.assertEqual([p[0] for p in self.phasen], ["lesen", "ablage"])
         self.assertIsNone(self.phasen[1][2])
+
+    def test_zweitmeinung_standardmaessig_an_wenn_der_server_das_modell_hat(self):
+        # 15.11.2026 (vor v0.9.30): ohne Eintrag in settings.json gilt clef-flash:9b - aber nur mit Modell auf dem Server
+        pfad = self._lege_pdf("a.pdf")
+        for modelle, erwartet in (([], ["lesen", "ablage"]),                                  # Server ohne Modell: aus
+                                  (["qwen3.5:9b", "clef-flash:9b"], ["lesen", "zweit", "ablage"])):
+            with self.subTest(modelle=modelle):
+                phasen = self._protokolliere_phasen()
+                self.config.pop("ki_entscheidungsmodell")                      # kein Eintrag in settings.json
+                self.dienst._naechster_versuch.pop(pfad, None)
+                with phasen, patch("ollama_client.list_models", return_value=modelle):
+                    self.assertEqual(self.dienst.eine_runde(), 1)
+                self.assertEqual([p[0] for p in self.phasen], erwartet)
 
     def test_hauptthread_timeout_liefert_none_statt_zu_haengen(self):
         self.app.root.after.side_effect = lambda ms, fn: None  # Hauptthread antwortet nie
