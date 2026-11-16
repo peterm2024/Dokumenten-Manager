@@ -40,13 +40,19 @@ def bekannte_tag_spannen(text, bekannte_tags):
 
 
 class SuchFeld(tk.Text):
-    """Einzeiliges Suchfeld mit Entry-kompatiblem get()/delete() und Tag-Hervorhebung."""
+    """Einzeiliges Suchfeld mit Entry-kompatiblem get()/delete() und Tag-Hervorhebung.
+
+    Ist es leer, steht grau ein Platzhalter darin (Peter 15.11.2026: „Suche…“ statt des Labels „Text:“). Der
+    Platzhalter ist ein Label über dem Feld, kein Text im Feld - get() liefert also nie den Platzhalter, und Suche,
+    Autovervollständigung und Tag-Markierung bekommen ihn nie zu sehen. Ein Klick darauf setzt den Cursor ins Feld."""
 
     TAG_NAME = "bekanntes_tag"
+    PLATZHALTER_FARBE = "#8a8a8a"
 
-    def __init__(self, master, bekannte_tags_fn, **kw):
+    def __init__(self, master, bekannte_tags_fn, platzhalter="", **kw):
         """
         :param bekannte_tags_fn: liefert die Liste der zuweisbaren Tags (TagManager.get_known_tags)
+        :param platzhalter: grauer Hinweis im leeren Feld ("" = keiner)
         """
         kw.setdefault("height", 1)
         kw.setdefault("wrap", "none")
@@ -64,6 +70,48 @@ class SuchFeld(tk.Text):
         self.bind("<<Paste>>", self._nach_einfuegen, add="+")
         self.bind("<KeyRelease>", lambda e: self.markiere_tags(), add="+")
 
+        self.platzhalter = None
+        if platzhalter:
+            self.platzhalter = tk.Label(self, text=platzhalter, font=basis, foreground=self.PLATZHALTER_FARBE,
+                                        background=self.cget("background"), borderwidth=0, padx=0, pady=0,
+                                        cursor="xterm")
+            self.platzhalter.bind("<Button-1>", self._platzhalter_klick)
+            # <<Modified>> statt <KeyRelease>: kommt bei jeder Änderung (Taste, Einfügen, Autovervollständigung)
+            # gleich beim Einfügen - sonst läge der Platzhalter bis zum Loslassen der Taste über dem ersten Zeichen
+            self.bind("<<Modified>>", self._geaendert, add="+")
+            self.pruefe_platzhalter()
+
+    def _geaendert(self, _event=None):
+        self.pruefe_platzhalter()
+        self.edit_modified(False)                          # sonst kommt <<Modified>> nur beim ersten Mal
+
+    # ---------------------------------------------------------------- Platzhalter
+    def pruefe_platzhalter(self):
+        """Platzhalter zeigen, wenn das Feld leer ist, sonst verbergen."""
+        if self.platzhalter is None:
+            return
+        if super().get("1.0", "end-1c"):
+            self.platzhalter.place_forget()
+        else:
+            rand = int(self.cget("padx") or 0) + int(self.cget("borderwidth") or 0) + 1
+            self.platzhalter.place(x=rand, rely=0.5, anchor="w")
+
+    def _platzhalter_klick(self, _event=None):
+        self.focus_set()
+        self.mark_set("insert", "1.0")
+        return "break"
+
+    def configure(self, cnf=None, **kw):
+        """Wie Text.configure; eine neue Hintergrundfarbe (search_manager färbt das Feld je Suchzustand) gilt
+        auch für den Platzhalter, sonst stünde er als Fleck im Feld."""
+        ergebnis = super().configure(cnf, **kw)
+        farbe = kw.get("background", kw.get("bg"))
+        if farbe and self.platzhalter is not None:
+            self.platzhalter.configure(background=farbe)
+        return ergebnis
+
+    config = configure
+
     # ---------------------------------------------------------------- Entry-Kompatibilität
     def get(self, *args):
         """Ohne Argumente wie ttk.Entry.get(): der ganze Text (ohne das abschließende Zeilenende)."""
@@ -71,21 +119,26 @@ class SuchFeld(tk.Text):
             return super().get("1.0", "end-1c").replace("\n", " ")
         return super().get(*args)
 
+    def insert(self, index, chars, *args):
+        super().insert(index, chars, *args)
+        self.pruefe_platzhalter()
+
     def delete(self, first, last=None):
         """Wie ttk.Entry.delete(0, END): alles löschen; sonst normales Text.delete."""
         if first == 0 or first == "0":
             super().delete("1.0", tk.END)
-            return
-        if last is None:
+        elif last is None:
             super().delete(first)
         else:
             super().delete(first, last)
+        self.pruefe_platzhalter()
 
     def setze_text(self, text):
         """Inhalt komplett ersetzen (z.B. Tests, Wizard) und Markierung erneuern."""
         super().delete("1.0", tk.END)
         super().insert("1.0", text.replace("\n", " "))
         self.markiere_tags()
+        self.pruefe_platzhalter()
 
     # ---------------------------------------------------------------- Hervorhebung
     def markiere_tags(self):
@@ -107,3 +160,4 @@ class SuchFeld(tk.Text):
         text = super().get("1.0", "end-1c")
         if "\n" in text:
             self.setze_text(text.replace("\n", " "))
+        self.pruefe_platzhalter()

@@ -61,6 +61,57 @@ class TestSuchFeldWidget(unittest.TestCase):
         self.assertEqual(self.feld._fett.cget("weight"), "bold")
 
 
+class TestPlatzhalter(unittest.TestCase):
+    """Grauer Platzhalter „Suche…“ im leeren Feld (15.11.2026): sichtbar nur, wenn leer; nie Teil von get()."""
+
+    def setUp(self):
+        self.root = tk.Tk()
+        self.root.withdraw()
+        self.feld = SuchFeld(self.root, lambda: ["Rechnung"], platzhalter="Suche…")
+        self.feld.pack()
+        self.root.update_idletasks()
+
+    def tearDown(self):
+        self.root.destroy()
+
+    def sichtbar(self):
+        return bool(self.feld.platzhalter.place_info())
+
+    def test_leer_sichtbar_und_nie_im_text(self):
+        self.assertTrue(self.sichtbar())
+        self.assertEqual(self.feld.platzhalter.cget("text"), "Suche…")
+        self.assertEqual(self.feld.get(), "")
+
+    def test_text_verbirgt_leeren_zeigt(self):
+        for setzen in (lambda: self.feld.setze_text("Rechnung"), lambda: self.feld.insert("end", "x")):
+            with self.subTest():
+                setzen()
+                self.assertFalse(self.sichtbar())
+                self.feld.delete(0, tk.END)                # wie search_manager.reset_search
+                self.assertTrue(self.sichtbar())
+
+    def test_getippt(self):
+        # Wie eine Taste oder Strg+V: am eigenen insert() vorbei - der Platzhalter muss trotzdem sofort weg
+        for _ in range(2):                                  # zweimal: <<Modified>> kommt nicht nur beim ersten Mal
+            tk.Text.insert(self.feld, "1.0", "Gas")
+            self.root.update()
+            self.assertFalse(self.sichtbar())
+            tk.Text.delete(self.feld, "1.0", "end")
+            self.root.update()
+            self.assertTrue(self.sichtbar())
+
+    def test_hintergrund_folgt_dem_feld(self):
+        self.feld.configure(background="#fff6cc")          # search_manager färbt je Suchzustand
+        self.assertEqual(self.feld.platzhalter.cget("background"), "#fff6cc")
+
+    def test_ohne_platzhalter_unveraendert(self):
+        ohne = SuchFeld(self.root, lambda: [])
+        self.assertIsNone(ohne.platzhalter)
+        ohne.setze_text("x")
+        ohne.delete(0, tk.END)
+        ohne.configure(background="white")
+
+
 class TestSuchAutocomplete(unittest.TestCase):
     """Autovervollständigung im Suchfeld: Leerzeichen trennen, Tags mit Leerzeichen kommen in Anführungszeichen."""
 

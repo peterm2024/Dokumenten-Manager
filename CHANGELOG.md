@@ -2,6 +2,11 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.31 — 2026-11-16
+
+- Suchleiste kürzer: Statt des Worts „Text:“ steht im leeren Suchfeld grau „Suche…“, und der Reset-Knopf ist ein kleines „✖“ direkt neben dem Suchfeld (Hinweis „Reset“ beim Darüberfahren).
+- Suche: Der Reset-Knopf verschwand, wenn die mittlere Spalte schmal war (bei 125 % Textgröße schon im Standard-Layout) - ein Klick an seiner Stelle ging ins Leere. Jetzt bleibt er sichtbar (FALLSTRICKE #130).
+
 ## v0.9.30 — 2026-11-15
 
 - Vollautomatik: Hat ein neuer Absender mit einem vorhandenen Ordner nur ein Wort gemeinsam, fragt KID wieder nach (der ähnliche Ordner ist vorgewählt), statt ohne Rückfrage einen neuen Ordner anzulegen. In gewachsenen Sammlungen war der ähnliche Ordner oft der richtige; gemessen an 403 Dokumenten landen so 20 weniger still im falschen Ordner. In einer ganz neuen Sammlung gibt es dafür mehr Rückfragen (FALLSTRICKE #129).

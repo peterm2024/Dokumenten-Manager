@@ -1139,3 +1139,13 @@ Bei der Nachprüfung zeigte sich derselbe Effekt auch bei echter Suche: Treffer 
 **Lösung:** Regel entfernt (Peter 14.11.2026: V1 „Regel aus“ statt V2 „nur bei Orts-/Allerweltswort“, Bestand still falsch 70): ähnlicher Ordner wieder vorgewählt, der Mensch entscheidet; die drei Tests in ihrer ursprünglichen Form zurück. Ergebnis Bestand: still falsch 81 → 61, unsicher mit richtig vorgewähltem Ordner 36 → 47; frisch: 52 Rückfragen mehr, Doppelordner 14 → 8. Die anderen Teile von `b7b1066` (neue Ordner ab 3 Buchstaben, Domain als Ordnername) bleiben: Der Stand misst jetzt wie vor `b7b1066`, bis auf 1 Dokument mehr ohne Rückfrage in der frischen Sammlung. `ablage_messlauf.py` misst seitdem beide Ausgangslagen und meldet Rückschritte (CLAUDE.md).
 
 **Merksatz:** Eine Ablage-Regel gilt erst als gemessen, wenn sie an einer gewachsenen Sammlung gemessen ist - die frische Sammlung kennt die Ordner nur in der Schreibweise der KI. Und ein Test, der mit einer Änderung umgeschrieben werden muss, damit er grün bleibt, ist ein Befund, keine Formsache.
+
+## 130. Knopf in einer `pack`-Leiste verschwindet bei schmalem Fenster
+
+**Problem:** Release-Check v0.9.30 (15.11.2026): „✖ Reset“ in der Suchleiste war unsichtbar, sobald die mittlere Spalte schmaler war, als die Leiste braucht (698 px bei 100 %; bei 125 % Textgröße schon im Standard-Layout). Ein Klick an seiner Stelle ging ins Leere, die Suche ließ sich nicht zurücksetzen.
+
+**Ursache:** Reicht der Platz in einem `pack`-Container nicht, schneidet Tk die zuletzt gepackten Elemente ab bzw. blendet sie ganz aus - das dehnbare Suchfeld schrumpft nur bis zu seiner Mindestbreite. Der Knopf war nach Suchfeld, OCR-Haken und beiden Datumsfeldern gepackt, also als einer der letzten.
+
+**Lösung:** Knopf direkt nach dem Suchfeld packen (und auf ein kleines „✖“ mit Hinweis „Reset“ verkleinert); jetzt verlieren zuerst die Datumsfelder ihren Platz. Sichtbar bis 282 px Leistenbreite (T7.35). Die KI-LED ganz rechts wird aus demselben Grund schon immer zuerst gepackt.
+
+**Merksatz:** In einer `pack`-Leiste bestimmt die Pack-Reihenfolge, was bei Platzmangel überlebt: Wichtiges zuerst packen, nicht in der Lesereihenfolge.

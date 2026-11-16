@@ -170,7 +170,8 @@ class LayoutBuilder:
         # --- Visuelle Akzente für Buttons (Theme: clam) ---
         style = ttk.Style()
         # Schriftgröße aus TkDefaultFont statt fest 9 pt: wächst mit der Windows-Textgröße mit (FALLSTRICKE #69)
-        style.configure("Danger.TButton", foreground="#d9534f", font=("", UIUtils.schriftgroesse(), "bold"))
+        style.configure("Danger.TButton", foreground="#d9534f", font=("", UIUtils.schriftgroesse(), "bold"),
+                        padding=(UIUtils.px(self.app.root, 1), 0))
         style.map("Danger.TButton", foreground=[('active', '#c9302c')])
         style.configure("Accent.TButton", background="#0078D7", foreground="white", font=("", UIUtils.schriftgroesse(), "bold"))
         style.map("Accent.TButton", background=[('active', '#005a9e')])
@@ -304,12 +305,20 @@ class LayoutBuilder:
         self.app.ki_led = KiLed(search_inner)
         self.app.ki_led.pack(side=tk.RIGHT, padx=(10, 8))  # rechts etwas Luft zum Rand (Peter 13.09.2026)
 
-        tk.Label(search_inner, text="Text:").pack(side=tk.LEFT, padx=(0,5))
         # Seit 13.09.2026 ein einzeiliges Text-Feld (suchfeld.SuchFeld) statt ttk.Entry:
         # bekannte Tags im Suchtext erscheinen blau-fett wie im Tag-Baum, und dieselbe
         # Autovervollständigung wie im Tags-Feld schlägt beim Tippen Tags vor.
-        self.app.entry_search = SuchFeld(search_inner, self.app.tag_manager.get_known_tags, width=15)
-        self.app.entry_search.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0,10))
+        # Statt des Labels „Text:“ steht seit 15.11.2026 grau „Suche…“ im leeren Feld (Peter: Suchleiste kürzer).
+        self.app.entry_search = SuchFeld(search_inner, self.app.tag_manager.get_known_tags, platzhalter="Suche…",
+                                         width=15)
+        self.app.entry_search.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
+        # Reset direkt neben dem Suchfeld, klein und nur als „✖“ (Peter 15.11.2026). Gleich nach dem Suchfeld
+        # gepackt: Wird die Leiste zu schmal, nimmt pack den zuletzt gepackten Elementen den Platz weg - vorher
+        # verschwand hier der Reset-Knopf hinter den Datumsfeldern (Fund aus dem Release-Check v0.9.30).
+        btn_reset_search = ttk.Button(search_inner, text="✖", width=2, command=self.app.search_manager.reset_search,
+                                      style="Danger.TButton")
+        btn_reset_search.pack(side=tk.LEFT, padx=(0, 10))
+        Tooltip(btn_reset_search, "Reset")
         # Gesucht wird erst mit Return (Peter 01.11.2026) - Tippen sucht nicht, nur ein geleertes Feld
         # setzt die angezeigte Suche sofort zurück (search_manager.feld_geleert)
         self.app.entry_search.bind("<KeyRelease>", self.app.search_manager.feld_geleert, add="+")
@@ -370,16 +379,14 @@ class LayoutBuilder:
         Tooltip(self.app.entry_date_from, datums_hinweis)
         Tooltip(self.app.entry_date_to, datums_hinweis)
 
-        btn_reset_search = ttk.Button(search_inner, text="✖ Reset", command=self.app.search_manager.reset_search, style="Danger.TButton")
-        btn_reset_search.pack(side=tk.LEFT)
-
         # Feste Breite: die Suchleiste soll nicht springen, wenn die Zahl erscheint oder wächst
         self.app.lbl_treffer = tk.Label(search_inner, text="", width=13, anchor="w")
         self.app.lbl_treffer.pack(side=tk.LEFT, padx=(10, 0))
-        Tooltip(self.app.entry_search,
-                'Tippfehler werden verziehen. Mehrere Wörter müssen alle vorkommen.\n'
-                '"Wort" in Anführungszeichen findet nur genau dieses Wort, "zwei Wörter" genau diese Folge.\n'
-                '* und ? sind Platzhalter. Gesucht wird mit der Eingabetaste.')
+        such_hinweis = ('Tippfehler werden verziehen. Mehrere Wörter müssen alle vorkommen.\n'
+                        '"Wort" in Anführungszeichen findet nur genau dieses Wort, "zwei Wörter" genau diese Folge.\n'
+                        '* und ? sind Platzhalter. Gesucht wird mit der Eingabetaste.')
+        Tooltip(self.app.entry_search, such_hinweis)
+        Tooltip(self.app.entry_search.platzhalter, such_hinweis)   # liegt über dem leeren Feld
 
 
         # Dokumenten Grid
