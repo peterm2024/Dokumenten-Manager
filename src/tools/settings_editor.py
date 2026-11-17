@@ -10,6 +10,7 @@ import bestaetigung
 import ollama_client
 import server_wecken
 import versionspruefung
+import vollautomatik_fenster
 import dokument_eigenschaften as de
 from dokument_eigenschaften import EINSTELLUNG_DETAILS, EINSTELLUNG_FELDER
 from preview_manager import EINSTELLUNG_NACHLAUF
@@ -73,7 +74,9 @@ class SettingsEditorWindow(tk.Toplevel):
                     "ollama_model", "auto_pilot_enabled",
                     "auto_pilot_nur_bekannte_tags", "auto_pilot_neue_tags_ab",   # seit Etappe 6 ohne Wirkung, ausgeblendet
                     "auto_pilot_umbenennen", "ki_cpu_erlauben", "ki_entscheidungsmodell", "ki_wol_mac", versionspruefung.EINSTELLUNG,
-                    bestaetigung.EINSTELLUNG, EINSTELLUNG_DETAILS, EINSTELLUNG_FELDER)
+                    bestaetigung.EINSTELLUNG, EINSTELLUNG_DETAILS, EINSTELLUNG_FELDER,
+                    vollautomatik_fenster.EINSTELLUNG_DAUER, vollautomatik_fenster.EINSTELLUNG_DAUER_DIENST,
+                    vollautomatik_fenster.EINSTELLUNG_FAKTOR)
 
     COLUMN_LABELS = {"datum": "Datum", "titel": "Titel", "tags": "Tags",
                      "name": "Dateiname", "path": "Pfad", "ordner": "Ordner", "scan_zeit": "Scan-Zeitpunkt",
@@ -400,7 +403,7 @@ class SettingsEditorWindow(tk.Toplevel):
     def _reiter_ki(self, tab):
         self._hinweis(tab, "Ein Ollama-Server im Heimnetz (oder per Tailscale aus der Ferne) mit einem Bild-Modell "
                            "wie qwen3.5:9b. Wird von allen KI-Funktionen benutzt: Titel vorschlagen, "
-                           "Vollautomatik, Dubletten-Zweitprüfung und die Meister-Stufe der Suche.",
+                           "Vollautomatik und die Meister-Stufe der Suche.",
                       einzug=8, pady=(0, 8))
         row_url = ttk.Frame(tab)
         row_url.pack(fill=tk.X, padx=8, pady=(4, 2))
@@ -538,6 +541,35 @@ class SettingsEditorWindow(tk.Toplevel):
                            "bisherige Name wird beim ersten Umbenennen in die PDF-Metadaten eingebrannt (Details-Block: "
                            "'Originalname') und geht nie verloren. Aus = die Datei behält ihren Namen, "
                            "Titel, Datum und Zielordner kommen trotzdem - für Sammlungen mit gepflegten Dateinamen.")
+
+        # Dokumente im Statusfenster nur kurz zeigen (Etappe 10, KONZEPT_DIENSTMODUS F1-F3)
+        ttk.Label(tab, text="Statusfenster:").pack(anchor="w", padx=8, pady=(10, 0))
+        self._auswahl(tab, "Dokumente ausblenden nach", vollautomatik_fenster.DAUER_WAHL,
+                      vollautomatik_fenster.anzeigedauer(self.app.config, dienst=False),
+                      vollautomatik_fenster.EINSTELLUNG_DAUER)
+        self._auswahl(tab, "Im Dienstmodus ausblenden nach", vollautomatik_fenster.DAUER_WAHL,
+                      vollautomatik_fenster.anzeigedauer(self.app.config, dienst=True),
+                      vollautomatik_fenster.EINSTELLUNG_DAUER_DIENST)
+        self._auswahl(tab, "Fenstergröße im Dienstmodus", vollautomatik_fenster.FAKTOR_WAHL,
+                      vollautomatik_fenster.fenster_faktor(self.app.config), vollautomatik_fenster.EINSTELLUNG_FAKTOR)
+        self._hinweis(tab, "Vorschaubild, Dateiname, Zielordner und Grund eines Dokuments sind im Statusfenster nur so "
+                           "lange zu sehen, danach steht dort nur noch „abgelegt“ bzw. „unsicher“ - gedacht für einen "
+                           "Rechner, an dem niemand sitzt. Zustand und Tageszähler bleiben sichtbar. Der Dienstmodus "
+                           "(KID.exe --dienst) startet ohne Hauptfenster direkt in die Hintergrund-Automatik. "
+                           "Gilt für das nächste Öffnen des Statusfensters.", einzug=8)
+
+    def _auswahl(self, parent, text, wahl, aktuell, schluessel):
+        """Zeile „Beschriftung [Auswahlliste]“; die Wahl gilt sofort (Werte aus `wahl` = ((Text, Wert), ...))."""
+        zeile = ttk.Frame(parent)
+        zeile.pack(fill=tk.X, padx=8, pady=(4, 0))
+        ttk.Label(zeile, text=text + ":").pack(side=tk.LEFT, padx=(20, 6))
+        texte = [t for t, _ in wahl]
+        var = tk.StringVar(value=next((t for t, w in wahl if w == aktuell), texte[0]))
+        feld = ttk.Combobox(zeile, textvariable=var, values=texte, state="readonly", width=18)
+        feld.pack(side=tk.LEFT)
+        feld.bind("<<ComboboxSelected>>",
+                  lambda _e: self.app.config.set(schluessel, dict(wahl).get(var.get())), add="+")
+        return feld
 
 
     # ---------- Reiter: Experten ----------

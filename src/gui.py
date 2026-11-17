@@ -1,6 +1,5 @@
 import os
 import tkinter as tk
-import tkinter.font as tkfont
 from tkinter import ttk, messagebox
 
 import app_paths
@@ -33,6 +32,7 @@ import versionspruefung
 import ollama_client
 from help_window import open_help, fenstertitel
 from ui_utils import UIUtils
+import ui_theme
 
 
 # --- Trennlinien (Sash) des Haupt-PanedWindows ---------------------------------------
@@ -190,12 +190,11 @@ class DokumentenVerwaltung:
         def _fixed_style_map(option):
             return [elm for elm in style.map("Treeview", query_opt=option) if elm[:2] != ("!disabled", "!selected")]
         style.map("Treeview", foreground=_fixed_style_map("foreground"), background=_fixed_style_map("background"))
-        # Zeilenhöhe aller Tabellen/Bäume an die Schrift koppeln: Tk nimmt fest 20 px, bei
-        # 125 % Windows-Textgröße (Tester-PC) sind die Buchstaben aber ~24 px hoch - die
-        # Unterlängen wurden abgeschnitten („Fahrzeua & Verkehr"), FALLSTRICKE #69.
-        # 20 px entsprechen bei 100 % (Zeilenabstand 15 px) dem Faktor 4/3.
-        zeilenabstand = tkfont.nametofont("TkDefaultFont").metrics("linespace")
-        style.configure("Treeview", rowheight=max(20, int(round(zeilenabstand * 4 / 3))))
+        # Helles Design (Etappe 11): Schrift, ttk-Stile, Options-Datenbank für klassische tk-Elemente, Titelleisten.
+        # VOR dem Layout - die Options-Datenbank gilt nur für danach erzeugte Elemente. Setzt auch die Zeilenhöhe
+        # aller Tabellen/Bäume aus dem Zeilenabstand der Schrift (Tk nimmt sonst fest 20 px, bei 125 % Textgröße
+        # wurden Unterlängen abgeschnitten, FALLSTRICKE #69).
+        ui_theme.wende_an(self.root)
 
         # Kurzbefehl-Fenster (F1, Ansicht-Menü) - VOR dem Layout, das Menü-Häkchen braucht seine Variable
         self.kurzbefehle = Kurzbefehle(self)

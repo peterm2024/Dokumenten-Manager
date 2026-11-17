@@ -9,7 +9,7 @@ AGPL-lizenziert ist.
 | Komponente | Version | Lizenz | Wofür |
 |---|---|---|---|
 | PyMuPDF (mit MuPDF) | 1.27.2.3 (MuPDF 1.27.2) | AGPL-3.0 (oder kommerziell bei Artifex) | PDF lesen, schreiben, darstellen |
-| Pillow | 12.2.0 | MIT-CMU | Bilder (Vorschau, Fingerabdruck, Icon) |
+| Pillow | 13.0.0 | MIT-CMU | Bilder (Vorschau, Fingerabdruck, Icon) |
 | watchdog | 6.0.0 | Apache-2.0 | Ordnerüberwachung |
 | libpff-python (pypff, libyal) | 20260926 | LGPL-3.0-or-later | Mail-Import: Outlook .pst/.ost lesen (seit 04.11.2026; mit der AGPL vereinbar) |
 | Python (Laufzeit und Standardbibliothek) | 3.14.5 | PSF-2.0 | Laufzeit |

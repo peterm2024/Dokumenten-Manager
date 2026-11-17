@@ -21,7 +21,7 @@ Weltwissen wie "Landesbrandversicherung -> Versicherungskasse Musterland". Titel
 Datum lassen sich per Klick ebenfalls korrigieren (zeilenlokal, kein Alias) - ein
 fehlendes Datum ist sonst der häufigste Grund, warum ein Dokument nach Unsicher wandert.
 Ein Klick auf die Ergebnis-Zelle gibt eine unsichere Zeile nach eigener Prüfung manuell
-frei (z.B. geprüfter Dubletten-Verdacht) - die Gründe bleiben sichtbar und stehen mit
+frei - die Gründe bleiben sichtbar und stehen mit
 im Protokoll. Der Button "Jetzt einsortieren" führt die Entscheidung
 anschließend tatsächlich aus (Metadaten schreiben, umbenennen, verschieben bzw.
 unverändert nach 0_Unsicher) - erst auf expliziten Klick, die reine Analyse
@@ -39,7 +39,6 @@ import ablage_gedaechtnis
 import aktivitaet
 import app_paths
 import auto_pilot
-import dubletten_pruefung
 import ollama_client
 import ordner_aliase
 import ordner_steckbrief
@@ -361,8 +360,8 @@ class AutoFilerPreviewWindow(tk.Toplevel):
         self.tree.bind("<<TreeviewSelect>>", self._zeige_ergebnis_volltext, add="+")
 
         # Volltext der Ergebnis-Spalte (Nutzerwunsch 06.09.2026: "kann die Ergebnis-Spalte
-        # nur sehr umständlich lesen"): Die Hinweise sind mit Dubletten-/KI-Zweitprüfungs-
-        # Vermerken länger als jede sinnvolle Spaltenbreite - die ausgewählte Zeile zeigt
+        # nur sehr umständlich lesen"): Die Hinweise sind oft
+        # länger als jede sinnvolle Spaltenbreite - die ausgewählte Zeile zeigt
         # ihr Ergebnis deshalb ungekürzt und umgebrochen direkt unter der Tabelle.
         self.lbl_ergebnis = ttk.Label(self, anchor="w", justify=tk.LEFT,
                                       wraplength=UIUtils.px(self, 1160))
@@ -456,11 +455,6 @@ class AutoFilerPreviewWindow(tk.Toplevel):
         tag_eltern = self.app.tag_manager.get_tag_eltern() if hasattr(self.app, "tag_manager") else {}
         # Synonym-Knoten (08.09.2026): KI-Text -> Tag darüber; liest ebenfalls den Tag-Baum.
         synonyme = self.app.tag_manager.get_synonyme() if hasattr(self.app, "tag_manager") else {}
-        # Unterscheidungs-Tags fuer die Dubletten-Pruefung (Stufe B): NUR hier im Hauptthread
-        # lesbar (tags_in_kategorie greift auf den Tag-Baum zu).
-        merkmale = (self.app.tag_manager.merkmale_fuer_dubletten()
-                    if hasattr(self.app, "tag_manager") else {})
-        dubletten_cache = {}
         # Als Attribute, damit die Zielordner-Korrektur (_setze_zielordner) dieselben Listen
         # sieht und erweitert, die der Worker nutzt - ein während der Analyse gesetzter Alias
         # wirkt so schon auf die restlichen Dokumente des Stapels.
@@ -546,32 +540,19 @@ class AutoFilerPreviewWindow(tk.Toplevel):
                         except Exception as e:
                             if hasattr(self.app, "logger") and self.app.logger:
                                 self.app.logger.warning(f"Vollautomatik-Analyse fehlgeschlagen für {path}: {e}")
-                    self._nach_entscheidung(iid, path, entscheidung, base_url, model, merkmale, dubletten_cache,
-                                            ordnerliste, known_tags)
+                    self._nach_entscheidung(iid, path, entscheidung, ordnerliste, known_tags)
                     fertig += 1
                     self.after(0, dialog.update_progress, fertig, len(items))
             self.after(0, self._analyse_fertig, dialog)
 
         threading.Thread(target=worker, daemon=True).start()
 
-    def _nach_entscheidung(self, iid, path, entscheidung, base_url, model, merkmale, dubletten_cache, ordnerliste,
-                           known_tags):
-        """Phase 3 je Dokument (im Worker-Thread): Dubletten-Prüfung, Listen fortschreiben, anzeigen."""
+    def _nach_entscheidung(self, iid, path, entscheidung, ordnerliste, known_tags):
+        """Phase 3 je Dokument (im Worker-Thread): Listen fortschreiben, anzeigen. Keine Dubletten-Prüfung mehr
+        (Peter 17.11.2026: „Dubletten sollen die Ablage nicht mehr verhindern“ - dafür gibt es „Dubletten finden“)."""
         if entscheidung and entscheidung.get("zweitmeinung_fehler") and getattr(self.app, "logger", None):
             self.app.logger.warning(f"Zweitmeinung zum Ordner fehlgeschlagen für {path}: "
                                     f"{entscheidung['zweitmeinung_fehler']}")
-        if entscheidung:
-            # Stufe B: liegt im Zielordner schon dasselbe Dokument? Dann gelb statt gruen.
-            # Die KI-Zweitprüfung (Nutzer-Entscheidung 06.09.2026) darf unscharfe
-            # Fehlalarme ausräumen - "wir haben ja Zeit und KI".
-            try:
-                dubletten_pruefung.pruefe_entscheidung(
-                    entscheidung, self.app.master_folder, merkmale, dubletten_cache,
-                    ki_pruefung=lambda neu, alt: auto_pilot.pruefe_dublette_per_ki(
-                        neu, alt, base_url, model))
-            except Exception as e:
-                if hasattr(self.app, "logger") and self.app.logger:
-                    self.app.logger.warning(f"Dubletten-Prüfung fehlgeschlagen für {path}: {e}")
         if entscheidung and entscheidung["ordner_neu"] and entscheidung["sicher"]:
             # Varianten-Zusammenführung (Nutzer-Entscheidung 29.08.2026): ein in diesem
             # Lauf neu vorgeschlagener Ordner zählt ab sofort als "vorhanden" - das
@@ -612,8 +593,6 @@ class AutoFilerPreviewWindow(tk.Toplevel):
                           f"{os.path.basename(entscheidung['pdf_path'])} (Titel: {entscheidung['neuer_dateiname']})")
             if entscheidung.get("manuell_freigegeben") and entscheidung["probleme"]:
                 status += " — manuell freigegeben trotz: " + "; ".join(entscheidung["probleme"])
-            if entscheidung.get("dubletten_zweitpruefung"):
-                status += " — " + entscheidung["dubletten_zweitpruefung"]
             markierung = "sicher"
         else:
             status = "UNSICHER: " + "; ".join(entscheidung["probleme"])
@@ -681,8 +660,7 @@ class AutoFilerPreviewWindow(tk.Toplevel):
         """
         Manuelle Freigabe (Nutzerwunsch 06.09.2026: "ich kann Dokumente nicht manuell als
         sicher markieren"): Klick auf die Ergebnis-Zelle einer gelben Zeile bietet an,
-        trotz der verbliebenen Gründe (z.B. Dubletten-Verdacht, den der Nutzer selbst
-        geprüft hat) automatisch abzulegen. Gründe MIT eigener Korrektur-Zelle werden
+        trotz der verbliebenen Gründe automatisch abzulegen. Gründe MIT eigener Korrektur-Zelle werden
         nicht überstimmt, sondern auf ihre Zelle verwiesen - ohne Titel/Datum/Zielordner
         gäbe es keinen Dateinamen. Erneuter Klick nimmt die Freigabe zurück.
         """

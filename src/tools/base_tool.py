@@ -61,8 +61,8 @@ class BaseTool(ABC):
         Ablage-Vorschau, Posteingang verarbeiten). Der ToolManager sperrt
         seine Menüeinträge dann, solange ki_status den Server als nicht erreichbar meldet
         (Nutzerfund 13.09.2026: Werkzeug lief ohne Server los und blieb stumm stehen).
-        Tools, bei denen die KI nur ein optionaler Knopf ist (Dateinamen aufräumen,
-        Dubletten-Zweitprüfung), bleiben erreichbar.
+        Tools, bei denen die KI nur ein optionaler Knopf ist (Dateinamen aufräumen),
+        bleiben erreichbar.
         """
         return False
 

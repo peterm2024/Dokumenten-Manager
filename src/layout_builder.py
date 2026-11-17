@@ -4,9 +4,17 @@ import tkinter.font as tkfont
 from tkinter import ttk
 import versionspruefung
 from ui_utils import UIUtils, Tooltip
+import ui_theme
 
 # Pos1/Ende in Liste und Vorschau: so weit blättern, dass jedes Dokument an seinem Anfang/Ende landet
 SEITEN_BIS_ENDE = 100000
+
+
+def passe_hoehe_an(textfeld, vorbild):
+    """Innenabstand eines tk.Text so erhöhen, dass es so hoch ist wie `vorbild` (z.B. ein ttk.Entry)."""
+    fehlt = vorbild.winfo_reqheight() - textfeld.winfo_reqheight()
+    if fehlt > 0:
+        textfeld.configure(pady=int(textfeld.cget("pady")) + fehlt // 2)
 from tag_autocomplete import TagAutocomplete
 from suchfeld import SuchFeld
 from ki_status import KiLed
@@ -167,14 +175,7 @@ class LayoutBuilder:
         self.app.col2_pane = ttk.PanedWindow(self.app.main_pane, orient=tk.VERTICAL)
         self.app.main_pane.add(self.app.col2_pane, weight=0) 
 
-        # --- Visuelle Akzente für Buttons (Theme: clam) ---
-        style = ttk.Style()
-        # Schriftgröße aus TkDefaultFont statt fest 9 pt: wächst mit der Windows-Textgröße mit (FALLSTRICKE #69)
-        style.configure("Danger.TButton", foreground="#d9534f", font=("", UIUtils.schriftgroesse(), "bold"),
-                        padding=(UIUtils.px(self.app.root, 1), 0))
-        style.map("Danger.TButton", foreground=[('active', '#c9302c')])
-        style.configure("Accent.TButton", background="#0078D7", foreground="white", font=("", UIUtils.schriftgroesse(), "bold"))
-        style.map("Accent.TButton", background=[('active', '#005a9e')])
+        # Die Knopf-Stile „Danger“ (Reset-„✖“) und „Accent“ (Speichern) stehen seit 17.11.2026 in ui_theme.
 
         # Bewusst OHNE LabelFrame-Überschrift (31.08.2026): Dateiname/Seite/Zoom stehen in
         # der Fenster-Titelleiste (preview_manager.setze_vorschau_info) - bei 125-%-Schrift
@@ -185,8 +186,9 @@ class LayoutBuilder:
         # Ordnerbaum
         # Die fünf Bereichs-Rahmen tragen seit 13.09.2026 keine Titel mehr (Nutzerwunsch:
         # Platz sparen - Ordnerbaum, Tag-Baum, Suchleiste, Liste und Eigenschaften erklären
-        # sich durch ihren Inhalt); der Rahmen selbst bleibt als optische Trennung.
-        frame_folders = ttk.Frame(self.app.col1_pane, relief="groove", borderwidth=1)
+        # sich durch ihren Inhalt). Seit 17.11.2026 auch ohne Rahmen (helles Design, Peter: „Ohne Rahmen finde ich
+        # auch am schönsten“) - die Gliederung tragen die feinen Kanten der Listen und Felder (ui_theme).
+        frame_folders = ttk.Frame(self.app.col1_pane)
         self.app.col1_pane.add(frame_folders, weight=1)
 
         # Senkrechte Bildlaufleiste wie beim Tag-Baum und der Dokumentenliste (Nutzerfund
@@ -200,8 +202,8 @@ class LayoutBuilder:
         self.app.tree_folders.heading("count", text="📄")
         self.app.tree_folders.column("#0", width=UIUtils.px(self.app.root, 150), stretch=True)
         self.app.tree_folders.column("count", width=UIUtils.px(self.app.root, 35), stretch=False, anchor="center")
-        scroll_folders_y.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 5), pady=5)
-        self.app.tree_folders.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0), pady=5)
+        scroll_folders_y.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, ui_theme.BEREICH_PX), pady=ui_theme.BEREICH_PX)
+        self.app.tree_folders.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(ui_theme.BEREICH_PX, 0), pady=ui_theme.BEREICH_PX)
         
         self.app.tree_folders.tag_configure("drop_target", background="#0078D7", foreground="white")
         self.app.tree_folders.tag_configure("trash_folder", foreground="#a0a0a0", font=("", 10, "italic"))
@@ -228,11 +230,11 @@ class LayoutBuilder:
         self.app.tree_folders.bind("<F2>", lambda e: self.app.folder_manager.rename_folder())
 
         # Tag-Editor
-        frame_tags = ttk.Frame(self.app.col1_pane, relief="groove", borderwidth=1)
+        frame_tags = ttk.Frame(self.app.col1_pane)
         self.app.col1_pane.add(frame_tags, weight=1)
         
         mode_frame = tk.Frame(frame_tags)
-        mode_frame.pack(fill=tk.X, padx=5, pady=(5,0))
+        mode_frame.pack(fill=tk.X, padx=ui_theme.BEREICH_PX, pady=(ui_theme.BEREICH_PX, 0))
         
         self.app.tag_mode_var = tk.StringVar(value="assign")
         rb_assign = ttk.Radiobutton(mode_frame, text="🏷️ Zuweisen", variable=self.app.tag_mode_var, value="assign", command=self.app.tag_manager.on_tag_mode_change)
@@ -246,7 +248,7 @@ class LayoutBuilder:
         # mit dem Baum darunter (siehe TagManager.on_tag_search_changed).
         self.app.entry_tag_search = ttk.Entry(frame_tags)
         self.app.entry_tag_search.insert(0, self.app.tag_manager.TAG_SEARCH_PLACEHOLDER)
-        self.app.entry_tag_search.pack(side=tk.TOP, fill=tk.X, padx=5, pady=(5, 0))
+        self.app.entry_tag_search.pack(side=tk.TOP, fill=tk.X, padx=ui_theme.BEREICH_PX, pady=(ui_theme.BEREICH_PX, 0))
         self.app.entry_tag_search.bind("<FocusIn>", lambda e: UIUtils.clear_placeholder(self.app.entry_tag_search, self.app.tag_manager.TAG_SEARCH_PLACEHOLDER))
         self.app.entry_tag_search.bind("<FocusOut>", lambda e: UIUtils.add_placeholder(self.app.entry_tag_search, self.app.tag_manager.TAG_SEARCH_PLACEHOLDER))
         self.app.entry_tag_search.bind("<KeyRelease>", self.app.tag_manager.on_tag_search_changed)
@@ -267,8 +269,8 @@ class LayoutBuilder:
         self.app.tree_tags = ttk.Treeview(frame_tags, selectmode="extended", show="tree", style="Tags.Treeview", yscrollcommand=scroll_tags_y.set)
         scroll_tags_y.config(command=self.app.tree_tags.yview)
 
-        scroll_tags_y.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, 5), pady=5)
-        self.app.tree_tags.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(5, 0), pady=5)
+        scroll_tags_y.pack(side=tk.RIGHT, fill=tk.Y, padx=(0, ui_theme.BEREICH_PX), pady=ui_theme.BEREICH_PX)
+        self.app.tree_tags.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(ui_theme.BEREICH_PX, 0), pady=ui_theme.BEREICH_PX)
         
         self.app.tree_tags.tag_configure("active_tag", font=("", 10, "bold"), foreground="#0055a4")
         self.app.tree_tags.tag_configure("temp_tag", font=("", 10, "italic"), foreground="#0055a4")
@@ -293,11 +295,11 @@ class LayoutBuilder:
         self.app.tree_tags.bind("<Alt-Down>", self.app.tag_editor.move_tag_down)
 
         # Such- & Filterleiste
-        frame_search = ttk.Frame(self.app.col2_pane, relief="groove", borderwidth=1)
+        frame_search = ttk.Frame(self.app.col2_pane)
         self.app.col2_pane.add(frame_search, weight=0)
 
         search_inner = tk.Frame(frame_search)
-        search_inner.pack(fill=tk.X, padx=5, pady=5)
+        search_inner.pack(fill=tk.X, padx=ui_theme.BEREICH_PX, pady=ui_theme.BEREICH_PX)
 
         # LED „KI verbunden / KI nicht erreichbar" ganz rechts (ki_status.py, 13.09.2026);
         # ZUERST gepackt, damit bei schmalem Fenster das Suchfeld schrumpft und nicht die LED.
@@ -364,6 +366,10 @@ class LayoutBuilder:
         tk.Label(search_inner, text="Bis:").pack(side=tk.LEFT, padx=(0,5))
         self.app.entry_date_to = ttk.Entry(search_inner, width=11)
         self.app.entry_date_to.pack(side=tk.LEFT, padx=(0,10))
+        # Suchfeld so hoch wie die Datumsfelder: es ist ein tk.Text (20 px), die ttk-Felder sind 28 px hoch - es
+        # saß niedriger mittig in der Zeile, die Abstände darüber/darunter wirkten größer als anderswo (Peter
+        # 17.11.2026: Trennräume vereinheitlichen). Berechnet, damit es auch bei 125 % Textgröße passt.
+        passe_hoehe_an(self.app.entry_search, self.app.entry_date_to)
         self.app.entry_date_to.insert(0, "TT.MM.JJJJ")
         self.app.entry_date_to.bind("<FocusIn>", lambda e: UIUtils.clear_placeholder(self.app.entry_date_to, "TT.MM.JJJJ"))
         self.app.entry_date_to.bind("<FocusOut>", lambda e: UIUtils.add_placeholder(self.app.entry_date_to, "TT.MM.JJJJ"))
@@ -390,7 +396,7 @@ class LayoutBuilder:
 
 
         # Dokumenten Grid
-        frame_files = ttk.Frame(self.app.col2_pane, relief="groove", borderwidth=1)
+        frame_files = ttk.Frame(self.app.col2_pane)
         self.app.col2_pane.add(frame_files, weight=2)
         frame_files.grid_rowconfigure(0, weight=1)
         frame_files.grid_columnconfigure(0, weight=1)
@@ -411,9 +417,9 @@ class LayoutBuilder:
         scroll_x = ttk.Scrollbar(frame_files, orient="horizontal", command=self.app.tree_files.xview)
         self.app.tree_files.configure(yscrollcommand=scroll_y.set, xscrollcommand=scroll_x.set)
 
-        self.app.tree_files.grid(row=0, column=0, sticky="nsew", padx=(5,0), pady=(5,0))
-        scroll_y.grid(row=0, column=1, sticky="ns", padx=(0,5), pady=(5,0))
-        scroll_x.grid(row=1, column=0, sticky="ew", padx=(5,0), pady=(0,5))
+        self.app.tree_files.grid(row=0, column=0, sticky="nsew", padx=(ui_theme.BEREICH_PX, 0), pady=(ui_theme.BEREICH_PX, 0))
+        scroll_y.grid(row=0, column=1, sticky="ns", padx=(0, ui_theme.BEREICH_PX), pady=(ui_theme.BEREICH_PX, 0))
+        scroll_x.grid(row=1, column=0, sticky="ew", padx=(ui_theme.BEREICH_PX, 0), pady=(0, ui_theme.BEREICH_PX))
 
         # Headings & Spalteneinstellungen
         headings = {"datum": "Datum", "titel": "Titel", "tags": "Tags", "name": "Dateiname", "path": "Pfad (relativ)", "ordner": "Ordner", "scan_zeit": "Scan-Zeitpunkt", "qualitaet": "Textqualität", "erfasst": "Erfasst"}
@@ -480,17 +486,17 @@ class LayoutBuilder:
         # diesem Frame als Master angelegt (flache tk-Widgets ohne eigenen Rand, damit sie wie
         # Zellen wirken) und dem Panel übergeben, das sie zusammen mit den grauen
         # schreibgeschützten Zellen anordnet. Darunter die Knopfzeile Speichern / Auto-Save / Details.
-        frame_props = ttk.Frame(self.app.col2_pane, relief="groove", borderwidth=1)
+        frame_props = ttk.Frame(self.app.col2_pane)
         self.app.col2_pane.add(frame_props, weight=0)
         # Knopfzeile ZUERST und unten verankert (Regel aus ui_utils: Knopfleisten vor dem dehnbaren
         # Inhalt mit side=BOTTOM packen) - sonst schiebt die aufgeklappte Tabelle Speichern/Details
         # aus dem Bereich (Peter 15.09.2026). Das Panel fordert zusätzlich beim Aufklappen den
         # nötigen Platz vom PanedWindow an, so dass sich der Bereich nach oben entfaltet.
         knopfzeile = ttk.Frame(frame_props)
-        knopfzeile.pack(side=tk.BOTTOM, fill=tk.X, padx=4, pady=(0, 4))
+        knopfzeile.pack(side=tk.BOTTOM, fill=tk.X, padx=ui_theme.BEREICH_PX, pady=(0, ui_theme.BEREICH_PX))
         self.app.eigenschaften_panel = EigenschaftenPanel(self.app, frame_props, chk_parent=knopfzeile)
         tabelle = self.app.eigenschaften_panel.tabelle
-        tabelle.pack(side=tk.TOP, fill=tk.X, padx=4, pady=(4, 2))
+        tabelle.pack(side=tk.TOP, fill=tk.X, padx=ui_theme.BEREICH_PX, pady=(ui_theme.BEREICH_PX, 2))
 
         default_font = tkfont.nametofont("TkDefaultFont")
         self.app.entry_title = tk.Entry(tabelle, relief="flat", bd=0, font=default_font)
@@ -563,10 +569,12 @@ class LayoutBuilder:
         # (Das Dokumenten-Datum sitzt seit 31.08.2026 unten bei den Eigenschaften -
         # die eigene Zeile hier oben kostete Vorschau-Höhe, siehe MANUELLE_TESTS 10k.)
         # Vorschau-Bereich
-        self.app.preview_inner = tk.Frame(self.app.col3_frame, bg="#2b2b2b")
-        self.app.preview_inner.pack(fill=tk.BOTH, expand=True)
+        self.app.preview_inner = tk.Frame(self.app.col3_frame, bg=ui_theme.FARBEN["vorschau"])
+        self.app.preview_inner.pack(fill=tk.BOTH, expand=True, padx=ui_theme.BEREICH_PX, pady=ui_theme.BEREICH_PX)
 
-        self.app.canvas_preview = tk.Canvas(self.app.preview_inner, bg="#8f8f8f", highlightthickness=0)
+        # Hellgrauer Grund hinter der Seite (helles Design, 17.11.2026; vorher mittelgrau #8f8f8f)
+        self.app.canvas_preview = tk.Canvas(self.app.preview_inner, bg=ui_theme.FARBEN["vorschau"],
+                                            highlightthickness=0)
         # Die Leiste steht für das GANZE Dokument, nicht nur die aktuelle Seite (Nutzerwunsch
         # 25.10.2026) - der PreviewManager rechnet zwischen Seiten- und Dokument-Bildlauf um
         self.app.scroll_preview = ttk.Scrollbar(self.app.preview_inner, orient="vertical",

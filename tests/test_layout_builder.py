@@ -5,6 +5,25 @@ import unittest
 import layout_builder
 
 
+class TestSuchfeldHoehe(unittest.TestCase):
+    def test_suchfeld_so_hoch_wie_datumsfeld(self):
+        # Peter 17.11.2026: Trennräume vereinheitlichen - das Suchfeld (tk.Text) war 20 px, die Datumsfelder 28 px
+        import tkinter as tk
+        from tkinter import ttk
+        import ui_theme
+        from suchfeld import SuchFeld
+        root = tk.Tk()
+        try:
+            root.withdraw()
+            ui_theme.wende_an(root)
+            feld, datum = SuchFeld(root, lambda: [], platzhalter="Suche…", width=15), ttk.Entry(root, width=11)
+            self.assertLess(feld.winfo_reqheight(), datum.winfo_reqheight())   # Ausgangslage
+            layout_builder.passe_hoehe_an(feld, datum)
+            self.assertLessEqual(abs(feld.winfo_reqheight() - datum.winfo_reqheight()), 1)
+        finally:
+            root.destroy()
+
+
 class TestStandardSpalten(unittest.TestCase):
     def test_tags_gehoeren_zum_standard(self):
         # Erststart und „Fensteraufteilung zurücksetzen“ nutzen dieselbe Liste (T0.10, 25.10.2026)

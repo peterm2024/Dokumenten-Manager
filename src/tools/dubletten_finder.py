@@ -32,7 +32,6 @@ from tkinter import ttk
 import app_paths
 import dubletten
 import dubletten_geprueft
-import dubletten_pruefung
 from pdf_handler import PDFHandler
 from tools.base_tool import BaseTool, ToolContext
 from ui_utils import UIUtils, ProgressDialog
@@ -49,6 +48,8 @@ ZOOM_MIN, ZOOM_MAX = 0.2, 4.0
 SKALIER_VERZOEGERUNG = 150  # ms Debounce für <Configure> (Fenster ziehen feuert pro Pixel)
 ZOOM_VERZOEGERUNG = 40      # ms Debounce für Strg+Mausrad (wie preview_manager)
 BLAETTER_SPERRE = 250       # ms Sperre nach dem Blättern gegen Durchrattern (FALLSTRICKE: Smart-Scroll)
+# Klicks, die eine Zeile der Gruppe als RECHTES Dokument wählen (Linksklick = linkes Dokument)
+PARTNER_KLICKS = ("<Shift-Button-1>", "<Button-3>")
 
 
 class DublettenFinderTool(BaseTool):
@@ -109,9 +110,17 @@ def sammle_pdfs(master_folder):
     return sorted(pfade)
 
 
-# Der Fingerabdruck eines Dokuments wird auch von der Vollautomatik gebraucht
-# (Stufe B, dubletten_pruefung.pruefe_entscheidung) - deshalb wohnt lese_info dort.
-lese_info = dubletten_pruefung.lese_info
+def lese_info(pfad, mit_hash=True):
+    """Fingerabdruck eines Dokuments (nur PyMuPDF/Dateisystem, aus einem Thread aufrufbar). Bis 17.11.2026 in
+    dubletten_pruefung, das die Ablage auf Dubletten prüfte - das Modul ist mit dieser Prüfung entfallen."""
+    return dubletten.sammle_info(
+        pfad,
+        text=PDFHandler.get_first_page_text(pfad),
+        seiten=PDFHandler.get_page_count(pfad),
+        bildhash=PDFHandler.get_page_fingerprint(pfad),
+        meta=PDFHandler.get_metadata(pfad),
+        mit_hash=mit_hash,
+    )
 
 
 class SeitenVorschau(ttk.Frame):
@@ -420,9 +429,11 @@ class DublettenFenster(tk.Toplevel):
         scroll.grid(row=0, column=1, sticky="ns")
         scroll_x.grid(row=1, column=0, sticky="ew")
         self.tree.bind("<<TreeviewSelect>>", self._on_select)
-        # Shift+Klick: diese Zeile der Gruppe RECHTS zeigen (Auswahl links bleibt) - bei Gruppen
-        # mit drei und mehr Dokumenten war sonst nicht erkennbar, was verglichen wird.
-        self.tree.bind("<Shift-Button-1>", self._partner_waehlen)
+        # Shift+Klick oder Rechtsklick: diese Zeile der Gruppe RECHTS zeigen (Auswahl links bleibt) - bei Gruppen
+        # mit drei und mehr Dokumenten war sonst nicht erkennbar, was verglichen wird. Rechtsklick seit 17.11.2026
+        # (Peter: „LK = linkes Dokument, RK = rechtes Dokument“).
+        for klick in PARTNER_KLICKS:
+            self.tree.bind(klick, self._partner_waehlen)
         self.tree.bind("<Double-Button-1>", lambda e: self._umschalten())
         self.tree.bind("<space>", lambda e: self._umschalten())
         self.tree.bind("<F2>", lambda e: self._umbenennen())
@@ -447,7 +458,7 @@ class DublettenFenster(tk.Toplevel):
             vorschau.titel_praefix = praefix
             self.vorschauen.append(vorschau)
         lege_vorschauen_nebeneinander(bilder, self.vorschauen)
-        self.partner_wahl = {}   # Gruppen-Nr -> Pfad, der rechts gezeigt werden soll (Shift+Klick)
+        self.partner_wahl = {}   # Gruppen-Nr -> Pfad, der rechts gezeigt werden soll (Rechtsklick/Shift+Klick)
         self._meldung = ""       # einmalige Rückmeldung („Gruppe 3 gemerkt …") vor dem Hinweistext
         self.bind("<Configure>", self._on_configure)
 
@@ -588,7 +599,7 @@ class DublettenFenster(tk.Toplevel):
             "Doppelklick auf die Gruppenzeile (oder „Gruppe als geprüft merken“) merkt eine geprüfte Gruppe als "
             "„keine Dublette“ und blendet sie aus - rückgängig über „Geprüfte Gruppen anzeigen“. "
             "Vorschau: links die markierte Zeile, rechts ihr Vergleichs-Dokument (Spalte „Vorschau“ zeigt links/rechts); "
-            "Shift+Klick auf eine andere Zeile der Gruppe legt fest, was rechts liegt."
+            "Rechtsklick (oder Shift+Klick) auf eine andere Zeile der Gruppe legt fest, was rechts liegt."
             if gruppen else f"{self.anzahl} Dokumente verglichen - keine offenen Dubletten-Gruppen{gemerkt}."))
         self.btn_ausfuehren.config(state=tk.NORMAL if gruppen else tk.DISABLED)
         self.btn_geprueft.config(state=tk.DISABLED, text="Gruppe als geprüft merken")
@@ -623,7 +634,8 @@ class DublettenFenster(tk.Toplevel):
         return -1
 
     def _partner_waehlen(self, event):
-        """Shift+Klick: die angeklickte Zeile rechts zeigen, sofern sie zur Gruppe der markierten Zeile gehört."""
+        """Rechtsklick/Shift+Klick: die angeklickte Zeile rechts zeigen, sofern sie zur Gruppe der markierten Zeile
+        gehört."""
         iid = self.tree.identify_row(event.y)
         auswahl = self.tree.selection()
         if iid not in self.zeilen or not auswahl or auswahl[0] not in self.zeilen:

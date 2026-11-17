@@ -76,7 +76,6 @@ class TestPruefplatz(unittest.TestCase):
                   side_effect=lambda gelesen, *a, **k: self.vorschlaege.get(
                       os.path.basename(gelesen["pdf_path"]),
                       vorschlag(gelesen["pdf_path"], sicher=not gelesen["pdf_path"].endswith("b.pdf")))),
-            patch("tools.begleitet_erfassen.dubletten_pruefung.pruefe_entscheidung"),
             patch("tools.begleitet_erfassen.auto_pilot.fuehre_entscheidung_aus", side_effect=self._ausfuehren),
             patch("tools.begleitet_erfassen.auto_pilot.protokolliere_ergebnis"),
             patch("tools.begleitet_erfassen.mb.askyesno", return_value=True),

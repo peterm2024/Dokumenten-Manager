@@ -33,12 +33,14 @@ import time
 from datetime import datetime
 
 import ablage_gedaechtnis
+import app_paths
 import auto_pilot
-import dubletten_pruefung
 import ollama_client
 import ordner_aliase
 import ordner_steckbrief
 import tag_ignorierliste
+import posteingang_sperre
+import tag_katalog
 import vollautomatik_fenster
 import wissen
 
@@ -58,8 +60,10 @@ CONFIG_KEY = "auto_pilot_enabled"
 class AutoPilotService:
     """Hintergrund-Dienst; eine_runde() ist die synchron testbare Kernlogik."""
 
-    def __init__(self, app):
+    def __init__(self, app, immer_an=False):
+        """:param immer_an: Dienstmodus (dienstmodus.py) - läuft unabhängig von `auto_pilot_enabled`."""
         self.app = app
+        self._immer_an = immer_an
         self._ereignis = threading.Event()
         self._stop = threading.Event()
         self._thread = None
@@ -72,8 +76,11 @@ class AutoPilotService:
         self._cpu_gemeldet = False     # "rechnet ohne Grafikkarte" steht schon im Log/Protokoll
         self._cpu_erlaubt_gemeldet = False  # dito für den zugelassenen, langsamen CPU-Betrieb
         self._angezeigt_gemeldet = set()  # Pfade, deren "wird gerade angezeigt"-Hinweis schon im Log steht
+        self._katalog_gemeldet = False # "tags.json nicht lesbar" steht schon im Log
+        self._fremd_gemeldet = False   # "anderer Rechner überwacht den Posteingang" steht schon im Log
         self.letzte_runde = None
         self.verarbeitet = 0           # Dokumente seit Programmstart
+        self._heute = (None, 0, 0)     # (Datum, abgelegt, unsicher) - Zähler im Statusfenster (Etappe 10)
         self._analyse_dauer = 30.0     # gleitende Schätzung der KI-Antwortzeit (für den Countdown im Statusfenster)
         self.orte = set()              # bisher gelesene KI-Orte (auto_pilot.merke_orte), bis zum Programmende;
                                        # die Ablage-Vorschau teilt die Menge (tools/auto_filer.py)
@@ -123,7 +130,9 @@ class AutoPilotService:
         return self._in_runde or self._pausen > 0
 
     def ist_aktiv(self):
-        """Einstellung wird bei jeder Abfrage neu gelesen - Umschalten wirkt ohne Neustart."""
+        """Einstellung wird bei jeder Abfrage neu gelesen - Umschalten wirkt ohne Neustart. Im Dienstmodus immer an."""
+        if self._immer_an:
+            return True
         try:
             return bool(self.app.config.get(CONFIG_KEY, False))
         except Exception:
@@ -175,6 +184,8 @@ class AutoPilotService:
             return 0
         master = getattr(self.app, "master_folder", None)
         if not master or not os.path.isdir(master):
+            return 0
+        if not self._immer_an and self._fremd_ueberwacht(master):
             return 0
         faellige = [p for p in auto_pilot.sammle_posteingang_dokumente(master) if self._faellig(p)]
         kandidaten = [p for p in faellige if self._ist_stabil(p)]
@@ -234,14 +245,9 @@ class AutoPilotService:
             self._cpu_gemeldet = False
             self._cpu_erlaubt_gemeldet = False
 
-        known_tags = self._vom_hauptthread(lambda: self.app.tag_manager.get_known_tags()) or []
-        kategorien = self._vom_hauptthread(lambda: self.app.tag_manager.get_kategorien()) or []
-        tag_eltern = self._vom_hauptthread(lambda: self.app.tag_manager.get_tag_eltern()) or {}
-        synonyme = self._vom_hauptthread(lambda: self.app.tag_manager.get_synonyme()) or {}
-        # Unterscheidungs-Tags fuer die Dubletten-Pruefung (Stufe B): tags_in_kategorie liest
-        # den Tag-Baum, darf also nur ueber den Hauptthread laufen.
-        merkmale = self._vom_hauptthread(lambda: self.app.tag_manager.merkmale_fuer_dubletten()) or {}
-        self._dubletten_cache = {}
+        katalog = self._lies_katalog(master)
+        known_tags, kategorien, tag_eltern, synonyme = (katalog["known_tags"], katalog["kategorien"],
+                                                        katalog["tag_eltern"], katalog["synonyme"])
         ordnerliste = auto_pilot.sammle_ordnerliste(master)
         aliase = ordner_aliase.lade_aliase(master)
         ignorierte = tag_ignorierliste.lade(master)
@@ -282,7 +288,7 @@ class AutoPilotService:
                     break
                 if self._verarbeite(gelesen["pdf_path"], master, known_tags, ordnerliste, base_url, model, vocabulary,
                                     aliase, kategorien, ignorierte, nummer=nummer, gesamt=len(kandidaten),
-                                    merkmale=merkmale, tag_eltern=tag_eltern, synonyme=synonyme,
+                                    tag_eltern=tag_eltern, synonyme=synonyme,
                                     gedaechtnis=gedaechtnis, gelesen=gelesen,
                                     rangliste=ranglisten.get(gelesen["pdf_path"]), ordner_stand=ordner_stand,
                                     steckbriefe=steckbriefe):
@@ -292,6 +298,50 @@ class AutoPilotService:
 
     def _abbrechen(self):
         return self._stop.is_set() or self._pausen > 0 or not self.ist_aktiv()
+
+    def _fremd_ueberwacht(self, master):
+        """
+        Überwacht ein KID im Dienstmodus auf einem anderen Rechner diesen Posteingang (Sammlung auf dem Netzlaufwerk,
+        posteingang_sperre.py, Etappe 10 Schritt 4)? Dann pausiert die Hintergrund-Automatik hier - sonst arbeiteten
+        zwei Rechner denselben Posteingang ab. Einmal ins Log, das Statusfenster sagt warum.
+        """
+        fremd = posteingang_sperre.fremd_aktiv(master)
+        if fremd is None:
+            if self._fremd_gemeldet:
+                self._log("info", "Hintergrund-Automatik: Posteingang wieder frei, läuft weiter.")
+                self._fremd_gemeldet = False
+            return False
+        wer = posteingang_sperre.beschreibung(fremd)
+        if not self._fremd_gemeldet:
+            self._log("warning", f"Hintergrund-Automatik: Posteingang wird von KID auf {wer} überwacht - pausiert hier.")
+            self._fremd_gemeldet = True
+        self._status("fremd", text=f"Diesen Posteingang überwacht KID auf {wer} - hier pausiert die "
+                                   "Hintergrund-Automatik, bis dieser Dienst beendet ist.")
+        return True
+
+    def _lies_katalog(self, master):
+        """
+        Tag-Katalog der Runde direkt aus tags.json (tag_katalog, Etappe 10). Bis 17.11.2026 kam er über den
+        Hauptthread aus dem Tag-Baum, mit höchstens HAUPTTHREAD_TIMEOUT Wartezeit: War das Hauptfenster beschäftigt,
+        lief die Runde still mit leerem Katalog (Synonyme, Oberkategorien, bekannte Tags fehlten).
+        Ohne Hauptfenster (Dienstmodus) gibt es den Baum gar nicht. Jede Änderung im Tag-Baum wird
+        sofort gespeichert (tag_editor.save_tags), die Datei ist also aktuell. Nur wenn sie samt Sicherung
+        unlesbar ist, fragt der Dienst wie früher den Baum.
+        """
+        knoten = tag_katalog.lade(app_paths.tags_path(master))
+        if knoten is not None:
+            self._katalog_gemeldet = False
+            return tag_katalog.katalog_fuer_dienst(knoten)
+        if not self._katalog_gemeldet:
+            self._log("warning", "Vollautomatik: Tag-Katalog (tags.json) nicht lesbar - nehme den Tag-Baum.")
+            self._katalog_gemeldet = True
+        tm = getattr(self.app, "tag_manager", None)
+        if tm is None:
+            return {"known_tags": [], "kategorien": [], "tag_eltern": {}, "synonyme": {}}
+        return {"known_tags": self._vom_hauptthread(tm.get_known_tags) or [],
+                "kategorien": self._vom_hauptthread(tm.get_kategorien) or [],
+                "tag_eltern": self._vom_hauptthread(tm.get_tag_eltern) or {},
+                "synonyme": self._vom_hauptthread(tm.get_synonyme) or {}}
 
     def _lies_stapel(self, kandidaten, anfang, base_url, model, kontext):
         """Phase 1 eines Stapels: die Dokumente mit dem Lesemodell lesen. :return: [(nummer, gelesen), ...]"""
@@ -326,7 +376,7 @@ class AutoPilotService:
                 # Verbindungs-/Serverfehler: liegen lassen, später erneut (nicht in Dauerschleife)
                 self._naechster_versuch[pfad] = time.monotonic() + WIEDERHOLUNG_NACH_FEHLER
                 self._log("warning", f"Vollautomatik: Analyse fehlgeschlagen für {name}: {e}")
-                self._status("fertig", text=f"Fehler bei {name} - nächster Versuch später.")
+                self._status("fertig", pfad=pfad, text=f"Fehler bei {name} - nächster Versuch später.")
                 continue
             # Countdown-Schätzung fürs Statusfenster mitziehen (gleitend, träge)
             self._analyse_dauer = round(0.6 * self._analyse_dauer + 0.4 * (time.monotonic() - start_zeit), 1)
@@ -352,10 +402,10 @@ class AutoPilotService:
                 **kontext)
 
     def _verarbeite(self, pfad, master, known_tags, ordnerliste, base_url, model, vocabulary, aliase, kategorien=None,
-                    ignorierte=None, nummer=None, gesamt=None, merkmale=None, tag_eltern=None, synonyme=None,
+                    ignorierte=None, nummer=None, gesamt=None, tag_eltern=None, synonyme=None,
                     gedaechtnis=None, gelesen=None, rangliste=None, ordner_stand=None, steckbriefe=None):
         """
-        Phase 3: ein gelesenes Dokument (lies_dokument) entscheiden, auf Dubletten prüfen und ablegen.
+        Phase 3: ein gelesenes Dokument (lies_dokument) entscheiden und ablegen.
         :param rangliste: in Phase 2 geholte Zweitmeinung (oder Exception), None = bei Bedarf hier holen
         :param ordner_stand: Länge der Ordnerliste, als die Zweitmeinung geholt wurde
         :param steckbriefe: Ordner-Steckbriefe der Runde, lernen wie das Gedächtnis jede sichere Ablage sofort mit
@@ -375,25 +425,18 @@ class AutoPilotService:
             # Ohne Zweitmeinung entscheidet die Regel-Logik allein - wie vor dem 27.10.2026
             self._log("warning", f"Vollautomatik: Zweitmeinung zum Ordner fehlgeschlagen für {name}: "
                                  f"{entscheidung['zweitmeinung_fehler']}")
-        # Stufe B der Dubletten-Erkennung: liegt im Zielordner schon dasselbe Dokument,
-        # wird NICHT abgelegt, sondern nach 0_Unsicher gereicht (KONZEPT_SENIORENMODUS.md).
-        # Unscharfe Treffer bekommen eine KI-Zweitprüfung (Nutzer-Entscheidung 06.09.2026),
-        # die klare Fehlalarme (Serienbriefe, Monatsrechnungen) ausräumen darf.
-        try:
-            hinweis = dubletten_pruefung.pruefe_entscheidung(
-                entscheidung, master, merkmale, getattr(self, "_dubletten_cache", None),
-                ki_pruefung=lambda neu, alt: auto_pilot.pruefe_dublette_per_ki(neu, alt, base_url, model))
-            if hinweis:
-                self._log("info", f"Vollautomatik: {name} - {hinweis}")
-        except Exception as e:
-            self._log("warning", f"Vollautomatik: Dubletten-Prüfung fehlgeschlagen für {name}: {e}")
+        # Keine Dubletten-Prüfung mehr (Peter 17.11.2026, Etappe 10: „keine Dubletten mehr nach unsicher. Wir haben
+        # ja das Dublettentool dafür.“). Bis dahin ging ein Dokument, das im Zielordner schon ähnlich lag, nach
+        # 0_Unsicher (Stufe B, KONZEPT_SENIORENMODUS) - mit KI-Zweitprüfung und einem Bild-Vergleich je Kandidat.
+        # Doppelte findet jetzt das Werkzeug „Dubletten finden“; ein gleichnamiges Ziel überschreibt die Ablage nie
+        # (_naechster_freier_pfad). Ablage-Vorschau und „Begleitet erfassen“ prüfen ebenfalls nicht mehr.
 
         # Zweite Prüfung NACH der (sekundenlangen) KI-Analyse: Hat der Nutzer inzwischen
         # angefangen, genau diese Datei zu bearbeiten, wird sie doch nicht angefasst.
         if self._wird_gerade_bearbeitet(pfad):
             self._log("info", f"Vollautomatik: {name} übersprungen - "
                               "ungespeicherte Eingabe im Hauptfenster.")
-            self._status("fertig", text=f"{name} übersprungen (wird gerade bearbeitet).")
+            self._status("fertig", pfad=pfad, text=f"{name} übersprungen (wird gerade bearbeitet).")
             return False
 
         self._status("einsortieren", pfad=pfad)
@@ -404,10 +447,11 @@ class AutoPilotService:
             self._naechster_versuch[pfad] = time.monotonic() + WIEDERHOLUNG_NACH_FEHLER
             self._log("warning", f"Vollautomatik: Ablage fehlgeschlagen für {name}: {ergebnis['fehler']}")
             self._protokolliere(master, f"FEHLER    {name}  -  {ergebnis['fehler']}")
-            self._status("fertig", text=f"Ablage fehlgeschlagen: {name}")
+            self._status("fertig", pfad=pfad, text=f"Ablage fehlgeschlagen: {name}")
             return False
 
         self.verarbeitet += 1
+        self.zaehle(entscheidung["sicher"])
         self._naechster_versuch.pop(pfad, None)
         ziel_rel = os.path.relpath(ergebnis["neuer_pfad"], master)
         grund = "" if entscheidung["sicher"] else "; ".join(entscheidung["probleme"])
@@ -416,10 +460,7 @@ class AutoPilotService:
             self._log("info", f"Vollautomatik: Tags verworfen für {name}: "
                       + ", ".join(f"{t} ({g})" for t, g in entscheidung["tags_verworfen"]))
         if entscheidung["sicher"]:
-            # Eine ausgeräumte Dubletten-Warnung gehört ins Angehörigen-Protokoll -
-            # falls die KI sich doch irrte, ist nachvollziehbar, warum abgelegt wurde.
-            vermerk = (f"  ({entscheidung['dubletten_zweitpruefung']})"
-                       if entscheidung.get("dubletten_zweitpruefung") else "")
+            vermerk = ""
             if entscheidung.get("tag_ersetzungen"):
                 vermerk += "  (Synonym: " + ", ".join(f"{a} -> {n}" for a, n in entscheidung["tag_ersetzungen"]) + ")"
             if entscheidung.get("ordner_gedaechtnis"):
@@ -474,6 +515,19 @@ class AutoPilotService:
             return os.path.normcase(os.path.abspath(angezeigt)) == os.path.normcase(os.path.abspath(pfad))
         except (OSError, ValueError, TypeError):
             return False
+
+    def zaehle(self, sicher, heute=None):
+        """Eine Ablage für den Tageszähler des Statusfensters; um Mitternacht beginnt er neu."""
+        heute = heute or datetime.now().date()
+        datum, abgelegt, unsicher = self._heute
+        if datum != heute:
+            abgelegt = unsicher = 0
+        self._heute = (heute, abgelegt + (1 if sicher else 0), unsicher + (0 if sicher else 1))
+
+    def zaehler_heute(self, heute=None):
+        """(abgelegt, unsicher) seit Mitternacht bzw. seit Programmstart - ohne Inhalte, fürs Statusfenster."""
+        datum, abgelegt, unsicher = self._heute
+        return (abgelegt, unsicher) if datum == (heute or datetime.now().date()) else (0, 0)
 
     def _faellig(self, pfad):
         return self._naechster_versuch.get(pfad, 0.0) <= time.monotonic()

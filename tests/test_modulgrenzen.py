@@ -15,10 +15,10 @@ SRC = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 
 GUI_FREI = {
     "sicher_speichern", "einzelstart", "personen_namen",
     "ablage_gedaechtnis", "aktivitaet", "begleitet", "app_logger", "app_paths", "auto_pilot", "auto_pilot_service",
-    "config", "dateinamen", "dubletten", "dubletten_geprueft", "dubletten_pruefung", "folder_monitor",
+    "config", "dateinamen", "dubletten", "dubletten_geprueft", "folder_monitor",
     "index_manager", "mail_import", "mail_lesen", "mail_pst", "mail_quellen", "menue_hilfe", "ollama_client", "ordner_aliase", "papierkorb_herkunft", "scan_date", "server_wecken",
     "spell_correct", "suchsyntax", "tag_ignorierliste", "text_quality",
-    "wissen", "wissen_ki", "zuletzt_benutzt", "ordner_steckbrief",
+    "wissen", "wissen_ki", "zuletzt_benutzt", "ordner_steckbrief", "tag_katalog", "posteingang_sperre",
 }
 
 # PyMuPDF nur über pdf_handler; file_operations prüft nur, ob es installiert ist (CLAUDE.md, ruff-Abschnitt).
@@ -28,7 +28,7 @@ FITZ_ERLAUBT = {"pdf_handler", "file_operations"}
 # Nur Standardbibliothek + eigene Module (dünner HTTP-Client, läuft auch ohne Zusatzpakete)
 NUR_STANDARD = {"ollama_client", "app_paths", "config", "spell_correct", "scan_date", "aktivitaet", "server_wecken",
                 "mail_lesen", "mail_quellen", "sicher_speichern", "einzelstart", "personen_namen",
-                "suchsyntax", "wissen", "wissen_ki", "ordner_steckbrief"}
+                "suchsyntax", "wissen", "wissen_ki", "ordner_steckbrief", "tag_katalog", "posteingang_sperre"}
 
 # Einzelne verbotene Kanten: (Modul, darf nicht importieren, Grund)
 VERBOTEN = [
@@ -36,7 +36,6 @@ VERBOTEN = [
     ("dubletten", "pdf_handler", "dubletten.py bleibt PyMuPDF-frei, der Aufrufer liefert die PDF-Werte"),
     ("dubletten", "fitz", "dubletten.py bleibt PyMuPDF-frei"),
     ("auto_pilot", "dubletten", "Ringschluss: dubletten importiert auto_pilot"),
-    ("auto_pilot", "dubletten_pruefung", "Ringschluss über dubletten"),
     ("auto_pilot", "auto_pilot_service", "die Logik kennt den Dienst nicht, nur umgekehrt"),
     ("index_manager", "search_manager", "search_manager benutzt den Index, nicht umgekehrt"),
 ]

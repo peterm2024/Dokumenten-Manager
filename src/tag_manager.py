@@ -2,6 +2,7 @@ import tkinter as tk
 from tkinter import ttk, messagebox  # noqa: F401 -- messagebox von test_tag_manager.py gepatcht (tag_manager.messagebox)
 from ui_utils import UIUtils
 import dubletten
+import tag_katalog
 import zuletzt_benutzt
 
 class TagManager:
@@ -48,168 +49,69 @@ class TagManager:
             return []
         return [t.strip() for t in raw.split(",") if t.strip()]
 
+    def als_knoten(self, parent=""):
+        """
+        Der Tag-Baum als Knoten im Format der tags.json (tag_katalog) - ohne System-Einträge: 'Zuletzt benutzt' samt
+        Inhalt (nur Kopien echter Tags), Temp-Tags des aktuellen Dokuments, Trennlinie. NUR vom Hauptthread (Tkinter).
+        """
+        knoten = []
+        for child in self.app.tree_tags.get_children(parent):
+            item_tags = self._item_tags(child)
+            if (self.TAG_RECENT_ROOT in item_tags or self.TAG_RECENT_ITEM in item_tags
+                    or self.TAG_TEMP in item_tags or self.TAG_SEP in item_tags):
+                continue
+            knoten.append({"text": self.app.tree_tags.item(child, "text"),
+                           "is_structural": self.TAG_STRUCTURAL in item_tags,
+                           "is_synonym": self.TAG_SYNONYM in item_tags,
+                           "children": self.als_knoten(child)})
+        return tag_katalog.bereinige(knoten)
+
+    # Die Abfragen unten beantwortet tag_katalog - dieselben Regeln gelten für die Vollautomatik, die den Katalog
+    # ohne Hauptfenster direkt aus tags.json liest (Etappe 10, KONZEPT_DIENSTMODUS). Alle NUR vom Hauptthread.
+
     def get_known_tags(self):
-        """
-        Sammelt alle zuweisbaren Tag-Namen aus dem Vorlagen-Baum — ohne Struktur-Kategorien
-        (grau, nicht zuweisbar) und ohne System-Einträge (Temp-Tags, Trennlinie,
-        'Zuletzt benutzt'-Ordner samt Inhalt, da dessen Einträge nur Kopien echter Tags sind).
-        :return: Liste der Tag-Texte in Baum-Reihenfolge, ohne Duplikate.
-        """
-        known = []
-        seen = set()
-
-        def walk(parent=""):
-            for child in self.app.tree_tags.get_children(parent):
-                item_tags = self.app.tree_tags.item(child, "tags")
-                # Tkinter kann ein einzelnes Tag als nackten String liefern (FALLSTRICKE #9)
-                if isinstance(item_tags, str):
-                    item_tags = (item_tags,)
-
-                if self.TAG_RECENT_ROOT in item_tags:
-                    continue  # inkl. Kinder überspringen
-
-                if (self.TAG_TEMP not in item_tags and self.TAG_SEP not in item_tags
-                        and self.TAG_RECENT_ITEM not in item_tags
-                        and self.TAG_STRUCTURAL not in item_tags
-                        and self.TAG_SYNONYM not in item_tags):
-                    text = self.app.tree_tags.item(child, "text")
-                    if text.lower() not in seen:
-                        seen.add(text.lower())
-                        known.append(text)
-                walk(child)
-
-        walk()
-        return known
+        """Alle zuweisbaren Tag-Namen in Baum-Reihenfolge, ohne Duplikate - ohne graue Kategorien, Synonyme und
+        System-Einträge (tag_katalog.bekannte_tags)."""
+        return tag_katalog.bekannte_tags(self.als_knoten())
 
     def _item_tags(self, item):
         item_tags = self.app.tree_tags.item(item, "tags")
         return (item_tags,) if isinstance(item_tags, str) else tuple(item_tags)
 
     def get_kategorien(self):
-        """
-        Namen aller Struktur-Kategorien des Katalogs (graue, nicht zuweisbare Knoten wie
-        'Dokument', 'Absender') in Baum-Reihenfolge - die Liste, aus der die Vollautomatik
-        neue Tags einsortieren lässt. Ohne 'Zuletzt benutzt' und ohne Duplikate.
-        """
-        kategorien = []
-        seen = set()
-
-        def walk(parent=""):
-            for child in self.app.tree_tags.get_children(parent):
-                item_tags = self._item_tags(child)
-                if self.TAG_RECENT_ROOT in item_tags:
-                    continue
-                if self.TAG_STRUCTURAL in item_tags and self.TAG_SYNONYM not in item_tags:
-                    text = self.app.tree_tags.item(child, "text")
-                    if text.lower() not in seen:
-                        seen.add(text.lower())
-                        kategorien.append(text)
-                walk(child)
-
-        walk()
-        return kategorien
+        """Namen aller grauen Struktur-Kategorien (z.B. 'Dokument', 'Absender') in Baum-Reihenfolge, ohne 'Zuletzt
+        benutzt' und ohne Duplikate (tag_katalog.kategorien)."""
+        return tag_katalog.kategorien(self.als_knoten())
 
     def get_tag_eltern(self):
         """
-        Oberkategorien-Zuordnung für die Auto-Hierarchie der Vollautomatik:
-        {tag (klein): [zuweisbare Eltern-Tags von oben nach unten]}. Vergibt die KI
-        'Gebäudebrandversicherung', bekommt das Dokument auch 'Versicherung' - genau
-        wie beim manuellen Klick im Tag-Baum (toggle_tag). Struktur-Kategorien (grau,
-        nicht zuweisbar) zählen wie dort NICHT als Eltern. Nur Tags MIT zuweisbaren
-        Eltern stehen in der Zuordnung. NUR vom Hauptthread aufrufen (Tkinter).
+        Oberkategorien-Zuordnung für die Auto-Hierarchie: {tag (klein): [zuweisbare Parent-Tags von oben nach unten]}.
+        Vergibt man 'Gebäudebrandversicherung', bekommt das Dokument auch 'Versicherung' - wie beim Klick im Tag-Baum
+        (toggle_tag). Graue Kategorien zählen nicht als Parent (tag_katalog.tag_parents).
         """
-        zuordnung = {}
-
-        def walk(parent, eltern):
-            for child in self.app.tree_tags.get_children(parent):
-                item_tags = self._item_tags(child)
-                if self.TAG_RECENT_ROOT in item_tags:
-                    continue  # 'Zuletzt benutzt' samt Kindern: nur Kopien echter Tags
-                text = self.app.tree_tags.item(child, "text")
-                zuweisbar = (self.TAG_TEMP not in item_tags and self.TAG_SEP not in item_tags
-                             and self.TAG_RECENT_ITEM not in item_tags
-                             and self.TAG_STRUCTURAL not in item_tags
-                             and self.TAG_SYNONYM not in item_tags)
-                if zuweisbar and eltern and text.lower() not in zuordnung:
-                    zuordnung[text.lower()] = list(eltern)
-                walk(child, eltern + [text] if zuweisbar else eltern)
-
-        walk("", [])
-        return zuordnung
+        return tag_katalog.tag_parents(self.als_knoten())
 
     def get_synonyme(self):
         """
-        Synonym-Zuordnung des Katalogs für die Vollautomatik: {synonym (klein): Ziel-Tag}.
-        Ein Synonym-Knoten (Rechtsklick "Als Synonym umschalten") unter einem Tag bedeutet:
-        schlägt die KI DIESEN Text vor, bekommt das Dokument stattdessen das Tag darüber -
-        der Synonym-Text selbst wird nie vergeben ('Haftpflichtversicherung' -> 'Haftpflicht',
-        'Einkommensteuer' -> 'Steuererklärung'). Ziel ist das nächste zuweisbare Tag über
-        dem Knoten; ein Synonym ohne solches (oberste Ebene, nur graue Kategorien darüber)
-        bleibt wirkungslos. Bewusst kein "grau = Synonym" (Nutzerentscheidung 08.09.2026):
-        graue Knoten sind bei Peter auch Struktur (Bewohner unter der Adresse).
-        NUR vom Hauptthread aufrufen (Tkinter).
+        Synonym-Zuordnung {synonym (klein): Ziel-Tag}. Ein Synonym-Knoten (Rechtsklick "Als Synonym umschalten") unter
+        einem Tag bedeutet: Dieser Text steht für das Tag darüber ('Haftpflichtversicherung' -> 'Haftpflicht'). Ein
+        Synonym ohne zuweisbares Tag darüber bleibt wirkungslos. Bewusst kein "grau = Synonym" (Nutzerentscheidung
+        08.09.2026): graue Knoten sind bei Peter auch Struktur (tag_katalog.synonyme).
         """
-        zuordnung = {}
-
-        def walk(parent, ziel):
-            for child in self.app.tree_tags.get_children(parent):
-                item_tags = self._item_tags(child)
-                if self.TAG_RECENT_ROOT in item_tags:
-                    continue
-                text = self.app.tree_tags.item(child, "text")
-                if self.TAG_SYNONYM in item_tags:
-                    if ziel and text.strip().lower() not in zuordnung:
-                        zuordnung[text.strip().lower()] = ziel
-                    continue  # unter einem Synonym liegt nichts Zuweisbares
-                zuweisbar = (self.TAG_TEMP not in item_tags and self.TAG_SEP not in item_tags
-                             and self.TAG_RECENT_ITEM not in item_tags
-                             and self.TAG_STRUCTURAL not in item_tags)
-                walk(child, text if zuweisbar else ziel)
-
-        walk("", "")
-        return zuordnung
+        return tag_katalog.synonyme(self.als_knoten())
 
     def tags_in_kategorie(self, kategorie):
-        """
-        Alle zuweisbaren Tags unterhalb einer Struktur-Kategorie (z.B. 'Personen' -
-        die Namens-Tags für die Dubletten-Unterscheidung). Leere Liste, wenn es die
-        Kategorie nicht gibt. NUR vom Hauptthread aufrufen (Tkinter).
-        """
-        knoten = self._finde_kategorie_knoten(kategorie)
-        if knoten is None:
-            return []
-        ergebnis = []
-
-        def walk(parent):
-            for child in self.app.tree_tags.get_children(parent):
-                item_tags = self._item_tags(child)
-                if self.TAG_STRUCTURAL not in item_tags and self.TAG_SYNONYM not in item_tags:
-                    ergebnis.append(self.app.tree_tags.item(child, "text"))
-                walk(child)
-
-        walk(knoten)
-        return ergebnis
+        """Alle zuweisbaren Tags unterhalb einer grauen Kategorie (z.B. 'Personen'), [] ohne sie."""
+        return tag_katalog.tags_in_kategorie(self.als_knoten(), kategorie)
 
     def merkmale_fuer_dubletten(self):
         """
-        Unterscheidungs-Tags für die Dubletten-Erkennung: {kanonische Kategorie: [Tags]}.
-
-        Sucht jede Kategorie unter mehreren möglichen Namen (dubletten.KATEGORIE_VARIANTEN) —
-        ein gewachsener Katalog nennt den Adressen-Zweig z.B. „Wohnen & Immobilien /
-        Adressen" statt „Objekte & Adressen" wie die ausgelieferte Vorlage. Der frühere
-        exakte Namensvergleich lieferte dort still eine leere Liste, womit die Unterscheidung
-        zweier Objekte („Zum Alten Fass 1" vs. „... 3") nie greifen konnte.
-        NUR vom Hauptthread aufrufen (liest den Tag-Baum).
+        Unterscheidungs-Tags für die Dubletten-Erkennung: {kanonische Kategorie: [Tags]}. Jede Kategorie wird unter
+        mehreren Namen gesucht (dubletten.KATEGORIE_VARIANTEN) - ein gewachsener Katalog nennt den Adressen-Zweig z.B.
+        „Wohnen & Immobilien / Adressen“ statt „Objekte & Adressen“; der frühere exakte Namensvergleich lieferte dort
+        still eine leere Liste.
         """
-        merkmale = {}
-        for kanonisch, varianten in dubletten.KATEGORIE_VARIANTEN.items():
-            gefunden = []
-            for name in varianten:
-                gefunden = self.tags_in_kategorie(name)
-                if gefunden:
-                    break
-            merkmale[kanonisch] = gefunden
-        return merkmale
+        return tag_katalog.merkmale_fuer_dubletten(self.als_knoten(), dubletten.KATEGORIE_VARIANTEN)
 
     KATEGORIE_NEU = "Neu"     # bis 08.11.2026 „Neu (KI)“, tag_editor.migriere_neu_kategorie stellt um
 

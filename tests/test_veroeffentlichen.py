@@ -108,5 +108,27 @@ class TestPruefung(unittest.TestCase):
             self.assertEqual(v.pruefe_stand({"notiz.txt": "Gruß aus Musterhausen".encode("utf-16")}, REGELN), 1)
 
 
+class TestPruefsumme(unittest.TestCase):
+    """Analyse der Firmen-KI 17.11.2026: Die EXE bekommt eine SHA-256-Prüfsumme mit ins Release."""
+
+    def test_pruefsummen_datei_im_format_von_sha256sum(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            exe = os.path.join(tmp, "Muster.exe")
+            with open(exe, "wb") as f:
+                f.write(b"abc")
+            ziel = exe + ".sha256"
+            wert = v.pruefsummen_datei(exe, ziel)
+            # bekannter SHA-256 von b"abc"
+            self.assertEqual(wert, "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad")
+            with open(ziel, encoding="ascii") as f:
+                self.assertEqual(f.read(), wert + " *Muster.exe\n")
+
+    def test_notizen_bekommen_abschnitt_mit_wert(self):
+        text = v.notizen_mit_pruefsumme("## Neu\n\n- etwas\n\n", "ab12", "Muster.exe")
+        self.assertTrue(text.startswith("## Neu\n\n- etwas\n\n### Prüfsumme (SHA-256)"))
+        self.assertIn("`Muster.exe`: `ab12`", text)
+        self.assertIn("Get-FileHash Muster.exe", text)
+
+
 if __name__ == "__main__":
     unittest.main()

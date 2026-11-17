@@ -72,8 +72,11 @@ class TestAutoPilotService(unittest.TestCase):
         self.config = {"auto_pilot_enabled": True}
         self.app.config.get.side_effect = lambda k, d=None: self.config.get(k, d)
         self.app.root.after.side_effect = lambda ms, fn: fn()  # Hauptthread-Aufrufe sofort ausführen
-        self.app.tag_manager.get_known_tags.return_value = ["Rechnung"]
-        self.app.tag_manager.tags_in_kategorie.return_value = []
+        # Tag-Katalog wie in jeder Sammlung als tags.json im Daten-Ordner - der Dienst liest ihn dort (Etappe 10)
+        self.tags_json = app_paths.tags_path(self.master)
+        os.makedirs(os.path.dirname(self.tags_json), exist_ok=True)
+        with open(self.tags_json, "w", encoding="utf-8") as f:
+            f.write('[{"text": "Rechnung", "children": []}]')
         self.app.index_manager.wortschatz_der_sammlung.return_value = {}
         # Ohne explizite Vorgaben wären die MagicMock-Attribute "truthy" und jede
         # Datei gälte als "wird gerade bearbeitet" (Schutz vom 06.09.2026).
@@ -126,6 +129,7 @@ class TestAutoPilotService(unittest.TestCase):
         # still=True: nie eine Messagebox aus dem Hintergrund-Thread
         self.assertTrue(ausfuehren.call_args.kwargs.get("still"))
         self.assertEqual(self.dienst.verarbeitet, 1)
+        self.assertEqual(self.dienst.zaehler_heute(), (1, 0))      # Tageszähler des Statusfensters (Etappe 10)
         self.app.tool_manager.notify_file_moved.assert_called_once()
         with open(app_paths.protokoll_path(self.master), encoding="utf-8") as f:
             protokoll = f.read()
@@ -242,32 +246,25 @@ class TestAutoPilotService(unittest.TestCase):
         self.assertEqual(len(fertig), 1)
         self.assertIn("kein plausibles Dokumentdatum", fertig[0]["grund"])
 
-    def test_dublette_im_zielordner_macht_die_ablage_unsicher(self):
+    def test_dublette_im_zielordner_wird_trotzdem_sicher_abgelegt(self):
         """
-        Stufe B der Dubletten-Erkennung: Liegt im Zielordner schon dasselbe Dokument,
-        wird NICHT abgelegt, sondern nach 0_Unsicher gereicht (Nutzerwunsch 30.08.2026:
-        eine stille Verdopplung im Bestand faellt sonst erst Jahre spaeter auf).
+        Peter 17.11.2026 (Etappe 10): „keine Dubletten mehr nach unsicher. Wir haben ja das Dublettentool dafür.“
+        Bis dahin ging ein Dokument, das im Zielordner schon ähnlich lag, nach 0_Unsicher (Stufe B, 30.08.2026).
         """
         self._lege_pdf()
         a, b, c = self._patch_pipeline(sicher=True)
-        treffer = (os.path.join(self.master, "Gentilia", "alt.pdf"), "Text zu 97% gleich (gleiches Datum)")
-        with a, b as ausfuehren, c, patch("dubletten_pruefung.finde_dublette", return_value=treffer):
-            self.dienst.eine_runde()
+        pfad_alt = os.path.join(self.master, "Gentilia", "alt.pdf")
+        with open(pfad_alt, "wb") as f:
+            f.write(b"%PDF-1.4 test")            # dieselben Bytes wie der neue Scan
+        with a, b as ausfuehren, c:
+            self.assertEqual(self.dienst.eine_runde(), 1)
         entscheidung = ausfuehren.call_args[0][0]
-        self.assertFalse(entscheidung["sicher"])
-        self.assertIn("Dublette", entscheidung["probleme"][0])
-        self.assertEqual(entscheidung["dublette_zu"], treffer[0])
+        self.assertTrue(entscheidung["sicher"])
+        self.assertNotIn("dublette_zu", entscheidung)
         with open(app_paths.protokoll_path(self.master), encoding="utf-8") as f:
             protokoll = f.read()
-        self.assertIn("unsicher  scan.pdf", protokoll)
-        self.assertIn("Dublette", protokoll)
-
-    def test_dubletten_pruefung_faellt_nicht_auf_die_nase(self):
-        """Ein Fehler in der Pruefung darf die Ablage nicht verhindern (nur Log-Eintrag)."""
-        self._lege_pdf()
-        a, b, c = self._patch_pipeline(sicher=True)
-        with a, b, c, patch("dubletten_pruefung.finde_dublette", side_effect=OSError("Laufwerk weg")):
-            self.assertEqual(self.dienst.eine_runde(), 1)
+        self.assertIn("abgelegt  scan.pdf", protokoll)
+        self.assertNotIn("Dublette", protokoll)
 
     def test_noch_wachsende_datei_wird_uebersprungen(self):
         pfad = self._lege_pdf()
@@ -567,6 +564,33 @@ class TestAutoPilotService(unittest.TestCase):
                 self.assertTrue(gelaufen.wait(2.0))
             finally:
                 self.dienst.stop()
+
+    def test_katalog_kommt_aus_tags_json_auch_wenn_das_hauptfenster_nicht_antwortet(self):
+        """Etappe 10, Schritt 1: Bisher kam der Katalog über den Hauptthread (höchstens 5 s Warten). War das
+        Hauptfenster beschäftigt - oder gibt es keins (Dienstmodus) -, lief die Runde still mit leerem Katalog."""
+        with open(self.tags_json, "w", encoding="utf-8") as f:
+            f.write('[{"text": "Dokumentart", "is_structural": true, "children": [{"text": "Rechnung"}]},'
+                    ' {"text": "Objekte & Adressen", "is_structural": true, "children": [{"text": "Musterweg 1"},'
+                    ' {"text": "Musterweg 3"}]}]')
+        self.app.root.after.side_effect = lambda ms, fn: None      # Hauptthread antwortet nie
+        self._lege_pdf()
+        gesehen = {}
+
+        def analyse(pfad, known_tags, ordnerliste, *a, **k):
+            gesehen["known_tags"] = known_tags
+            return _entscheidung(pfad)
+
+        _, b, c = self._patch_pipeline()
+        with patch.object(auto_pilot_service, "HAUPTTHREAD_TIMEOUT", 0.01), _analyse(analyse), b, c:
+            self.assertEqual(self.dienst.eine_runde(), 1)
+        self.assertEqual(gesehen["known_tags"], ["Rechnung", "Musterweg 1", "Musterweg 3"])
+
+    def test_ohne_lesbaren_katalog_einmal_melden_und_den_baum_fragen(self):
+        os.remove(self.tags_json)
+        self.app.tag_manager.get_known_tags.return_value = ["Aus dem Baum"]
+        self.assertEqual(self.dienst._lies_katalog(self.master)["known_tags"], ["Aus dem Baum"])
+        self.dienst._lies_katalog(self.master)
+        self.app.logger.warning.assert_called_once()
 
 
 class TestFolderMonitorListener(unittest.TestCase):

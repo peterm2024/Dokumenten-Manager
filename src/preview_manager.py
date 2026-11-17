@@ -303,7 +303,7 @@ class PreviewManager:
             y_top = max(self.PAGE_MARGIN, (c_height - img_h) // 2)
 
             # Dezenter Schatten hinter der Seite, damit sie sich vom Hintergrund abhebt
-            # (deutlich dunkler als der mittelgraue Canvas-Hintergrund #8f8f8f)
+            # (deutlich dunkler als der hellgraue Canvas-Hintergrund, ui_theme.FARBEN["vorschau"])
             shadow = SCHATTEN_PX
             c.create_rectangle(x_center - img_w // 2 + shadow, y_top + shadow,
                                x_center + img_w // 2 + shadow, y_top + img_h + shadow,

@@ -10,7 +10,7 @@ Grün heißt hier nur „KID wäre sicher“ - in der Simulation waren 6-7 % der
 prüft der Nutzer auch Grün. „Rest der Vollautomatik geben“ schaltet die Hintergrund-Automatik ein, sobald die
 Prognose („von den nächsten 12 gelesenen wären jetzt 9 grün“) gut genug aussieht.
 
-Threads: ein Leser (KI, Hintergrund) und je Dokument ein kurzer Entscheider (Code + Dubletten-Prüfung); beide melden
+Threads: ein Leser (KI, Hintergrund) und je Dokument ein kurzer Entscheider (Code); beide melden
 nur über app.root.after zurück, nie Tkinter aus dem Thread. Abgelegt wird im Tk-Thread (wie die Ablage-Vorschau).
 """
 
@@ -25,7 +25,6 @@ from tkinter import ttk
 import ablage_gedaechtnis
 import auto_pilot
 import begleitet
-import dubletten_pruefung
 import ollama_client
 import ordner_aliase
 import tag_ignorierliste
@@ -62,14 +61,12 @@ class BegleitetFenster(tk.Toplevel):
         self.kategorien = tm.get_kategorien() if tm else []
         self.tag_eltern = tm.get_tag_eltern() if tm else {}
         self.synonyme = tm.get_synonyme() if tm else {}
-        self.merkmale = tm.merkmale_fuer_dubletten() if tm else {}
         self.ordnerliste = auto_pilot.sammle_ordnerliste(app.master_folder)
         self.aliase = ordner_aliase.lade_aliase(app.master_folder)
         self.ignorierte = tag_ignorierliste.lade(app.master_folder)
         self.orte = set()
         self.gedaechtnis = None                      # lädt der Leser (eigene SQLite-Verbindung)
         self.vocabulary = None
-        self.dubletten_cache = {}
         self.rueckfragen = begleitet.Rueckfragen()
         self._dienst = getattr(app, "auto_pilot_service", None)
         if self._dienst is not None:
@@ -207,12 +204,6 @@ class BegleitetFenster(tk.Toplevel):
     def _entscheide(self, lauf, gelesen):
         try:
             e = auto_pilot.entscheide_gelesen(gelesen, self.ordnerliste, self.base_url, **self._regeln())
-            try:
-                dubletten_pruefung.pruefe_entscheidung(
-                    e, self.app.master_folder, self.merkmale, self.dubletten_cache,
-                    ki_pruefung=lambda neu, alt: auto_pilot.pruefe_dublette_per_ki(neu, alt, self.base_url, self.model))
-            except Exception as fehler:
-                self._log("warning", f"Begleitet erfassen: Dubletten-Prüfung fehlgeschlagen: {fehler}")
             scan = PDFHandler.scan_tag(gelesen["pdf_path"])      # Vorschlag, falls kein Datum erkannt
         except Exception as fehler:
             e, scan = fehler, ""

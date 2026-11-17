@@ -1,4 +1,6 @@
+import hashlib
 import os
+import re
 import shutil
 import sys
 
@@ -11,7 +13,7 @@ import sys
 #   └── <Hauptordner>-Daten/  # App-Intern (nicht überwacht)
 #       ├── Papierkorb/
 #       ├── tags.json
-#       ├── index.sqlite      # ab Phase 1
+#       ├── index.sqlite      # ab Phase 1 (Sammlung auf Netzlaufwerk: lokal je Rechner, siehe index_path)
 #       ├── aliase.json       # Absender-Aliase der Vollautomatik (ordner_aliase.py)
 #       ├── tags_ignoriert.json  # Ignorierliste für KI-Tag-Vorschläge (tag_ignorierliste.py)
 #       ├── Vollautomatik-Protokoll.txt  # eine Zeile pro automatisch abgelegtem Dokument
@@ -37,6 +39,7 @@ PAPIERKORB_HERKUNFT_FILE_NAME = "papierkorb_herkunft.json"
 PROTOKOLL_FILE_NAME = "Vollautomatik-Protokoll.txt"
 ZULETZT_BENUTZT_FILE_NAME = "zuletzt_benutzt.json"
 WISSEN_FILE_NAME = "wissen.sqlite"
+POSTEINGANG_SPERRE_FILE_NAME = "posteingang_sperre.json"
 TESSDATA_DIR_NAME = "tessdata"
 
 
@@ -71,8 +74,54 @@ def tags_path(master_folder):
 
 
 def index_path(master_folder):
-    """Pfad der Suchindex-Datenbank (Phase 1 des File-Index-Konzepts)."""
+    """
+    Pfad der Suchindex-Datenbank (Phase 1 des File-Index-Konzepts). Liegt die Sammlung auf einem Netzlaufwerk, hält
+    jeder Rechner seinen eigenen Index lokal (Etappe 10 Schritt 6, KONZEPT_DIENSTMODUS): Sonst schrieben z.B. das
+    Panel im Dienstmodus und ein KID mit Oberfläche auf einem anderen PC gleichzeitig in dieselbe SQLite-Datei - über
+    ein Netzlaufwerk sperrt SQLite nicht zuverlässig, die Datei kann kaputtgehen. Der Index ist nur ein Zwischenspeicher
+    und lässt sich jederzeit aus den PDFs neu aufbauen; den ersten lokalen Index kopiert index_manager aus dem
+    gemeinsamen (geteilter_index_path), damit nicht alles neu gelesen werden muss.
+    """
+    if ist_netzlaufwerk(master_folder):
+        return lokaler_index_path(master_folder)
+    return geteilter_index_path(master_folder)
+
+
+def geteilter_index_path(master_folder):
+    """Der Index im Daten-Ordner neben der Sammlung - der einzige, solange sie auf einer eigenen Platte liegt."""
     return os.path.join(data_dir(master_folder), INDEX_FILE_NAME)
+
+
+def lokaler_index_path(master_folder):
+    """Index dieses Rechners für eine Sammlung auf dem Netzlaufwerk: %LOCALAPPDATA%\\KID\\Index\\<Name>-<Kennung>.
+    Die Kennung hängt am vollständigen Pfad - zwei Sammlungen gleichen Namens kommen sich nicht in die Quere."""
+    basis = os.environ.get("LOCALAPPDATA") or os.path.join(os.path.expanduser("~"), "AppData", "Local")
+    kanonisch = os.path.normcase(os.path.abspath(master_folder)).rstrip("\\/")
+    name = re.sub(r"[^\w.-]", "_", os.path.basename(kanonisch) or "Sammlung")[:40]
+    kennung = hashlib.sha1(kanonisch.encode("utf-8")).hexdigest()[:12]
+    return os.path.join(basis, "KID", "Index", f"{name}-{kennung}", INDEX_FILE_NAME)
+
+
+def ist_netzlaufwerk(pfad):
+    """True für einen UNC-Pfad (\\\\server\\freigabe\\…) oder ein verbundenes Netzlaufwerk (Windows meldet DRIVE_REMOTE)."""
+    if not pfad:
+        return False
+    pfad = os.path.abspath(pfad)
+    if pfad.startswith(("\\\\?\\", "\\\\.\\")):        # Langform \\?\C:\… bzw. \\?\UNC\server\…
+        rest = pfad[4:]
+        if rest.upper().startswith("UNC\\"):
+            return True
+        pfad = rest
+    elif pfad.startswith("\\\\"):
+        return True
+    laufwerk = os.path.splitdrive(pfad)[0]
+    if sys.platform != "win32" or not laufwerk:
+        return False
+    try:
+        import ctypes
+        return ctypes.windll.kernel32.GetDriveTypeW(laufwerk + "\\") == 4   # DRIVE_REMOTE
+    except Exception:
+        return False
 
 
 def aliase_path(master_folder):
@@ -103,6 +152,11 @@ def zuletzt_benutzt_path(master_folder):
 def wissen_path(master_folder):
     """Pfad der Wissensbasis „Wiki von Hand“ (wissen.py, KONZEPT_WIKI_VON_HAND F3) - nicht im alten Wiki-Ordner."""
     return os.path.join(data_dir(master_folder), WISSEN_FILE_NAME)
+
+
+def posteingang_sperre_path(master_folder):
+    """Lebenszeichen der Hintergrund-Automatik im Dienstmodus (posteingang_sperre.py, Etappe 10 Schritt 4)."""
+    return os.path.join(data_dir(master_folder), POSTEINGANG_SPERRE_FILE_NAME)
 
 
 def protokoll_path(master_folder):

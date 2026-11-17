@@ -175,6 +175,16 @@ class TestAufteilungUndPackregel(unittest.TestCase):
 
 
 
+class TestGitter(unittest.TestCase):
+    def test_aussenkante_links_und_oben_geschlossen(self):
+        # Peter 17.11.2026: ohne Bereichsrahmen fehlte der Tabelle links und oben die Linie
+        self.assertEqual(de.zellabstand(0, 0), {"padx": (1, 1), "pady": (1, 1)})
+        self.assertEqual(de.zellabstand(0, 3), {"padx": (0, 1), "pady": (1, 1)})
+        self.assertEqual(de.zellabstand(4, 0), {"padx": (1, 1), "pady": (0, 1)})
+        # innen weiter nur rechts/unten - keine doppelten Linien
+        self.assertEqual(de.zellabstand(4, 3), {"padx": (0, 1), "pady": (0, 1)})
+
+
 class TestMailBezug(unittest.TestCase):
     """Peter 05.11.2026: der Bezug zwischen Mail und Anhang bleibt sichtbar, auch über Ordner hinweg."""
     MAIL = ("Musterbank\\20240412_Kontoauszug.pdf",

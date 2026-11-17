@@ -14,7 +14,9 @@ import sys
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "src"))
 
 import tkinter as tk
+from tkinter import messagebox
 import app_paths
+import dienstmodus
 import einzelstart
 import fehlerfaenger
 from config import Config
@@ -32,18 +34,29 @@ def main():
         # gesucht. Das bestimmt aber der Startweg und kann auch C:\Windows\System32 sein (FALLSTRICKE #102).
         os.chdir(app_paths.app_dir())
         # Zwei KID auf derselben Sammlung kämen sich in die Quere (einzelstart.py): Der zweite Doppelklick holt nur das erste nach vorn.
+        dienst = dienstmodus.ist_dienststart(sys.argv)
         if not einzelstart.belege(Config().get("master_folder") or app_paths.app_dir()):
-            einzelstart.hole_nach_vorn(APP_NAME)
+            if dienst:
+                # Kein zweiter Dienst und kein Dienst neben einem offenen KID auf derselben Sammlung
+                root.withdraw()
+                messagebox.showinfo(dienstmodus.TITEL, "KID läuft für diese Sammlung schon - der Dienstmodus "
+                                                       "startet deshalb nicht.")
+            else:
+                einzelstart.hole_nach_vorn(APP_NAME)
             root.destroy()
             return
         fehlerfaenger.absturz_protokoll_starten(app_paths.app_dir())
-        DokumentenVerwaltung(root)
+        if dienst:
+            # Dienstmodus (Etappe 10): ohne Hauptfenster direkt in die Hintergrund-Automatik
+            if not dienstmodus.DienstApp(root).gestartet:
+                return
+        else:
+            DokumentenVerwaltung(root)
     except Exception:
         # Absturz schon beim Aufbau des Hauptfensters: noch kein Logger, keine Konsole
         # (EXE) - Traceback neben die EXE schreiben und den Pfad anzeigen, damit ein
         # Beta-Tester etwas zum Mitschicken hat (fehlerfaenger.py, 13.09.2026).
         import traceback
-        from tkinter import messagebox
         text = traceback.format_exc()
         pfad = fehlerfaenger.startfehler_sichern(text, app_paths.app_dir())
         root.withdraw()

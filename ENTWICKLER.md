@@ -46,6 +46,7 @@ Diese Desktop-Anwendung (basierend auf `Tkinter` und `PyMuPDF`) wurde entwickelt
 ### 🧭 Begleitet erfassen und Vollautomatik
 * **Vollautomatik:** Beschriftet neue Dokumente aus dem Posteingang und legt sie ab, bei Zweifel in `0_Unsicher` statt still in den falschen Ordner.
 * **Begleitet erfassen:** Der Posteingang Dokument für Dokument, KID schlägt vor, der Mensch bestätigt oder korrigiert. Gedacht für eine neue oder große Sammlung.
+* **Dienstmodus:** `python main.py --dienst` (bzw. `DokumentenManager.exe --dienst`) startet ohne Hauptfenster direkt in die Vollautomatik, für einen Rechner ohne Aufsicht. Zu sehen ist nur das Statusfenster; liegt der Posteingang auf einem Netzlaufwerk, zeigt eine Sperrdatei den anderen Rechnern, dass ein Dienst ihn bearbeitet.
 
 ### 📖 Wiki
 * **Nachschlagewerk zur Sammlung:** Einträge für Personen, Firmen, Behörden, Immobilien, Fahrzeuge, Verträge und Versicherungen in frei erweiterbaren Schubladen, mit kurzen Angaben, Verbindungen untereinander und Dokumenten als Beleg.
@@ -63,6 +64,7 @@ Der Code ist streng objektorientiert aufgebaut und trennt GUI, Logik und Dateisy
 
 * `main.py` / `gui.py`: Einstiegspunkt und zentraler Controller der Anwendung.
 * `layout_builder.py`: Ausgelagerter Aufbau der Tkinter-UI-Elemente.
+* `ui_theme.py`: Das helle Design an einer Stelle - Schrift, Farben, ttk-Stile und Options-Datenbank für alle Fenster.
 * `folder_manager.py`: Rekursives Scannen und Aufbau des Verzeichnisbaums.
 * `file_operations.py`: OS-Aufrufe, Drag & Drop Handler und sicheres Verschieben/Löschen.
 * `pdf_handler.py`: Statische Hilfsklasse als Brücke zu `PyMuPDF` (Rendern & Metadaten).
@@ -89,8 +91,8 @@ Der Code ist streng objektorientiert aufgebaut und trennt GUI, Logik und Dateisy
 **Starten der App:**
 
 ```bash
-python main.py
-
+python main.py            # mit Hauptfenster
+python main.py --dienst   # Dienstmodus: nur die Vollautomatik
 ```
 
 *Hinweis: Alle Konfigurationen (`tags.json`, `folder_default.json`, Logfiles) werden automatisch im Hauptverzeichnis der App oder im gewählten Arbeitsordner erstellt.*
@@ -101,11 +103,11 @@ python main.py
 python build_exe.py
 ```
 
-Die EXE liegt danach in `dist/` — und das Skript prüft sie anschließend: jedes App-Modul aus `src/`, jedes Tool aus `src/tools/`, beide Vorlagen und die OCR-Sprachdaten müssen wirklich im Paket stecken (`python build_exe.py --pruefen` prüft eine vorhandene EXE erneut). Schlägt die Prüfung fehl, die EXE NICHT veröffentlichen. `--add-data "src/tools;tools"` ist Pflicht: der Tool-Manager lädt die Plugins zur Laufzeit aus dem Ordner, PyInstaller sieht diese Importe nicht — deshalb sammelt `--collect-submodules tools` zusätzlich alle Tool-Module samt der von ihnen importierten Projektmodule ein (ohne das fehlten in v0.9.3 zwei Tools in der EXE, FALLSTRICKE #39); die beiden `*_default.json` sind die ausgelieferten Vorlagen für Tag-Katalog und Ordnerstruktur (`app_paths.ensure_default_file` legt sie beim ersten Start neben die EXE); `tessdata` bettet die OCR-Sprachdaten ein (Neu-Erfassen, Titel-Aufräumen, Volltext-Stufe "Fortgeschritten" funktionieren so ohne Handarbeit — ein eigener `tessdata`-Ordner neben der EXE hätte Vorrang, siehe `app_paths.tessdata_dir`) Version in `help_window.APP_VERSION` hochziehen (erscheint mit dem Build-Zeitstempel der EXE in der Titelleiste und in der Hilfe), Kurzfassung in [CHANGELOG.md](CHANGELOG.md) ergänzen, Tag `v<Version>` setzen und pushen, dann `python veroeffentlichen.py v<Version> <Notizen.md> "<Titel>"`: Das Skript spiegelt den committeten Stand in den Klon des **öffentlichen** Repos `../Dokumenten-Manager-public` (peterm2024/Dokumenten-Manager), pusht ihn und legt das GitHub-Release mit der EXE dort an. Entwickelt wird in einem privaten Repo; der Spiegel lässt die privaten Arbeitsnotizen weg und bricht ab, sobald eine Datei einen Begriff aus einer privaten Liste echter Namen und Orte enthält (`python veroeffentlichen.py --probe` prüft nur, `--spiegel` spiegelt ohne Release). Im öffentlichen Repo heißt diese Datei `ENTWICKLER.md`, dessen `README.md` ist die Startseite für Nutzer.
+Die EXE liegt danach in `dist/` — und das Skript prüft sie anschließend: jedes App-Modul aus `src/`, jedes Tool aus `src/tools/`, beide Vorlagen und die OCR-Sprachdaten müssen wirklich im Paket stecken (`python build_exe.py --pruefen` prüft eine vorhandene EXE erneut). Schlägt die Prüfung fehl, die EXE NICHT veröffentlichen. `--add-data "src/tools;tools"` ist Pflicht: der Tool-Manager lädt die Plugins zur Laufzeit aus dem Ordner, PyInstaller sieht diese Importe nicht — deshalb sammelt `--collect-submodules tools` zusätzlich alle Tool-Module samt der von ihnen importierten Projektmodule ein (ohne das fehlten in v0.9.3 zwei Tools in der EXE, FALLSTRICKE #39); die beiden `*_default.json` sind die ausgelieferten Vorlagen für Tag-Katalog und Ordnerstruktur (`app_paths.ensure_default_file` legt sie beim ersten Start neben die EXE); `tessdata` bettet die OCR-Sprachdaten ein (Neu-Erfassen, Titel-Aufräumen, Volltext-Stufe "Fortgeschritten" funktionieren so ohne Handarbeit — ein eigener `tessdata`-Ordner neben der EXE hätte Vorrang, siehe `app_paths.tessdata_dir`) Version in `help_window.APP_VERSION` hochziehen (erscheint mit dem Build-Zeitstempel der EXE in der Titelleiste und in der Hilfe), Kurzfassung in [CHANGELOG.md](CHANGELOG.md) ergänzen, Abhängigkeiten mit `python -m pip_audit -r requirements.txt` auf bekannte Sicherheitslücken prüfen, Tag `v<Version>` setzen und pushen, dann `python veroeffentlichen.py v<Version> <Notizen.md> "<Titel>"`: Das Skript spiegelt den committeten Stand in den Klon des **öffentlichen** Repos `../Dokumenten-Manager-public` (peterm2024/Dokumenten-Manager), pusht ihn und legt das GitHub-Release mit der EXE dort an - samt `DokumentenManager.exe.sha256` und der SHA-256-Prüfsumme in den Release-Notizen. Entwickelt wird in einem privaten Repo; der Spiegel lässt die privaten Arbeitsnotizen weg und bricht ab, sobald eine Datei einen Begriff aus einer privaten Liste echter Namen und Orte enthält (`python veroeffentlichen.py --probe` prüft nur, `--spiegel` spiegelt ohne Release). Im öffentlichen Repo heißt diese Datei `ENTWICKLER.md`, dessen `README.md` ist die Startseite für Nutzer.
 
 **Optional — OCR-Titel-Aufräumen** (Tool "Titel-Aufräumen (OCR)"): PyMuPDF bringt die OCR-Engine (Tesseract) bereits mit, es fehlen nur die deutschen Sprachdaten. Einmalig `deu.traineddata` von [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) herunterladen und nach `tessdata/deu.traineddata` legen (Ordner neben `main.py`, nicht Teil des Repos). Ohne diese Datei bleibt das Tool inaktiv, der Rest der App ist unberührt. Die Release-EXE bringt die Sprachdaten bereits mit.
 
-**Optional — KI-Funktionen** (Titel vorschlagen, Ablage-Vorschau, Vollautomatik, Dubletten-Zweitprüfung): benötigen einen [Ollama](https://ollama.com)-Server mit einem Bild-Modell — lokal auf demselben Rechner oder auf einem anderen Gerät im Netzwerk. Server-Adresse und Modellname stehen unter Datei → Einstellungen → KI-Server (Standard `http://localhost:11434`, Modell `qwen3.5:9b`), dort gibt es auch „Verbindung testen". Keine zusätzliche Python-Abhängigkeit (reine Standardbibliothek); ist der Server nicht erreichbar, zeigt der Punkt rechts in der Suchleiste Rot, die KI-Einträge im Menü sind ausgegraut — der Rest der App ist unberührt.
+**Optional — KI-Funktionen** (Titel vorschlagen, Ablage-Vorschau, Vollautomatik): benötigen einen [Ollama](https://ollama.com)-Server mit einem Bild-Modell — lokal auf demselben Rechner oder auf einem anderen Gerät im Netzwerk. Server-Adresse und Modellname stehen unter Datei → Einstellungen → KI-Server (Standard `http://localhost:11434`, Modell `qwen3.5:9b`), dort gibt es auch „Verbindung testen". Keine zusätzliche Python-Abhängigkeit (reine Standardbibliothek); ist der Server nicht erreichbar, zeigt der Punkt rechts in der Suchleiste Rot, die KI-Einträge im Menü sind ausgegraut — der Rest der App ist unberührt.
 
 **KI auf dem eigenen PC (ohne eigenen Server):**
 

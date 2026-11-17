@@ -2,6 +2,18 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.32 — 2026-11-17
+
+- Neues Aussehen: helles, ruhiges Design im Stil von Windows 11 - weißer Fenstergrund passend zur Menüleiste, Bereiche ohne Rahmen mit einheitlichen Abständen, flache Knöpfe und Spaltenköpfe, Windows-11-Schrift, Titelleiste in Fensterfarbe. Die Farben mit Bedeutung (Zeilenstatus, Tags, Suchfeld) bleiben wie gewohnt.
+- Neu: Dienstmodus. `DokumentenManager.exe --dienst` startet ohne Hauptfenster direkt in die Hintergrund-Automatik, für einen Rechner ohne Aufsicht. Nur das Statusfenster ist zu sehen, „Dienst beenden“ fragt nach.
+- Statusfenster der Hintergrund-Automatik: Tageszähler; Vorschaubild, Dateiname und Zielordner werden nach einer einstellbaren Zeit ausgeblendet (im Dienstmodus nach 30 Sekunden, Fenster größer). Einstellungen → Vollautomatik → Statusfenster.
+- Posteingang auf dem Netzlaufwerk: „KID überwacht diesen Posteingang.txt“ zeigt anderen Rechnern, dass ein Dienst den Posteingang bearbeitet; deren Hintergrund-Automatik pausiert so lange. Liegt die Sammlung auf einem Netzlaufwerk, hält jeder Rechner seinen Suchindex lokal.
+- Dubletten verhindern die Ablage nicht mehr (Prüfung samt KI-Zweitprüfung entfernt); nichts wird überschrieben, „Dubletten finden“ bleibt das Werkzeug dafür. Dort wählt jetzt auch ein Rechtsklick das rechte Vergleichsdokument (Linksklick = links).
+- Hintergrund-Automatik liest den Tag-Katalog aus der Datei statt aus dem Hauptfenster (FALLSTRICKE #131).
+- Ordnernamen, die Windows sperrt („NUL“, „Aux.Bank“), bekommen ein „_“.
+- Leitfaden 3b: welche Verbindungen das Programm aufbaut. Releases tragen die SHA-256-Prüfsumme der EXE.
+- Pillow 12.2.0 → 13.0.0 (Sicherheitsupdate).
+
 ## v0.9.31 — 2026-11-16
 
 - Suchleiste kürzer: Statt des Worts „Text:“ steht im leeren Suchfeld grau „Suche…“, und der Reset-Knopf ist ein kleines „✖“ direkt neben dem Suchfeld (Hinweis „Reset“ beim Darüberfahren).

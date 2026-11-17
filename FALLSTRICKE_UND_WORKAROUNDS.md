@@ -1149,3 +1149,25 @@ Bei der Nachprüfung zeigte sich derselbe Effekt auch bei echter Suche: Treffer 
 **Lösung:** Knopf direkt nach dem Suchfeld packen (und auf ein kleines „✖“ mit Hinweis „Reset“ verkleinert); jetzt verlieren zuerst die Datumsfelder ihren Platz. Sichtbar bis 282 px Leistenbreite (T7.35). Die KI-LED ganz rechts wird aus demselben Grund schon immer zuerst gepackt.
 
 **Merksatz:** In einer `pack`-Leiste bestimmt die Pack-Reihenfolge, was bei Platzmangel überlebt: Wichtiges zuerst packen, nicht in der Lesereihenfolge.
+
+## 131. Vollautomatik lief still mit leerem Tag-Katalog
+
+**Problem:** Gefunden beim Durchsehen der Vollautomatik für den Dienstmodus (Etappe 10, 17.11.2026), nicht im Betrieb beobachtet: Der Dienst holte Tags, Kategorien, Synonyme und die Unterscheidungsmerkmale der Dubletten-Prüfung jede Runde aus dem Tag-Baum des Hauptfensters. War das Hauptfenster gerade beschäftigt, lief die Runde mit leerem Katalog weiter - ohne Meldung. Dann fehlten Synonyme, Oberkategorien und - bis die Vollautomatik am 17.11.2026 ihre Dubletten-Prüfung verlor - die Personen- und Adress-Tags, an denen diese zwei Briefe zu verschiedenen Objekten unterschied.
+
+**Ursache:** Den Tag-Baum darf nur der Hauptthread lesen. Der Dienst fragte deshalb über `root.after` an und wartete höchstens `HAUPTTHREAD_TIMEOUT` (5 s); bei Zeitüberschreitung lieferte `_vom_hauptthread` None, und `or []` machte daraus still einen leeren Katalog. Ohne Hauptfenster (Dienstmodus) gäbe es den Baum gar nicht.
+
+**Lösung:** Der Dienst liest den Katalog direkt aus `tags.json` (`tag_katalog`, ohne Tkinter, aus jedem Thread). Die Datei ist aktuell, weil jede Änderung im Tag-Baum sofort gespeichert wird (`tag_editor.save_tags`). Damit beide Wege nie auseinanderlaufen, rechnet auch der TagManager mit `tag_katalog` auf seinem in Knoten umgewandelten Baum. Nur wenn `tags.json` samt Sicherung unlesbar ist, fragt der Dienst wie früher den Baum - mit einer Warnung im Protokoll. Test `test_katalog_kommt_aus_tags_json_auch_wenn_das_hauptfenster_nicht_antwortet` (Rotprobe: ohne Datei-Lesen rot).
+
+**Merksatz:** Ein Hintergrund-Thread, der auf den Hauptthread wartet und bei Zeitüberschreitung mit „leer“ weitermacht, rechnet unbemerkt mit falschen Daten. Was auf der Platte steht, liest er besser selbst.
+
+## 132. Options-Datenbank: `*Foreground` färbte Menü-Hervorhebung und Listenauswahl schwarz
+
+**Problem:** Nach dem hellen Design (Etappe 11, `ui_theme`) war der markierte Eintrag in jedem aufgeklappten Menü fast schwarz hinterlegt (Peter 17.11.2026: „Die Auswahlfarbe Schwarz ist zu intensiv“); ebenso die Auswahl in tk-Listen und Textfeldern.
+
+**Ursache:** `root.option_add("*Foreground", "#1b1b1b")` - ein großer Anfangsbuchstabe im Muster meint die Options-KLASSE, nicht den Namen. Zur Klasse „Foreground“ gehören in Tk auch `activeBackground` der Menüs und `selectBackground` von Listbox und Text (sie sind typischerweise „umgekehrt“ gefärbt); zur Klasse „Background“ gehören `activeForeground` und `selectColor` der Häkchen.
+
+**Lösung:** Alle Muster mit Options-NAMEN (`*Label.background`, `*Entry.foreground`, `*Button.activeBackground`), Menüs gar nicht anfassen - sie bleiben bei den Windows-Farben. Test `test_auswahl_und_hervorhebung_bleiben_systemfarben` (Rotprobe: alte Muster → `#1b1b1b`).
+
+Im selben Zug verworfen (Etappe 11 Schritt 2, Code in `KID-Messungen/verworfen_menueleiste`): eine eigene Menüleiste aus `tk.Menubutton`. (1) Tk postet nur ein Menü, das Kind des Knopfs ist („isn't a descendant“) - lösbar mit `menu clone`, Tk hält Klon und Original synchron. (2) Unter Windows ist ein aufgeklapptes Menü modal (TrackPopupMenu): kein automatisches Umspringen zum Nachbarmenü beim Darüberfahren, und das Aufklappen lässt sich nicht automatisch testen (der Test hängt bis zum Klick). (3) Die echte Windows-Menüleiste lässt sich unter Windows 11 nicht färben - `SetMenuInfo(MIM_BACKGROUND)` wirkt nicht. Das Aufspringen fehlte Peter („fühlt sich komplett ungewohnt an“); nachbauen ginge nur über einen Windows-Nachrichtenhaken.
+
+**Merksatz:** In Tk-Optionsmustern immer Namen (klein) statt Klassen (groß) - eine Klasse trifft mehr Optionen, als ihr Name vermuten lässt. Und die Windows-Menüleiste ist eine Grenze des Designs: weiß, aber mit dem Verhalten, das jeder kennt.

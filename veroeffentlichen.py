@@ -15,7 +15,8 @@ Dieses Skript hält beide zusammen:
    den Inhalt des öffentlichen Klons; dessen README.md (Nutzer-Startseite) bleibt, die Entwickler-README
    heißt dort ENTWICKLER.md.
 2. committet und pusht dort,
-3. legt das GitHub-Release mit dist/DokumentenManager.exe, dem Lizenztext (LICENSE.txt - die AGPL verlangt ihn
+3. legt das GitHub-Release mit dist/DokumentenManager.exe, ihrer SHA-256-Prüfsumme (DokumentenManager.exe.sha256,
+   zusätzlich als Abschnitt in den Notizen, seit 17.11.2026), dem Lizenztext (LICENSE.txt - die AGPL verlangt ihn
    bei jeder Weitergabe, die EXE selbst bringt ihn nicht mit) und den Notizen an. Das „Source code“-Zip,
    das GitHub jedem Release anhängt, enthält damit genau den Quellcode der EXE.
 
@@ -23,6 +24,7 @@ Voraussetzungen: `python build_exe.py` ist gelaufen (dist/DokumentenManager.exe 
 Version und CHANGELOG sind im privaten Repo committet und der Tag ist gesetzt.
 """
 
+import hashlib
 import io
 import os
 import re
@@ -199,6 +201,33 @@ def commit_und_push(nachricht):
     lauf(["git", "push", "-q", "origin", "HEAD"], OEFFENTLICH)
 
 
+def sha256_datei(pfad):
+    """SHA-256 einer Datei als Hex-Text (in Blöcken gelesen, die EXE ist rund 100 MB groß)."""
+    h = hashlib.sha256()
+    with open(pfad, "rb") as f:
+        for block in iter(lambda: f.read(1 << 20), b""):
+            h.update(block)
+    return h.hexdigest()
+
+
+def pruefsummen_datei(pfad, ziel):
+    """
+    Schreibt '<pfad>.sha256' im Format von sha256sum ('<hash> *<name>') nach 'ziel' und gibt den Hash zurück.
+    Analyse der Firmen-KI 17.11.2026: Wer die EXE lädt, soll prüfen können, dass sie unverändert ist.
+    """
+    wert = sha256_datei(pfad)
+    with open(ziel, "w", encoding="ascii", newline="\n") as f:
+        f.write(f"{wert} *{os.path.basename(pfad)}\n")
+    return wert
+
+
+def notizen_mit_pruefsumme(notizen, wert, name):
+    """Release-Notizen mit angehängtem Abschnitt zur Prüfsumme (die Datei des Aufrufers bleibt unverändert)."""
+    return (notizen.rstrip() + "\n\n### Prüfsumme (SHA-256)\n\n"
+            f"`{name}`: `{wert}`\n\n"
+            f"Prüfen in PowerShell: `Get-FileHash {name}` - der angezeigte Wert muss übereinstimmen.\n")
+
+
 def main():
     if not os.path.isdir(os.path.join(OEFFENTLICH, ".git")):
         sys.exit(f"Öffentlicher Klon fehlt: {OEFFENTLICH}  (git clone https://github.com/{REPO}.git)")
@@ -230,7 +259,16 @@ def main():
     print(f"3. GitHub-Release {version} in {REPO}")
     lizenz = os.path.join(os.path.dirname(EXE), "LICENSE.txt")    # .txt: unter Windows per Doppelklick lesbar
     shutil.copyfile(os.path.join(HIER, "LICENSE"), lizenz)
-    lauf(["gh", "release", "create", version, EXE, lizenz, "-R", REPO, "--title", titel, "--notes-file", notizen], HIER)
+    pruefsumme = EXE + ".sha256"
+    wert = pruefsummen_datei(EXE, pruefsumme)
+    print(f"   SHA-256 {os.path.basename(EXE)}: {wert}")
+    with open(notizen, encoding="utf-8") as f:
+        notizen_text = notizen_mit_pruefsumme(f.read(), wert, os.path.basename(EXE))
+    notizen_release = os.path.join(os.path.dirname(EXE), "release_notizen.md")
+    with open(notizen_release, "w", encoding="utf-8") as f:
+        f.write(notizen_text)
+    lauf(["gh", "release", "create", version, EXE, pruefsumme, lizenz, "-R", REPO, "--title", titel,
+          "--notes-file", notizen_release], HIER)
     print("fertig:", f"https://github.com/{REPO}/releases/tag/{version}")
 
 

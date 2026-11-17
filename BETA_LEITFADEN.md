@@ -35,6 +35,29 @@ Wie schnell die KI antwortet, hängt fast nur von der Grafikkarte ab. Richtwerte
 
 Ohne Grafikkarte ist die KI nichts zum Zuschauen, aber die Vollautomatik läuft unbeaufsichtigt - ein Stapel Scans ist dann über Nacht abgelegt. Ohne KI ist das Programm trotzdem vollständig nutzbar; die KI-Einträge im Menü sind dann ausgegraut.
 
+## 3a. Rechner ohne Aufsicht: Dienstmodus
+
+Für einen Rechner, an dem niemand sitzt, etwa einen Scan-Platz im Büro: `DokumentenManager.exe --dienst` startet ohne Hauptfenster direkt in die Hintergrund-Automatik. Auf dem Bildschirm steht nur ihr Statusfenster mit Zustand und Tageszähler („Heute: 12 abgelegt, 2 unsicher“). Ein Dokument ist dort nur 30 Sekunden zu sehen, danach steht an seiner Stelle nur noch „abgelegt“ oder „unsicher“ (einstellbar unter Datei → Einstellungen → Vollautomatik).
+
+1. Das Programm einmal normal starten: Sammlung wählen, KI-Server eintragen, „Verbindung testen“. Liegt die Sammlung auf einem Netzlaufwerk, den Ordner als `\\server\freigabe\…` wählen, nicht über einen Laufwerksbuchstaben - der ist beim automatischen Start oft noch nicht verbunden.
+2. Eine Verknüpfung auf die EXE anlegen und im Feld „Ziel“ hinten ` --dienst` anhängen. Die Verknüpfung in den Autostart-Ordner legen (Windows-Taste + R, `shell:startup`).
+3. In den Energieoptionen Bildschirm-Aus ist erlaubt, aber Energiesparen und Ruhezustand auf „Nie“ stellen. Damit der Dienst nach einem Windows-Update von selbst wiederkommt, meldet sich das Konto am besten automatisch an.
+4. Beenden über „Dienst beenden“ im Statusfenster (mit Rückfrage).
+
+Liegt die Sammlung auf einem Netzlaufwerk, legt der Dienst die Datei „KID überwacht diesen Posteingang.txt“ in den Posteingang. Ein Dokumenten-Manager auf einem anderen Rechner lässt seine Hintergrund-Automatik dann aus und sagt das im Statusfenster. Seinen Suchindex hält jeder Rechner in diesem Fall auf der eigenen Platte. Der KI-Server hat keine Anmeldung: Seinen Port (11434) im Netz nur für die Rechner freigeben, die ihn nutzen.
+
+## 3b. Welche Verbindungen das Programm aufbaut
+
+Das Programm sendet nichts an Cloud-Dienste und hat keine Telemetrie. Es gibt genau drei Verbindungen:
+
+- **KI-Server** (Adresse unter Datei → Einstellungen → KI-Server, Standard `http://localhost:11434`): Für jedes Dokument, das die KI lesen soll, geht ein Bild der ersten Seite dorthin. Liegt der Server auf einem anderen Rechner, läuft dieses Bild über `http://` unverschlüsselt durchs Netz - dann den Port nur für die nutzenden Rechner freigeben oder einen Proxy mit `https://` davorsetzen (die Adresse darf mit `https://` beginnen). Ohne KI-Server bleibt alles lokal, die KI-Einträge sind ausgegraut.
+- **Versionsprüfung** beim Start: fragt die Releases-Seite auf github.com ab, sendet dabei keine Daten über die Sammlung. Ohne Internet schweigt sie. Abschalten unter Datei → Einstellungen → Allgemein → „Beim Programmstart auf eine neue Version prüfen“. Im Dienstmodus läuft sie nie.
+- **Wecken per Netzwerk** (nur wenn unter KI-Server eine MAC-Adresse eingetragen ist): ein Weck-Paket an den KI-Server im eigenen Netz.
+
+Links in der Hilfe öffnen den Browser nur auf Klick. Das Vollautomatik-Protokoll mit Dateinamen und Titeln liegt im Daten-Ordner neben der Sammlung, mit denselben Zugriffsrechten wie die Dokumente.
+
+Die SHA-256-Prüfsumme der EXE steht in jedem Release (Datei `DokumentenManager.exe.sha256` und in den Notizen); prüfen mit `Get-FileHash DokumentenManager.exe` in PowerShell. Wer der fertigen EXE nicht vertrauen will, baut sie aus dem Quellcode selbst (`python build_exe.py`, siehe ENTWICKLER.md).
+
 ## 4. Was wir gerne getestet hätten
 
 - **Ersteinrichtung und erster Eindruck:** Kommst du ohne Erklärung zurecht? Wo hast du gestutzt?

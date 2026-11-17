@@ -11,6 +11,7 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 
 ::: layout_builder
 ::: ui_utils
+::: ui_theme
 ::: suchfeld
 ::: tag_autocomplete
 ::: dokument_eigenschaften
@@ -43,6 +44,7 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 ::: folder_manager
 ::: tag_manager
 ::: tag_editor
+::: tag_katalog
 ::: search_manager
 ::: suchsyntax
 ::: preview_manager
@@ -66,6 +68,8 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 ::: auto_pilot
 ::: personen_namen
 ::: auto_pilot_service
+::: dienstmodus
+::: posteingang_sperre
 ::: begleitet
 ::: ordner_aliase
 ::: ablage_gedaechtnis
@@ -77,7 +81,6 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 
 ::: dubletten
 ::: dubletten_geprueft
-::: dubletten_pruefung
 
 ## Sammlungs-Wiki
 

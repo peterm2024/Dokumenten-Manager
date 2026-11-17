@@ -2,7 +2,14 @@
 import tkinter as tk
 import unittest
 
-from tools.dubletten_finder import SeitenVorschau, lege_vorschauen_nebeneinander
+from tools.dubletten_finder import PARTNER_KLICKS, SeitenVorschau, lege_vorschauen_nebeneinander
+
+
+class TestRechtesDokument(unittest.TestCase):
+    def test_rechtsklick_und_shift_klick_waehlen_rechts(self):
+        # Peter 17.11.2026: „LK = linkes Dokument, RK = rechtes Dokument“ - Shift+Klick bleibt zusätzlich
+        self.assertIn("<Button-3>", PARTNER_KLICKS)
+        self.assertIn("<Shift-Button-1>", PARTNER_KLICKS)
 
 
 class TestVorschauenGleichBreit(unittest.TestCase):

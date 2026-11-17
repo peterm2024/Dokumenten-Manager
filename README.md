@@ -10,7 +10,7 @@ Ein Programm für Windows, das PDF-Dokumente (Rechnungen, Verträge, Bescheide, 
 
 ## Download
 
-Die fertige Windows-Version liegt unter [Releases](https://github.com/peterm2024/Dokumenten-Manager/releases): `DokumentenManager.exe` in einen eigenen Ordner legen und starten, keine Installation nötig. Windows SmartScreen fragt beim ersten Start nach („Weitere Informationen" → „Trotzdem ausführen"), weil die Datei nicht signiert ist.
+Die fertige Windows-Version liegt unter [Releases](https://github.com/peterm2024/Dokumenten-Manager/releases): `DokumentenManager.exe` in einen eigenen Ordner legen und starten, keine Installation nötig. Windows SmartScreen fragt beim ersten Start nach („Weitere Informationen" → „Trotzdem ausführen"), weil die Datei nicht signiert ist. Wer sichergehen will, dass die Datei unverändert angekommen ist, vergleicht ihre SHA-256-Prüfsumme mit der Angabe beim Release (`DokumentenManager.exe.sha256`): in PowerShell `Get-FileHash DokumentenManager.exe`.
 
 Neue Versionen meldet das Programm beim Start von selbst (Hilfe → „Auf neue Version prüfen…"). Zum Aktualisieren die neue EXE einfach über die alte kopieren; die Einstellungen bleiben erhalten.
 
@@ -20,12 +20,12 @@ Das Programm ist in der Beta-Phase. Wer mittestet, findet in [BETA_LEITFADEN.md]
 
 ## Was das Programm kann
 
-- **Ordner und Dokumente:** Ordnerbaum links, Dokumentenliste in der Mitte, Seitenvorschau rechts. Dateien per Maus verschieben, umbenennen, löschen (Papierkorb der Sammlung). Neue Dateien im Ordner werden von selbst bemerkt.
+- **Ordner und Dokumente:** Ordnerbaum links, Dokumentenliste in der Mitte, Seitenvorschau rechts, in einem hellen, ruhigen Design im Stil von Windows 11. Dateien per Maus verschieben, umbenennen, löschen (Papierkorb der Sammlung). Neue Dateien im Ordner werden von selbst bemerkt.
 - **Beschriften:** Titel, Tags und Datum je Dokument; Tag-Katalog mit Ober- und Unterbegriffen; Auto-Save.
 - **Suchen:** Text, Tags, Datum („2021" oder „07.2021" reicht), auf Wunsch auch im Inhalt gescannter Seiten (OCR). Tippfehler werden verziehen, ein Wort in Anführungszeichen findet nur genau dieses Wort. Treffer werden in der Vorschau markiert.
 - **Aufräumen:** Dubletten finden (doppelt gescannt oder kopiert), Dateinamen vereinheitlichen, PDF-Inspektor.
 - **Mails gezielt holen:** Aus Thunderbird, klassischem Outlook (.pst/.ost), mbox- oder .eml-Dateien, auch aus einem Ordner voller Jahres-Archive. Nach dem Einlesen suchst du wie im Hauptfenster, etwa „Stadtwerke 2024“, und hakst an, was in die Sammlung soll - in den Posteingang oder direkt in einen Ordner. Übernommene Mails werden PDFs mit der Original-Mail darin, Anhänge behalten den Bezug zu ihrer Mail. KID liest nur und verändert an den Mail-Dateien nichts. Die Suche nach den Mail-Programmen ist neu und noch wenig erprobt.
-- **KI (optional):** Titel vorschlagen, Ablage-Vorschau, und eine Vollautomatik, die neue Scans aus dem Posteingang beschriftet und einsortiert - gedacht für Angehörige, die nur noch den Scanner bedienen. „Begleitet erfassen“ geht den Posteingang Dokument für Dokument mit dir durch, gedacht für eine neue oder große Sammlung.
+- **KI (optional):** Titel vorschlagen, Ablage-Vorschau, und eine Vollautomatik, die neue Scans aus dem Posteingang beschriftet und einsortiert - gedacht für Angehörige, die nur noch den Scanner bedienen. „Begleitet erfassen“ geht den Posteingang Dokument für Dokument mit dir durch, gedacht für eine neue oder große Sammlung. Neu ist der Dienstmodus (`DokumentenManager.exe --dienst`): ohne Hauptfenster, nur die Vollautomatik mit einem kleinen Statusfenster, für einen Rechner, der unbeaufsichtigt den Posteingang abarbeitet (Einrichtung im [BETA_LEITFADEN.md](BETA_LEITFADEN.md), Abschnitt 3a).
 - **Wiki (neu aufgebaut):** Ein Nachschlagewerk zu Personen, Firmen, Immobilien, Verträgen und mehr, in Schubladen, die du selbst anlegst. Per Rechtsklick auf ein Dokument listet die KI auf, wer und was darin vorkommt, jede Angabe mit Zitat; übernommen wird nur, was du anhakst.
 
 ## KI: Was man braucht

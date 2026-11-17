@@ -164,6 +164,16 @@ class TestKernnameUndBuchstabengruppe(unittest.TestCase):
         self.assertEqual(auto_pilot.bereinige_ordnername("Mustermann, Max (Kaminkehrer) Musterstadt-Nord"),
                          "Mustermann, Max (Kaminkehrer)")
 
+    def test_reservierter_windows_name_wird_entschaerft(self):
+        # Analyse der Firmen-KI 17.11.2026: Einen Ordner "NUL" oder "Aux.Bank" kann Windows nicht anlegen
+        # (Gerätename vor dem ersten Punkt) - das Dokument bliebe bei jeder Runde im Posteingang hängen
+        for roh, erwartet in (("NUL", "NUL_"), ("con", "Con_"), ("Aux.Bank", "Aux_.Bank"),
+                              ("LPT1", "LPT1_"), ("com9 ", "Com9_")):
+            self.assertEqual(auto_pilot.bereinige_ordnername(roh), erwartet, roh)
+        # Ähnliche, aber erlaubte Namen bleiben unverändert
+        for name in ("Nullmeier", "Console GmbH", "COM10", "Aux Bank", "Lpt"):
+            self.assertEqual(auto_pilot.bereinige_ordnername(name), name)
+
     def test_ordnername_passt_zum_absender(self):
         self.assertTrue(auto_pilot.ordnername_passt_zum_absender("Carius, Dr. Emil (Zahnarzt)", "Dr. Emil Carius Dr. Maximilian Carius"))
         self.assertTrue(auto_pilot.ordnername_passt_zum_absender("Gentilia", "Gentilia Deutschland Versicherung AG"))

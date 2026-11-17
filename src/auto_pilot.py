@@ -41,6 +41,9 @@ SAMMEL_ORDNER = "Einzelne Mails"
 
 # Windows-verbotene Dateinamen-Zeichen (gleiche Menge wie file_operations.rename_file)
 _VERBOTENE_ZEICHEN = re.compile(r'[\\/:*?"<>|]')
+# Gerätenamen, die Windows als Datei-/Ordnernamen ablehnt - maßgeblich ist der Teil vor dem ersten Punkt
+# ("Aux.Bank" ist ebenso gesperrt). Analyse der Firmen-KI 17.11.2026.
+_RESERVIERTE_NAMEN = re.compile(r"^(con|prn|aux|nul|com[1-9]|lpt[1-9])$", re.IGNORECASE)
 _DATUM_FORMAT = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 # Schreibweisen, die KI und Nutzer trotz "JJJJ-MM-TT"-Vorgabe liefern (Praxistest 30.08.2026:
 # '20.07.2026' von der KI -> Zeile unsicher, und die Nutzer-Korrektur lehnte dieselbe deutsche
@@ -173,6 +176,14 @@ def bereinige_ordnername(name):
         name = " ".join(woerter).strip(" ,.(-")
     if name and name[0].islower():
         name = name[0].upper() + name[1:]
+    return _ohne_geraetenamen(name)
+
+
+def _ohne_geraetenamen(name):
+    """Hängt an einen Windows-Gerätenamen ('NUL', 'Aux.Bank') ein '_' an, damit sich der Ordner anlegen lässt."""
+    stamm, punkt, rest = name.partition(".")
+    if _RESERVIERTE_NAMEN.match(stamm.rstrip()):
+        return f"{stamm.rstrip()}_{punkt}{rest}"
     return name
 
 
@@ -1813,10 +1824,6 @@ def protokolliere_ergebnis(entscheidung, ergebnis, master_folder, logger=None):
             # Die Freigabe war eine bewusste Nutzer-Entscheidung - das Angehörigen-
             # Protokoll soll zeigen, worüber dabei hinweggegangen wurde.
             zusatz = f"  (manuell freigegeben trotz: {'; '.join(entscheidung['probleme'])})"
-        if entscheidung.get("dubletten_zweitpruefung"):
-            # Gleiches Prinzip für die KI-Zweitprüfung: falls sie sich doch irrte,
-            # ist nachvollziehbar, warum trotz Verdacht abgelegt wurde.
-            zusatz += f"  ({entscheidung['dubletten_zweitpruefung']})"
         protokolliere(master_folder, f"abgelegt  {name}  ->  {ziel_rel}{zusatz}", logger)
     else:
         grund = "; ".join(entscheidung["probleme"])
@@ -1916,23 +1923,6 @@ def fuehre_entscheidung_aus(entscheidung, master_folder, verschieben, still=Fals
         return {"erfolg": True, "neuer_pfad": ziel, "fehler": None}
     except Exception as e:
         return {"erfolg": False, "neuer_pfad": None, "fehler": str(e)}
-
-
-def pruefe_dublette_per_ki(pdf_neu, pdf_alt, base_url, model):
-    """
-    KI-Zweitprüfung eines Dubletten-Verdachts (Nutzer-Entscheidung 06.09.2026): rendert
-    Seite 1 beider Dokumente und lässt das Vision-Modell die konkreten Angaben
-    (Rechnungsnummer, Datum, Beträge) vergleichen - genau das, was die deterministische
-    Text-/Bild-Ähnlichkeit nicht kann. Liefert das Antwort-Dict von
-    ollama_client.pruefe_dublette oder None, wenn eine Seite nicht darstellbar ist.
-    Wirft Verbindungs-/Server-Fehler weiter; was mit der Antwort passiert, entscheidet
-    dubletten_pruefung.pruefe_entscheidung (nur ein klares 'nein' zählt).
-    """
-    bild_neu = PDFHandler.render_page_png(pdf_neu)
-    bild_alt = PDFHandler.render_page_png(pdf_alt)
-    if bild_neu is None or bild_alt is None:
-        return None
-    return ollama_client.pruefe_dublette(bild_neu, bild_alt, base_url=base_url, model=model)
 
 
 def analysiere_dokument(pdf_path, known_tags, vorhandene_ordner, base_url, model, vocabulary=None, aliase=None,

@@ -1126,7 +1126,8 @@ class PDFHandler:
                 page = doc.load_page(page_number)
                 pix = page.get_pixmap(matrix=fitz.Matrix(0.1, 0.1), colorspace=fitz.csGRAY)
                 img = Image.frombytes("L", [pix.width, pix.height], pix.samples).resize((9, 8))
-            pixel = list(img.getdata())
+            # tobytes statt getdata: getdata fällt mit Pillow 14 weg; bei Graustufen ("L") dieselben Werte je Pixel
+            pixel = list(img.tobytes())
             wert = 0
             for zeile in range(8):
                 for spalte in range(8):

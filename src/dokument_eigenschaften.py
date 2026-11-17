@@ -98,6 +98,16 @@ ORDNER_ORIGINAL_MAILS = "KID-Original-Mails"
 _aufraeumen_vorgemerkt = False
 
 
+def zellabstand(zeile, spalte):
+    """
+    grid-Abstände einer Tabellenzelle: Die Gitterlinien sind der Tabellengrund (FARBE_LINIE), der zwischen den
+    Zellen durchscheint. Jede Zelle lässt rechts und unten 1 px frei; die erste Spalte zusätzlich links, die erste
+    Zeile oben - so ist das Gitter rundum geschlossen, ohne doppelte Linien. Die Außenkante links/oben kam früher
+    vom Bereichsrahmen, der seit dem weißen Design fehlt (Peter 17.11.2026).
+    """
+    return {"padx": (1 if spalte == 0 else 0, 1), "pady": (1 if zeile == 0 else 0, 1)}
+
+
 def formatiere_pdf_datum(text):
     """PDF-Datumsform 'D:20240220143300+01'00'' -> '20.02.2024 14:33'; alles andere unverändert."""
     text = (text or "").strip()
@@ -575,25 +585,26 @@ class EigenschaftenPanel:
         for f in self._fueller:
             f.destroy()
         self._fueller = []
-        pad = {"padx": (0, 1), "pady": (0, 1)}
         r = 0
         for bez, widget in self._feste:
-            self._label(bez).grid(row=r, column=0, sticky="nsew", **pad)
+            self._label(bez).grid(row=r, column=0, sticky="nsew", **zellabstand(r, 0))
             widget.grid(row=r, column=1, columnspan=2 * PAARE_JE_ZEILE - 1, sticky="ew",
-                        ipady=0 if isinstance(widget, tk.Text) else self._innen, **pad)
+                        ipady=0 if isinstance(widget, tk.Text) else self._innen, **zellabstand(r, 1))
             r += 1
         for zeile in packe_zeilen(self.sichtbare_schluessel(), breiten=self._aufteilung["breiten"]):
             spalte = 0
             for schluessel, paare in zeile:
-                self._label(FELDER[schluessel][0]).grid(row=r, column=spalte, sticky="nsew", **pad)
+                self._label(FELDER[schluessel][0]).grid(row=r, column=spalte, sticky="nsew",
+                                                        **zellabstand(r, spalte))
                 widget = self._eingabe.get(schluessel) or self.zellen[schluessel].w
                 widget.grid(row=r, column=spalte + 1, columnspan=2 * paare - 1, sticky="ew",
-                            ipady=self._innen, **pad)
+                            ipady=self._innen, **zellabstand(r, spalte + 1))
                 spalte += 2 * paare
             if spalte < 2 * PAARE_JE_ZEILE:
                 # Restzeile grau auffüllen, damit das Gitter geschlossen aussieht
                 f = tk.Frame(self.tabelle, bg=FARBE_GRAU)
-                f.grid(row=r, column=spalte, columnspan=2 * PAARE_JE_ZEILE - spalte, sticky="nsew", **pad)
+                f.grid(row=r, column=spalte, columnspan=2 * PAARE_JE_ZEILE - spalte, sticky="nsew",
+                       **zellabstand(r, spalte))
                 self._fueller.append(f)
             r += 1
         try:

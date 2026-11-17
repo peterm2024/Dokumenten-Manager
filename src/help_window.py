@@ -9,7 +9,7 @@ import menue_hilfe
 
 APP_NAME = "Dokumenten-Manager (KI Edition)"
 # Release-Version (Git-Tag "v<Version>", GitHub-Release mit der gebauten EXE, siehe README "Release bauen")
-APP_VERSION = "0.9.31"
+APP_VERSION = "0.9.32"
 
 
 def build_stempel():

@@ -8,6 +8,7 @@ muss (ruckelt es, ist es lesbar, fühlt es sich richtig an).
     python fernsteuerung.py start                 App starten und auf Befehle warten
     python fernsteuerung.py start schrift125      dasselbe, simuliert 125 % Skalierung + Textgröße
     python fernsteuerung.py start vollautomatik   dasselbe, Vollautomatik bleibt an (Betatest: Neustart im Betrieb)
+    python fernsteuerung.py start dienst          Dienstmodus: ohne Hauptfenster, nur die Hintergrund-Automatik
     python fernsteuerung.py hinweis "Text"        Hinweisfenster: Peter bestätigt mit „Los"
     python fernsteuerung.py fertig ["Text"]       Steuerung zurückgeben
     python fernsteuerung.py frage "Text" Ja Nein  Frage im Fenster, wartet auf die Antwort
@@ -603,7 +604,7 @@ def einstellungen_ableiten(echt, kopie, vollautomatik=False):
     return einstellungen
 
 
-def _starte(token, grosse_schrift=False, vollautomatik=False):
+def _starte(token, grosse_schrift=False, vollautomatik=False, dienst=False):
     """Arbeitsordner mit Einstellungs-KOPIE vorbereiten, App starten, Befehls-Server öffnen."""
     # Dieselbe Sammlungssperre wie main.py (einzelstart.py), VOR allem anderen: Beim Release-Check v0.9.26 liefen kurz
     # Peters EXE und das ferngesteuerte KID zugleich auf KID-Test, weil hier `gui` direkt startet.
@@ -636,7 +637,16 @@ def _starte(token, grosse_schrift=False, vollautomatik=False):
     _fokus_nicht_klauen(root, vorher)
     if grosse_schrift:
         simuliere_grosse_schrift(root)
-    app = gui.DokumentenVerwaltung(root)
+    if dienst:
+        # Dienstmodus (Etappe 10): ohne Hauptfenster, nur die Hintergrund-Automatik - mit derselben Einstellungs-KOPIE,
+        # also nur auf KID-Test (Prüfung direkt danach)
+        import dienstmodus
+        app = dienstmodus.DienstApp(root)
+        if not app.gestartet:
+            sys.exit("ABBRUCH: Dienstmodus nicht gestartet (keine Sammlung, oder ein anderes KID überwacht den "
+                     "Posteingang - siehe Meldung).")
+    else:
+        app = gui.DokumentenVerwaltung(root)
     if not ist_testsammlung(getattr(app, "master_folder", "")):
         root.destroy()
         sys.exit(f"ABBRUCH: Hauptordner ist nicht {TESTORDNER} - Fernsteuerung nur mit der Test-Sammlung.")
@@ -688,7 +698,7 @@ if __name__ == "__main__":
         sys.exit(__doc__)
     if sys.argv[1] == "start":
         _starte(secrets.token_hex(16), grosse_schrift="schrift125" in sys.argv[2:],
-                vollautomatik="vollautomatik" in sys.argv[2:])
+                vollautomatik="vollautomatik" in sys.argv[2:], dienst="dienst" in sys.argv[2:])
     else:
         if hasattr(sys.stdout, "reconfigure"):
             sys.stdout.reconfigure(encoding="utf-8")

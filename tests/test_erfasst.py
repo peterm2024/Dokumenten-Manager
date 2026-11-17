@@ -15,7 +15,6 @@ from unittest.mock import patch
 import fitz
 
 import auto_pilot
-import dubletten_pruefung
 import index_manager
 import mail_import
 import scan_date
@@ -136,50 +135,6 @@ class TestSpalte(unittest.TestCase):
         self.assertIn("erfasst", layout_builder.STANDARD_BREITEN)
         self.assertIn("erfasst", layout_builder.MINDEST_BREITEN)
         self.assertEqual(SettingsEditorWindow.COLUMN_LABELS["erfasst"], "Erfasst")
-
-
-class TestMailsKeineDubletten(unittest.TestCase):
-    def setUp(self):
-        self.master = tempfile.mkdtemp()
-        self.addCleanup(shutil.rmtree, self.master, True)
-        self.ziel = os.path.join(self.master, "Ordner")
-        self.eingang = os.path.join(self.master, "0_Posteingang")
-        os.makedirs(self.ziel)
-        os.makedirs(self.eingang)
-        self.journal = mail_import.Journal(self.master)
-        self.journal.eigene = ["max@example.org"]
-
-    def mail_pdf(self, ordner, mid, datum):
-        quelle = os.path.join(self.master, f"{mid}.eml")
-        with open(quelle, "wb") as f:
-            f.write(baue(mid=f"<{mid}@x>", datum=datetime.datetime(datum, 1, 15, 9, tzinfo=datetime.timezone.utc),
-                         text=LANG))
-        b = mail_import.lies_quelle(quelle, self.journal)
-        b.eintraege[0].ergebnis = mail_import.UEBERNEHMEN
-        mail_import.importiere(b, self.journal, ordner)
-        return os.path.join(ordner, self.journal.importiert[b.eintraege[0].schluessel]["dateien"][0])
-
-    def test_zwei_mails_gleichen_textes_sind_keine_dublette(self):
-        # T20.3: 12 von 28 Mails landeten als „vermutlich Dublette“ in 0_Unsicher, trotz eigener Message-ID
-        self.mail_pdf(self.ziel, "a", 2023)
-        neu = self.mail_pdf(self.eingang, "b", 2024)
-        self.assertIsNone(dubletten_pruefung.finde_dublette(neu, self.ziel, datum="2024-01-15"))
-
-    def test_mail_und_scan_werden_weiter_verglichen(self):
-        alt = self.mail_pdf(self.ziel, "a", 2024)
-        kopie = os.path.join(self.eingang, "scan.pdf")
-        with fitz.open(alt) as doc:
-            doc.set_metadata({"title": "Scan"})
-            doc.save(kopie)
-        self.assertIsNotNone(dubletten_pruefung.finde_dublette(kopie, self.ziel))
-
-    def test_anhaenge_werden_weiter_verglichen(self):
-        # dieselbe Rechnung als Anhang zweier Mails IST eine Dublette
-        daten = pdf_bytes(LANG)
-        a, b = os.path.join(self.ziel, "a.pdf"), os.path.join(self.eingang, "b.pdf")
-        PDFHandler.schreibe_anhang_pdf(a, daten, {"KID_MailID": "mid:1@x"})
-        PDFHandler.schreibe_anhang_pdf(b, daten, {"KID_MailID": "mid:2@x"})
-        self.assertIsNotNone(dubletten_pruefung.finde_dublette(b, self.ziel))
 
 
 class TestAnhangDatum(unittest.TestCase):

@@ -1,6 +1,7 @@
 import itertools
 import os
 import re
+import shutil
 import sqlite3
 from collections import Counter
 
@@ -111,6 +112,41 @@ def als_listendatum(datum):
         return f"{d}.{m}.{y}", f"{y}{m}{d}", int(y)
     except (AttributeError, ValueError):
         return None
+
+
+def uebernimm_geteilten_index(master, ziel, logger=None):
+    """
+    Grundstock für einen lokalen Index (Sammlung auf dem Netzlaufwerk, app_paths.index_path): eine Kopie des
+    gemeinsamen Index aus dem Daten-Ordner, falls es ihn gibt - sonst müsste dieser Rechner jedes PDF neu lesen. Erst als
+    Temp-Datei, dann `PRAGMA quick_check`: Eine Kopie, die gerade mitten im Schreiben eines anderen Rechners entstand und
+    nicht stimmt, wird verworfen, der Index baut sich dann eben neu auf. :return: True, wenn übernommen.
+    """
+    quelle = app_paths.geteilter_index_path(master)
+    if os.path.normcase(os.path.abspath(quelle)) == os.path.normcase(os.path.abspath(ziel)) or not os.path.isfile(quelle):
+        return False
+    temp = ziel + ".uebernahme"
+    try:
+        os.makedirs(os.path.dirname(ziel), exist_ok=True)
+        shutil.copyfile(quelle, temp)
+        con = sqlite3.connect(temp)
+        try:
+            ok = con.execute("PRAGMA quick_check").fetchone()[0] == "ok"
+        finally:
+            con.close()
+        if not ok:
+            raise sqlite3.DatabaseError("quick_check meldet Fehler")
+        os.replace(temp, ziel)
+        if logger is not None:
+            logger.info("Suchindex: Sammlung auf dem Netzlaufwerk - lokaler Index aus dem gemeinsamen übernommen.")
+        return True
+    except (OSError, sqlite3.Error) as e:
+        if logger is not None:
+            logger.warning(f"Suchindex: gemeinsamen Index nicht übernommen ({e}) - der lokale baut sich neu auf.")
+        try:
+            os.remove(temp)
+        except OSError:
+            pass
+        return False
 
 
 class IndexManager:
@@ -257,13 +293,21 @@ class IndexManager:
         self._migrate(con)
         return con
 
+    def _index_pfad(self, master):
+        """app_paths.index_path - beim ersten Zugriff auf einen lokalen Index (Sammlung auf dem Netzlaufwerk) mit einer
+        Kopie des gemeinsamen als Grundstock (uebernimm_geteilten_index)."""
+        pfad = app_paths.index_path(master)
+        if not os.path.exists(pfad):
+            uebernimm_geteilten_index(master, pfad, getattr(self.app, "logger", None))
+        return pfad
+
     def _connect(self):
         """Öffnet (lazy, gecacht) die Index-Datenbank der aktuellen Sammlung für den aufrufenden Thread; wechselt automatisch mit, wenn der Hauptordner gewechselt wurde. NUR für Aufrufe aus dem Haupt-UI-Thread gedacht - sqlite3-Connections sind nicht threadübergreifend nutzbar."""
         master = getattr(self.app, 'master_folder', None)
         if not master or not os.path.isdir(master):
             return None
 
-        path = app_paths.index_path(master)
+        path = self._index_pfad(master)
         if self._con is not None and self._con_path == path:
             return self._con
 
@@ -402,7 +446,7 @@ class IndexManager:
         master = getattr(self.app, "master_folder", None)
         if not master or not os.path.isdir(master):
             return []
-        con = self._open_connection(app_paths.index_path(master))
+        con = self._open_connection(self._index_pfad(master))
         try:
             return [(d["rel_path"], d["absender"]) for d in self._abgleich(con, os.path.abspath(master))
                     if d["absender"]]
@@ -419,7 +463,7 @@ class IndexManager:
         master = getattr(self.app, "master_folder", None)
         if not master or not os.path.isdir(master):
             return []
-        con = self._open_connection(app_paths.index_path(master))
+        con = self._open_connection(self._index_pfad(master))
         try:
             self._abgleich(con, os.path.abspath(master))
             self._ensure_fulltext_baseline(con, os.path.abspath(master))
@@ -447,7 +491,7 @@ class IndexManager:
         master = os.path.abspath(master)
         im_papierkorb = eigener_rel_path.startswith("..")     # dort liegt nichts im Index, das wäre nie „frisch“
 
-        con = self._open_connection(app_paths.index_path(master))
+        con = self._open_connection(self._index_pfad(master))
         try:
             def frage():
                 return [r[0] for r in con.execute("SELECT rel_path FROM files WHERE mail_id = ?", (mail_id,))]
@@ -467,7 +511,7 @@ class IndexManager:
         master = getattr(self.app, "master_folder", None)
         if not kid_id or not master or not os.path.isdir(master):
             return None
-        con = self._open_connection(app_paths.index_path(master))
+        con = self._open_connection(self._index_pfad(master))
         try:
             zeile = con.execute("SELECT rel_path FROM files WHERE kid_id = ? LIMIT 1", (kid_id,)).fetchone()
         finally:
@@ -486,7 +530,7 @@ class IndexManager:
         master = getattr(self.app, "master_folder", None)
         if not master or not os.path.isdir(master):
             return "", ""
-        con = self._open_connection(app_paths.index_path(master))
+        con = self._open_connection(self._index_pfad(master))
         try:
             frage = "SELECT text, text_ocr, text_ai FROM fulltext WHERE rel_path = ?"
             zeile = con.execute(frage, (rel_path,)).fetchone()
@@ -571,7 +615,7 @@ class IndexManager:
         if not master or not os.path.isdir(master):
             return Counter()
         try:
-            con = self._open_connection(app_paths.index_path(master))
+            con = self._open_connection(self._index_pfad(master))
             try:
                 return self._load_vocabulary(con)
             finally:
@@ -775,7 +819,7 @@ class IndexManager:
             raise RuntimeError("Kein gültiger Hauptordner für den Index")
 
         master = os.path.abspath(master_folder)
-        con = self._open_connection(app_paths.index_path(master))
+        con = self._open_connection(self._index_pfad(master))
         try:
             self._ensure_fulltext_baseline(con, master)
 
@@ -830,7 +874,7 @@ class IndexManager:
             raise RuntimeError("Kein gültiger Hauptordner für den Index")
 
         master = os.path.abspath(master_folder)
-        con = self._open_connection(app_paths.index_path(master))
+        con = self._open_connection(self._index_pfad(master))
         try:
             self._ensure_fulltext_baseline(con, master)
 
@@ -881,7 +925,7 @@ class IndexManager:
             raise RuntimeError("Kein gültiger Hauptordner für den Index")
 
         master = os.path.abspath(master_folder)
-        con = self._open_connection(app_paths.index_path(master))
+        con = self._open_connection(self._index_pfad(master))
         try:
             self._ensure_fulltext_baseline(con, master)
 

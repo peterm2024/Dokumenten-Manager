@@ -456,10 +456,14 @@ class TestMerkmaleFuerDubletten(unittest.TestCase):
     """
 
     def _manager(self, kategorien_mit_tags):
+        """Tag-Baum mit je einer grauen Kategorie und ihren Tags (seit Etappe 10 rechnet tag_katalog auf dem Baum)."""
         app = MagicMock()
-        manager = TagManager(app)
-        manager.tags_in_kategorie = lambda name: kategorien_mit_tags.get(name, [])
-        return manager
+        baum = app.tree_tags = _FakeTagTree()
+        for name, tags in kategorien_mit_tags.items():
+            kategorie = baum.insert("", "end", text=name, tags=(TagManager.TAG_BUNDLE, TagManager.TAG_STRUCTURAL))
+            for tag in tags:
+                baum.insert(kategorie, "end", text=tag, tags=(TagManager.TAG_BUNDLE,))
+        return TagManager(app)
 
     def test_findet_die_kategorie_unter_ihrem_variantennamen(self):
         manager = self._manager({"Personen": ["Hermann Mustermann"],
