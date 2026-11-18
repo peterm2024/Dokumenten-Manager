@@ -63,6 +63,15 @@ class TestWendeAn(unittest.TestCase):
         self.assertEqual(s.lookup("Danger.TButton", "foreground"), ui_theme.FARBEN["gefahr"])
         self.assertEqual(s.lookup("Accent.TButton", "background"), ui_theme.FARBEN["akzent"])
 
+    def test_auswahlfeld_readonly_bleibt_hell(self):
+        # Peter 18.11.2026: „Mail-Programm“ in „Mails importieren“ war mit Fokus dunkelblau (clam: #4a6984)
+        s = ttk.Style(self.root)
+        f = ui_theme.FARBEN
+        self.assertEqual(s.lookup("TCombobox", "fieldbackground", ("readonly", "focus")), f["flaeche"])
+        self.assertEqual(s.lookup("TCombobox", "fieldbackground", ("readonly",)), f["flaeche"])
+        self.assertEqual(s.lookup("TCombobox", "foreground", ("readonly", "focus")), f["text"])
+        self.assertEqual(s.lookup("TCombobox", "bordercolor", ("focus",)), f["akzent"])
+
     def test_theme_clam_und_zeilenhoehe(self):
         s = ttk.Style(self.root)
         self.assertEqual(s.theme_use(), "clam")

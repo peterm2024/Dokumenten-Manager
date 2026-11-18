@@ -4,6 +4,7 @@ from tkinter import ttk, messagebox
 from pdf_handler import PDFHandler
 from tools.base_tool import BaseTool, ToolContext
 from ui_utils import UIUtils
+import ui_theme
 
 try:
     import fitz  # PyMuPDF
@@ -149,7 +150,7 @@ class PDFEditorWindow(tk.Toplevel):
         self.btn_save.pack(fill=tk.X, pady=(10, 2))
 
         # Rechts: Vorschau über die volle Höhe, Seite wird eingepasst (Fit-to-Window)
-        self.preview = tk.Canvas(main, bg="#e0e0e0", highlightthickness=1, highlightbackground="#999999")
+        self.preview = tk.Canvas(main, bg=ui_theme.FARBEN["vorschau"], highlightthickness=0)   # wie die Vorschau im Hauptfenster
         self.preview.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         # Debounce statt Direkt-Rendern bei jedem Resize-Pixel (siehe FALLSTRICKE #12)
         self.preview.bind("<Configure>", self._on_preview_resize)

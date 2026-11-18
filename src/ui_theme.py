@@ -152,6 +152,12 @@ def _ttk_stile(root):
                     lightcolor=f["flaeche"], darkcolor=f["flaeche"], padding=4, arrowcolor=f["leise"],
                     background=f["knopf"])
         s.map(w, bordercolor=[("focus", f["akzent"])], lightcolor=[("focus", f["akzent"])])
+    # Auswahlfeld zum Nur-Auswählen (readonly): clam füllt es mit Fokus dunkelblau, ohne grau (Peter 18.11.2026,
+    # „Mails importieren“ → Mail-Programm). Hell wie ein Eingabefeld, den Fokus zeigt der blaue Rand.
+    s.map("TCombobox", fieldbackground=[("readonly", "focus", f["flaeche"]), ("readonly", f["flaeche"])],
+          foreground=[("readonly", "focus", f["text"])],
+          selectbackground=[("readonly", "focus", f["flaeche"])], selectforeground=[("readonly", "focus", f["text"])],
+          bordercolor=[("focus", f["akzent"])], lightcolor=[("focus", f["akzent"])])
     s.configure("TScrollbar", background=f["balken"], troughcolor=f["fenster"], bordercolor=f["fenster"],
                 lightcolor=f["balken"], darkcolor=f["balken"], arrowcolor=f["leise"], gripcount=0, arrowsize=12,
                 relief="flat")

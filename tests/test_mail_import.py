@@ -546,6 +546,32 @@ class TestMailImport(_Basis):
         self.assertEqual(z["Vorfilter: Spam- oder Papierkorb-Ordner"], 1)
         self.assertEqual((z["aus"], z["unlesbar"]), (1, 1))
 
+    def test_zeitraum_laesst_mails_schon_beim_einlesen_aus(self):
+        # Peter 18.11.2026: der Zeitraum im ersten Reiter soll die Zahl der eingelesenen Mails senken - Mails davor
+        # kommen nicht in den Bestand, ihr Text wird also auch nicht nachgelesen; ohne Datum bleibt eine Mail drin
+        alt = datetime.datetime(2001, 1, 1, tzinfo=datetime.timezone.utc)
+        self.eml("alt.eml", baue(mid="<alt@x>", datum=alt))
+        self.eml("neu.eml", baue(mid="<neu@x>"))
+        self.eml("ohne.eml", baue(mid="<ohne@x>").replace(b"Date:", b"X-Kein-Datum:"))
+        b = mail_import.lies_quelle(self.quelle, self.journal(), ab=datetime.date(2010, 1, 1), nur_kopf=True)
+        drin = sorted(e.schluessel for e in b.eintraege)
+        self.assertEqual(b.zahlen["außerhalb des Zeitraums"], 1)
+        self.assertEqual(len(drin), 2)
+        self.assertNotIn("<alt@x>", " ".join(drin))
+        self.assertEqual(b.ohne_text(), 2)              # nur diese zwei liest der zweite Durchgang nach
+
+    def test_schnellwahl_gleitend(self):
+        heute = datetime.date(2026, 11, 18)
+        w = mail_import.schnellwahl_zeitraum
+        self.assertEqual(w("woche", heute), (datetime.date(2026, 11, 11), heute))
+        self.assertEqual(w("monat", heute), (datetime.date(2026, 10, 18), heute))
+        self.assertEqual(w("quartal", heute), (datetime.date(2026, 8, 18), heute))
+        self.assertEqual(w("halbjahr", heute), (datetime.date(2026, 5, 18), heute))
+        self.assertEqual(w("jahr", heute), (datetime.date(2025, 11, 18), heute))
+        self.assertEqual(w("monat", datetime.date(2026, 3, 31)), (datetime.date(2026, 2, 28), datetime.date(2026, 3, 31)))
+        self.assertEqual(w("quartal", datetime.date(2026, 1, 15)), (datetime.date(2025, 10, 15), datetime.date(2026, 1, 15)))
+        self.assertEqual(w("", heute), (None, None))
+
     def test_adresse_ganz_in_anfuehrungszeichen(self):
         # Kopf „"Name <adresse>"“ (echte .pst, 08.11.2026): getaddresses hielt das Ganze für die Adresse
         m = mail_lesen.Mail(baue(von='"Max Mustermann <max.alt@example.org>"',
@@ -1143,6 +1169,126 @@ class TestVollautomatikMitMailkopf(unittest.TestCase):
         ki = auto_pilot.mit_mailkopf({"title": "Rechnung", "tags": ["Rechnung"], "datum": "2024-03-05",
                                       "absender": "XYZ"}, anhang)
         self.assertEqual(ki["absender"], "XYZ")
+
+
+class TestZeitraumSchnellerEinlesen(_Basis):
+    """Peter 18.11.2026: „können wir das Liste-Einlesen damit auch beschleunigen?“ - Dateien vor dem Zeitraum gar nicht
+    öffnen, in .pst/.ost erst das Versanddatum prüfen, im Textdurchgang nur die gebrauchten Mails lesen."""
+
+    AB = datetime.date(2026, 1, 1)
+
+    def journal(self):
+        j = mail_import.Journal(self.sammlung)
+        j.eigene = ["max@example.org"]
+        return j
+
+    def test_datei_vor_dem_zeitraum_wird_nicht_geoeffnet(self):
+        tz = datetime.timezone.utc
+        self.eml("alt.eml", baue(mid="<alt@x>", datum=datetime.datetime(2020, 5, 1, tzinfo=tz)))
+        self.eml("neu.eml", baue(mid="<neu@x>", datum=datetime.datetime(2026, 3, 1, tzinfo=tz)))
+        alt = datetime.datetime(2020, 5, 2).timestamp()
+        os.utime(os.path.join(self.quelle, "alt.eml"), (alt, alt))
+        b = mail_import.lies_quelle(self.quelle, self.journal(), ab=self.AB, nur_kopf=True)
+        self.assertEqual(b.zahlen[mail_import.DATEIEN_VOR_ZEITRAUM], 1)
+        self.assertEqual(b.zahlen["gesamt"], 1)
+        self.assertEqual(len(b.eintraege), 1)
+
+    def test_kurz_vor_dem_zeitraum_geaenderte_datei_wird_gelesen(self):
+        # Puffer: zwei Tage vor „ab“ geändert kann noch eine Mail vom Stichtag enthalten (Zeitzonen)
+        self.eml("knapp.eml", baue(mid="<knapp@x>", datum=datetime.datetime(2026, 1, 1, tzinfo=datetime.timezone.utc)))
+        knapp = datetime.datetime(2025, 12, 31).timestamp()
+        os.utime(os.path.join(self.quelle, "knapp.eml"), (knapp, knapp))
+        b = mail_import.lies_quelle(self.quelle, self.journal(), ab=self.AB, nur_kopf=True)
+        self.assertEqual((b.zahlen[mail_import.DATEIEN_VOR_ZEITRAUM], len(b.eintraege)), (0, 1))
+
+    def test_textdurchgang_liest_nur_gebrauchte_mails(self):
+        tz = datetime.timezone.utc
+        self.eml("1.eml", baue(mid="<1@x>", datum=datetime.datetime(2026, 2, 1, tzinfo=tz)))
+        self.eml("2.eml", baue(mid="<2@x>", datum=datetime.datetime(2019, 2, 1, tzinfo=tz)))   # Datei neu, Mail alt
+        self.eml("3.eml", baue(mid="<3@x>", datum=datetime.datetime(2026, 4, 1, tzinfo=tz)))
+        b = mail_import.lies_quelle(self.quelle, self.journal(), ab=self.AB, nur_kopf=True)
+        gebraucht = {e.ort for e in b.eintraege if not e.voll}
+        self.assertEqual(len(gebraucht), 2)
+        gelesen = [ort for ort, _o, _d in mail_import._roh_mails(self.quelle, direkt=True, nur=gebraucht)]
+        self.assertEqual(sorted(gelesen, key=str), sorted(gebraucht, key=str))
+        gemeldet = []
+        self.assertEqual(mail_import.lies_texte(b, lambda e, f: gemeldet.append(e)), 2)
+
+    def test_textdurchgang_liest_in_einer_datei_nur_gebrauchte_mails(self):
+        # drei Mails in EINER mbox: Hier hilft das Überspringen ganzer Dateien nicht, gefiltert wird je Mail
+        tz = datetime.timezone.utc
+        pfad = os.path.join(self.basis, "Inbox")
+        box = mailbox.mbox(pfad)
+        for mid, jahr in (("<1@x>", 2026), ("<2@x>", 2019), ("<3@x>", 2026)):
+            box.add(baue(mid=mid, datum=datetime.datetime(jahr, 2, 1, tzinfo=tz)))
+        box.flush()
+        box.close()
+        b = mail_import.lies_quelle(pfad, self.journal(), ab=self.AB, nur_kopf=True)
+        gebraucht = {e.ort for e in b.eintraege if not e.voll}
+        self.assertEqual(len(gebraucht), 2)
+        gelesen = [ort for ort, _o, _d in mail_import._roh_mails(pfad, direkt=True, nur=gebraucht)]
+        self.assertEqual(sorted(gelesen), sorted(gebraucht))
+
+    def test_textdurchgang_holt_wenige_pst_mails_direkt(self):
+        # Peters Messung 18.11.2026: 1.697 von 15.446 Mails brauchten 13,3 s, ~9 s davon fürs Öffnen aller übrigen
+        class Datei:
+            def close(self):
+                pass
+
+        geholt, merker_gesehen = [], []
+
+        def hole(datei, ort, merker=None):
+            geholt.append(ort)
+            merker_gesehen.append(merker is not None)
+            return object()
+
+        nur = {"1/7", "0.2/3", "0.2/1"}
+        with patch.object(mail_pst, "oeffne", return_value=Datei()), \
+                patch.object(mail_pst, "zaehle", return_value=100), \
+                patch.object(mail_pst, "mails", side_effect=AssertionError("nicht der Reihe nach")), \
+                patch.object(mail_pst, "hole", side_effect=hole), \
+                patch.object(mail_import, "_pst_lesen", return_value=b"x"):
+            orte = [o for o, _ordner, _d in mail_import._roh_mails(os.path.join(self.basis, "a.pst"), direkt=True,
+                                                                    nur=nur)]
+        self.assertEqual(orte, ["0.2/1", "0.2/3", "1/7"])        # in der Reihenfolge der Datei
+        self.assertEqual(geholt, orte)
+        self.assertTrue(all(merker_gesehen))                    # geöffnete Ordner werden gemerkt
+
+    def test_ort_reihenfolge_wie_beim_durchgehen(self):
+        self.assertEqual(sorted(["1/0", "0.10/2", "0.2/11", "0.2/3", "/5"], key=mail_pst.ort_reihenfolge),
+                         ["/5", "0.2/3", "0.2/11", "0.10/2", "1/0"])
+
+    def test_pst_prueft_erst_das_versanddatum(self):
+        tz = datetime.timezone.utc
+
+        class Fake:
+            def __init__(self, zeit, kopfdatum):
+                self.zeit, self.kopfdatum = zeit, kopfdatum
+
+        class Datei:
+            def close(self):
+                pass
+
+        mails = [("0/0", "Posteingang", Fake(datetime.datetime(2020, 5, 1), datetime.datetime(2020, 5, 1, tzinfo=tz))),
+                 ("0/1", "Posteingang", Fake(datetime.datetime(2025, 12, 31), datetime.datetime(2025, 12, 31, tzinfo=tz))),
+                 ("0/2", "Posteingang", Fake(datetime.datetime(2026, 3, 1), datetime.datetime(2026, 3, 1, tzinfo=tz)))]
+        gelesen = []
+
+        def pst_lesen(m, nur_kopf=None, direkt=False):
+            gelesen.append(m)
+            return baue(mid=f"<{m.kopfdatum.isoformat()}@x>", datum=m.kopfdatum)
+
+        pfad = os.path.join(self.basis, "archiv.pst")
+        with patch.object(mail_pst, "oeffne", return_value=Datei()), \
+                patch.object(mail_pst, "zaehle", return_value=3), \
+                patch.object(mail_pst, "mails", return_value=iter(mails)), \
+                patch.object(mail_pst, "zeit", side_effect=lambda m: m.zeit), \
+                patch.object(mail_import, "_pst_lesen", side_effect=pst_lesen):
+            b = mail_import.lies_quelle(pfad, self.journal(), ab=self.AB)
+        self.assertEqual(len(gelesen), 2)                      # die Mail von 2020 ohne Kopf übersprungen
+        self.assertEqual(b.zahlen["außerhalb des Zeitraums"], 2)   # die knappe fällt erst an der genauen Prüfung
+        self.assertEqual(b.zahlen["gesamt"], 3)
+        self.assertEqual(len(b.eintraege), 1)
 
 
 class TestZweiPhasen(_Basis):

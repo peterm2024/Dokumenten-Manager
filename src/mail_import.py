@@ -191,7 +191,53 @@ def _pst_lesen(m, nur_kopf=None, direkt=False):
     return mail
 
 
-def _roh_mails(quelle, zahlen=None, stand=None, fehler=None, lage=None, nur_kopf=None, direkt=False):
+# Zeitraum beim Einlesen (Peter 18.11.2026, „auch die Liste schneller“): Puffer, damit die Vorprüfungen nie eine Mail
+# auslassen, die die genaue Prüfung am Kopf (lies_quelle) noch hereinließe - Zeitzonen, Versand- gegen Kopfdatum
+VORPRUEFUNG_PUFFER = datetime.timedelta(days=2)
+AUSSERHALB = object()                      # _roh_mails: Mail laut Vorprüfung klar außerhalb, Kopf nicht gelesen
+DATEIEN_VOR_ZEITRAUM = "Dateien vor dem Zeitraum"
+# Phase 2 in .pst/.ost: Braucht sie höchstens diesen Anteil der Einträge, holt sie die Mails direkt über ihren Ort,
+# statt alle der Reihe nach zu öffnen (Peters Messung 18.11.2026: 1.697 von 15.446 Mails 13,3 s, davon ~9 s Durchgehen)
+DIREKT_ANTEIL = 0.5
+
+
+def _klar_ausserhalb(zeitpunkt, ab, bis):
+    """Liegt ein Zeitpunkt mehr als den Puffer vor `ab` oder nach `bis`? Ohne Zeitpunkt nie (nie still verwerfen)."""
+    if zeitpunkt is None:
+        return False
+    tag = zeitpunkt.date() if isinstance(zeitpunkt, datetime.datetime) else zeitpunkt
+    return bool((ab and tag < ab - VORPRUEFUNG_PUFFER) or (bis and tag > bis + VORPRUEFUNG_PUFFER))
+
+
+def _datei_vor_zeitraum(sekunden, ab):
+    """Eine Mail-Datei, die zuletzt deutlich vor `ab` geändert wurde, kann keine Mail aus dem Zeitraum enthalten."""
+    if not ab or not sekunden:
+        return False
+    return datetime.date.fromtimestamp(sekunden) < ab - VORPRUEFUNG_PUFFER
+
+
+def _innen(nur, name):
+    """Aus den gebrauchten Orten die einer Datei in einer Kopie/einem Ordner (Ort dort = (Datei, Ort darin))."""
+    return None if nur is None else {o[1] for o in nur if isinstance(o, tuple) and o[0] == name}
+
+
+def _gefiltert(eintraege, nur):
+    """Nur die gebrauchten Orte durchlassen und aufhören, sobald alle da waren (Phase 2)."""
+    if nur is None:
+        yield from eintraege
+        return
+    offen = len(nur)
+    for eintrag in eintraege:
+        if eintrag[0] not in nur:
+            continue
+        yield eintrag
+        offen -= 1
+        if offen <= 0:
+            return
+
+
+def _roh_mails(quelle, zahlen=None, stand=None, fehler=None, lage=None, nur_kopf=None, direkt=False, ab=None, bis=None,
+               nur=None):
     """(Ort, Ordner, Bytes oder None) je Mail; None = Eintrag unlesbar.
     :param zahlen: Counter für das, was beim Lesen auffällt (mbox)
     :param stand: dict, bekommt je gelesener Datei (Größe, Änderungszeit)
@@ -200,19 +246,45 @@ def _roh_mails(quelle, zahlen=None, stand=None, fehler=None, lage=None, nur_kopf
     :param nur_kopf: Phase 1 (KONZEPT_MAIL_AUF_ABRUF „Schneller einlesen“): Callable(Bytes) → True, wenn diese Mail
                      trotzdem ganz gebraucht wird. .pst/.ost liefern dann eine `KopfMail` (S3b), mbox und .eml nur
                      ihre Kopfzeilen (S3).
-    :param direkt: Phase 2 (S3b): .pst/.ost liefern eine `KopfMail` samt Text statt .eml-Bytes"""
+    :param direkt: Phase 2 (S3b): .pst/.ost liefern eine `KopfMail` samt Text statt .eml-Bytes
+    :param ab, bis: Zeitraum (18.11.2026): Dateien einer Kopie oder eines Ordners, die vor `ab` zuletzt geändert wurden,
+                    werden nicht geöffnet (Zahl DATEIEN_VOR_ZEITRAUM); in .pst/.ost liefert eine Mail, deren
+                    Versandzeit klar außerhalb liegt, AUSSERHALB statt Bytes, ohne ihren Kopf zu lesen
+                    (Puffer VORPRUEFUNG_PUFFER - die genaue Prüfung macht lies_quelle am Kopf).
+    :param nur: Menge der gebrauchten Orte (Phase 2): nur diese Mails werden gelesen und geliefert, Dateien ohne
+                gebrauchte Mail gar nicht geöffnet; sind alle gefunden, endet das Lesen"""
     zahlen = collections.Counter() if zahlen is None else zahlen
     lage = {} if lage is None else lage
     art = quelle_art(quelle)
+    if nur is not None and not nur:
+        return
     if art == "pst":
         _merke_stand(stand, quelle)
         datei = mail_pst.oeffne(quelle)
         try:
             gesamt = mail_pst.zaehle(datei) or 1
-            for i, (ort, ordner, m) in enumerate(mail_pst.mails(datei), 1):
-                lage["teil"] = min(1.0, i / gesamt)
+
+            def eintraege():
+                for i, eintrag in enumerate(mail_pst.mails(datei), 1):
+                    lage["teil"] = min(1.0, i / gesamt)
+                    yield eintrag
+
+            def direkt_geholt():
+                merker = {}
+                orte = sorted(nur, key=mail_pst.ort_reihenfolge)
+                for i, ort in enumerate(orte, 1):
+                    lage["teil"] = i / len(orte)
+                    try:
+                        yield ort, "", mail_pst.hole(datei, ort, merker)
+                    except Exception:      # noqa: BLE001 - zählt als unlesbar, wie beim Durchgehen
+                        yield ort, "", None
+            direkt_ok = nur is not None and len(nur) <= gesamt * DIREKT_ANTEIL
+            for ort, ordner, m in (direkt_geholt() if direkt_ok else _gefiltert(eintraege(), nur)):
                 if m is None:
                     yield ort, ordner, None
+                    continue
+                if (ab or bis) and _klar_ausserhalb(mail_pst.zeit(m), ab, bis):
+                    yield ort, ordner, AUSSERHALB
                     continue
                 try:
                     daten = _pst_lesen(m, nur_kopf, direkt)
@@ -225,43 +297,55 @@ def _roh_mails(quelle, zahlen=None, stand=None, fehler=None, lage=None, nur_kopf
     elif art == "mbox":
         _merke_stand(stand, quelle)
         groesse = _groessen([quelle])[0]
-        for ort, ordner, daten in _mbox_roh(quelle, zahlen):
-            lage["teil"] = min(1.0, int(ort) / groesse)
+
+        def eintraege():
+            for ort, ordner, daten in _mbox_roh(quelle, zahlen):
+                lage["teil"] = min(1.0, int(ort) / groesse)
+                yield ort, ordner, daten
+        for ort, ordner, daten in _gefiltert(eintraege(), nur):
             yield ort, ordner, _kopf_oder_ganz(daten, nur_kopf)
         lage["teil"] = 1.0
-    elif art == "kopie":
-        # Kopie aus einem Mail-Programm (mail_quellen): mehrere Dateien, der Ort sagt, in welcher die Mail liegt
-        dateien = mail_quellen.kopie_dateien(quelle)
+    elif art in ("kopie", "ordner"):
+        # Kopie aus einem Mail-Programm (mail_quellen): mehrere Dateien, der Ort sagt, in welcher die Mail liegt.
+        # Ordner (F7): beliebig viele Mail-Dateien werden zu EINEM Bestand, gelesen wird direkt (Archiv-Dateien ändern
+        # sich nicht, eine Kopie brächte nur Wartezeit); eine gesperrte oder kaputte Datei fehlt allein.
+        if art == "kopie":
+            dateien = mail_quellen.kopie_dateien(quelle)
+            zeiten = mail_quellen.kopie_zeiten(quelle) if ab else {}
+        else:
+            dateien = mail_dateien(quelle)
+            zeiten = {}
         groessen, vorher = _groessen([p for p, _ in dateien]), 0
         for nr, (pfad, ordner) in enumerate(dateien, 1):
             lage.update(nr=nr, gesamt=len(dateien))
-            innen_lage = {}
-            for ort, innen, daten in _roh_mails(pfad, zahlen, stand, lage=innen_lage, nur_kopf=nur_kopf,
-                                                direkt=direkt):
-                lage["teil"] = (vorher + innen_lage.get("teil", 0) * groessen[nr - 1]) / sum(groessen)
-                yield (os.path.basename(pfad), ort), ordner or innen, daten
-            vorher += groessen[nr - 1]
-        lage["teil"] = 1.0                 # die letzte Datei meldet ihr Ende erst nach der letzten Mail
-    elif art == "ordner":
-        # F7: ein Ordner mit beliebig vielen Mail-Dateien wird zu EINEM Bestand, gelesen wird direkt (Archiv-Dateien
-        # ändern sich nicht, eine Kopie brächte nur Wartezeit). Eine gesperrte oder kaputte Datei fehlt allein.
-        dateien = mail_dateien(quelle)
-        groessen, vorher = _groessen([p for p, _ in dateien]), 0
-        for nr, (pfad, ordner) in enumerate(dateien, 1):
-            lage.update(nr=nr, gesamt=len(dateien))
-            relativ = os.path.relpath(pfad, quelle)
+            name = os.path.basename(pfad) if art == "kopie" else os.path.relpath(pfad, quelle)
+            innen_nur = _innen(nur, name)
+            if innen_nur is not None and not innen_nur:
+                vorher += groessen[nr - 1]
+                continue                   # Phase 2: in dieser Datei wird keine Mail gebraucht
+            if ab and nur is None:
+                try:
+                    geaendert = zeiten.get(pfad) or os.stat(pfad).st_mtime
+                except OSError:
+                    geaendert = None
+                if _datei_vor_zeitraum(geaendert, ab):
+                    zahlen[DATEIEN_VOR_ZEITRAUM] += 1
+                    vorher += groessen[nr - 1]
+                    continue
             innen_lage = {}
             try:
                 for ort, innen, daten in _roh_mails(pfad, zahlen, stand, lage=innen_lage, nur_kopf=nur_kopf,
-                                                    direkt=direkt):
+                                                    direkt=direkt, ab=ab, bis=bis, nur=innen_nur):
                     lage["teil"] = (vorher + innen_lage.get("teil", 0) * groessen[nr - 1]) / sum(groessen)
-                    yield (relativ, ort), innen or ordner, daten
+                    yield (name, ort), (ordner or innen) if art == "kopie" else (innen or ordner), daten
             except Exception:              # noqa: BLE001 - gezählt und gemeldet, die übrigen Dateien laufen weiter
+                if art == "kopie":
+                    raise
                 zahlen[DATEI_NICHT_LESBAR] += 1
                 if fehler is not None:
-                    fehler.append(relativ)
+                    fehler.append(name)
             vorher += groessen[nr - 1]
-        lage["teil"] = 1.0
+        lage["teil"] = 1.0                 # die letzte Datei meldet ihr Ende erst nach der letzten Mail
     elif art == "eml":
         _merke_stand(stand, quelle)
         try:
@@ -461,11 +545,32 @@ def _als_mail(daten):
     return daten if isinstance(daten, mail_lesen.Mail) else mail_lesen.Mail(daten)
 
 
+# Schnellwahl des Zeitraums im ersten Reiter (Peter 18.11.2026: gleitend, ab heute zurück): Art -> (Tage, Monate)
+SCHNELLWAHL_SPANNE = {"woche": (7, 0), "monat": (0, 1), "quartal": (0, 3), "halbjahr": (0, 6), "jahr": (0, 12)}
+
+
+def schnellwahl_zeitraum(art, heute):
+    """(ab, bis) für eine Schnellwahl, gleitend bis heute: „monat“ am 18.11. = 18.10. bis 18.11. Gibt es den Tag im
+    Zielmonat nicht (31.03. minus ein Monat), gilt dessen letzter Tag. Unbekannte Art oder "" (Alle) = (None, None)."""
+    if art not in SCHNELLWAHL_SPANNE:
+        return None, None
+    tage, monate = SCHNELLWAHL_SPANNE[art]
+    if tage:
+        return heute - datetime.timedelta(days=tage), heute
+    jahr, monat = divmod(heute.year * 12 + heute.month - 1 - monate, 12)
+    monat += 1
+    letzter = (datetime.date(jahr + monat // 12, monat % 12 + 1, 1) - datetime.timedelta(days=1)).day
+    return datetime.date(jahr, monat, min(heute.day, letzter)), heute
+
+
 def lies_quelle(quelle, journal, ab=None, bis=None, abbrechen=None, fortschritt=None, nur_kopf=False, lage=None):
     """
     Liest alle Mails der Quelle einmal (Inhalte werden nicht behalten) und zählt: gesamt, unlesbar, doppelt
     (innerhalb der Quelle), schon importiert, außerhalb des Zeitraums, je Vorfilter-Grund.
-    :param ab, bis: datetime.date oder None (E7: der Zeitraum wird je Lauf gewählt)
+    :param ab, bis: datetime.date oder None (E7: der Zeitraum wird je Lauf gewählt). Seit 18.11.2026 im ersten Reiter:
+                    Mails außerhalb kommen gar nicht in den Bestand, nur in die Zahl „außerhalb des Zeitraums“ -
+                    so liest `lies_texte` ihren Text nicht nach (der teure zweite Durchgang). Ohne Datum bleibt
+                    eine Mail drin (nie still verwerfen).
     :param abbrechen: Callable → True bricht ab (Bestand bis dahin)
     :param fortschritt: Callable(anzahl, datei) alle 200 Mails; datei = „Datei 7 von 25“ bei einem Ordner, sonst ""
     :param nur_kopf: Phase 1 (Peter 09.11.2026): Einträge nur aus dem Kopf, den Text holt `lies_texte` nach. Mails
@@ -485,7 +590,7 @@ def lies_quelle(quelle, journal, ab=None, bis=None, abbrechen=None, fortschritt=
         return not mail.message_id
 
     roh = _roh_mails(quelle, bestand.zahlen, bestand.stand, bestand.fehlende_dateien, lage,
-                     ganz_noetig if nur_kopf else None)
+                     ganz_noetig if nur_kopf else None, ab=ab, bis=bis)
     for n, (ort, ordner, daten) in enumerate(roh, 1):
         lage["n"] = n
         if abbrechen and abbrechen():
@@ -494,6 +599,9 @@ def lies_quelle(quelle, journal, ab=None, bis=None, abbrechen=None, fortschritt=
         if fortschritt and n % 200 == 0:
             fortschritt(n, f"Datei {lage['nr']} von {lage['gesamt']}" if lage.get("gesamt", 0) > 1 else "")
         bestand.zahlen["gesamt"] += 1
+        if daten is AUSSERHALB:            # Vorprüfung am Versanddatum (.pst/.ost), der Kopf wurde nicht gelesen
+            bestand.zahlen["außerhalb des Zeitraums"] += 1
+            continue
         if not daten:
             bestand.zahlen["unlesbar"] += 1
             continue
@@ -509,17 +617,16 @@ def lies_quelle(quelle, journal, ab=None, bis=None, abbrechen=None, fortschritt=
             continue
         gesehen.add(e.schluessel)
         if mail_lesen.ist_gesendet_ordner(ordner):
-            bestand.gesendet_von.update(mail.von_adressen)
+            bestand.gesendet_von.update(mail.von_adressen)   # auch außerhalb des Zeitraums: Vorschläge für eigene
+        if e.datum and ((ab and e.datum.date() < ab) or (bis and e.datum.date() > bis)):
+            bestand.zahlen["außerhalb des Zeitraums"] += 1
+            continue
         bestand.wortschatz.update(suchsyntax.WORT.findall(e.suchtext))
         bestand.zahlen[e.richtung] += 1
         if e.schluessel in journal.importiert:
             e.ergebnis = "importiert"
             e.grund = GRUND_ZURUECKGENOMMEN if journal.importiert[e.schluessel].get("zurueckgenommen") else "schon importiert"
             bestand.zahlen["schon importiert"] += 1
-        elif e.datum and ((ab and e.datum.date() < ab) or (bis and e.datum.date() > bis)):
-            # ohne Datum lässt sich der Zeitraum nicht prüfen - dann bleibt die Mail drin (nie still verwerfen)
-            e.ergebnis, e.grund = "zeitraum", "außerhalb des Zeitraums"
-            bestand.zahlen["außerhalb des Zeitraums"] += 1
         elif e.vorfilter:
             bestand.zahlen["Vorfilter: " + e.vorfilter] += 1
         bestand.eintraege.append(e)
@@ -576,7 +683,7 @@ def lies_texte(bestand, melde, abbrechen=None, lage=None, vorne=None):
     gelesen = 0
     if not offen:
         return 0
-    roh = _roh_mails(bestand.quelle, collections.Counter(), direkt=True)
+    roh = _roh_mails(bestand.quelle, collections.Counter(), direkt=True, nur=set(offen))   # nur, was fehlt (18.11.)
     leser = Einzelleser(bestand.quelle)
     try:
         gelesen = _lies_texte(roh, offen, melde, abbrechen, lage, vorne, leser)

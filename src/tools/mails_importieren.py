@@ -17,6 +17,7 @@ verändert; Suchtext und Textanfang der Mails liegen nur im Arbeitsspeicher, ins
 Die Vollautomatik pausiert, solange der Import läuft.
 """
 
+import datetime
 import functools
 import os
 import queue
@@ -44,8 +45,14 @@ VON_HAND = "Datei oder Ordner von Hand wählen"
 KOPIE_MELDEN_ALLE = 16 * 1024 * 1024          # Bytes zwischen zwei Fortschrittsmeldungen beim Kopieren
 MAX_ZEILEN = 5000                             # mehr Zeilen machen die Liste träge; die Zahl der Treffer stimmt trotzdem
 HAKEN, OHNE_HAKEN = "☑", "☐"
-RICHTUNGEN = ((None, "alle"), ("ein", "eingegangen"), ("aus", "gesendet"))
+# Peter 18.11.2026: „erhalten“ statt „eingegangen“ (klang komisch) - im Fenster überall gleich
+RICHTUNGEN = ((None, "alle"), ("ein", "erhalten"), ("aus", "gesendet"))
 REITER = ("1. Woher?", "2. Suchen", "3. Übernehmen")
+# Zeitraum im ersten Reiter (Peter 18.11.2026): Schnellwahl gleitend bis heute, füllt Von/Bis; "eigen" = von Hand
+SCHNELLWAHL = (("", "Alle"), ("woche", "Letzte Woche"), ("monat", "Letzter Monat"), ("quartal", "Letztes Quartal"),
+               ("halbjahr", "Letztes Halbjahr"), ("jahr", "Letztes Jahr"))
+EIGENER_ZEITRAUM = "eigen"
+PLATZHALTER_DATUM = "TT.MM.JJJJ"        # wie die Datumsfelder im Hauptfenster
 ABHOLEN_SEKUNDEN = 0.05        # je Abholung aus dem Postfach, dann ist der Tk-Ereignis-Loop wieder dran (FALLSTRICKE #125)
 TEXT_BUENDEL_SEKUNDEN = 0.25   # Phase 2 schickt ihre Ergebnisse gebündelt, etwa viermal je Sekunde
 BALKEN_STIL = "Mail.Horizontal.TProgressbar"
@@ -198,9 +205,14 @@ def jahre_text(jahre):
 def kennzahlen(bestand):
     """Kurzer Text mit den Zahlen des Einlesens (nur Zahlen)."""
     z = bestand.zahlen
-    teile = [f"{z['gesamt']} Mails gelesen"]
-    for schluessel, text in (("ein", "eingegangen"), ("aus", "gesendet"), ("doppelt", "doppelt"),
+    # Mit Zeitraum sind nicht alle gezählten Mails gelesen - „gelesen“ widersprach „außerhalb (nicht eingelesen)“
+    # (Peter 18.11.2026: „insgesamt“)
+    teile = [f"{z['gesamt']} Mails " + ("insgesamt" if z["außerhalb des Zeitraums"] else "gelesen")]
+    for schluessel, text in (("ein", "erhalten"), ("aus", "gesendet"), ("doppelt", "doppelt"),
                              ("schon importiert", "schon in der Sammlung"), ("unlesbar", "unlesbar"),
+                             ("außerhalb des Zeitraums", "außerhalb des Zeitraums (nicht eingelesen)"),
+                             (mail_import.DATEIEN_VOR_ZEITRAUM, "Datei(en) vor dem Zeitraum zuletzt geändert "
+                                                                "(nicht geöffnet)"),
                              (mail_import.DATEI_NICHT_LESBAR, "Datei(en) nicht lesbar"),
                              (mail_lesen.GELOESCHT, mail_lesen.GELOESCHT + " (übergangen)"),
                              (mail_lesen.TEILWEISE, mail_lesen.TEILWEISE),
@@ -391,25 +403,26 @@ class MailImportFenster(tk.Toplevel):
         lbl_eigene = ttk.Label(quelle, text="Eigene Adressen:")
         lbl_eigene.grid(row=5, column=0, sticky="w", padx=6, pady=3)
         self.ent_eigene = ttk.Entry(quelle)
-        self.ent_eigene.grid(row=5, column=1, columnspan=2, sticky="ew", pady=3)
+        self.ent_eigene.grid(row=5, column=1, columnspan=3, sticky="ew", padx=(0, 6), pady=3)
         self.ent_eigene.insert(0, ", ".join(self.journal.eigene))
         erklaerung = ("Mit Komma getrennt, auch alte; „@beispiel.de“ steht für eine ganze Domain. Mails von dort gelten als "
                       "gesendet, abgelegt werden sie beim Empfänger.")
         Tooltip(lbl_eigene, erklaerung)
         Tooltip(self.ent_eigene, erklaerung)
+        self._baue_zeitraum(quelle, zeile=6)
         self.btn_einlesen = ttk.Button(quelle, text="Mails einlesen", command=self._einlesen)
-        self.btn_einlesen.grid(row=5, column=3, padx=6)
+        self.btn_einlesen.grid(row=7, column=3, padx=6)
         # Peter 04.11. (T20.1): Quelle des letzten Laufs steht wieder da
         self.ent_quelle.insert(0, self.journal.zuletzt.get("quelle", ""))
         self.rahmen_reste = ttk.Frame(quelle)
-        self.rahmen_reste.grid(row=6, column=0, columnspan=4, sticky="ew", padx=6, pady=(0, 4))
+        self.rahmen_reste.grid(row=8, column=0, columnspan=4, sticky="ew", padx=6, pady=(0, 4))
         self.lbl_reste = ttk.Label(self.rahmen_reste)
         self.lbl_reste.pack(side=tk.LEFT)
         ttk.Button(self.rahmen_reste, text="Kopie löschen", command=self._kopie_loeschen).pack(side=tk.LEFT, padx=8)
         self.rahmen_reste.grid_remove()
         # Peter 09.11.2026: der freie Platz zeigt, was beim Einlesen gerade passiert, zweimal je Sekunde
         self.rahmen_stand = ttk.Frame(quelle)
-        self.rahmen_stand.grid(row=7, column=0, columnspan=4, sticky="ew", padx=6, pady=(10, 4))
+        self.rahmen_stand.grid(row=9, column=0, columnspan=4, sticky="ew", padx=6, pady=(10, 4))
         self.rahmen_stand.columnconfigure(2, weight=1)
         self.stand = {}
         for zeile, (art, text) in enumerate((("liste", "Liste:"), ("text", "Text für die Suche:"))):
@@ -425,6 +438,66 @@ class MailImportFenster(tk.Toplevel):
                                    "die Suche Wörter aus dem Text noch nicht überall.")
         self.rahmen_stand.grid_remove()
 
+    def _baue_zeitraum(self, quelle, zeile):
+        """Zeitraum VOR dem Einlesen (Peter 18.11.2026): Mails außerhalb liest KID gar nicht erst ein. Schnellwahl
+        gleitend bis heute, füllt Von/Bis; wer selbst tippt, wählt „eigen“ (kein Knopf markiert)."""
+        ttk.Label(quelle, text="Zeitraum:").grid(row=zeile, column=0, sticky="w", padx=6, pady=(6, 2))
+        wahl = ttk.Frame(quelle)
+        wahl.grid(row=zeile, column=1, columnspan=3, sticky="w", pady=(6, 2))
+        self.var_zeitraum = tk.StringVar(value="")
+        for art, text in SCHNELLWAHL:
+            ttk.Radiobutton(wahl, text=text, value=art, variable=self.var_zeitraum,
+                            command=self._schnellwahl).pack(side=tk.LEFT, padx=(0, 12))
+        felder = ttk.Frame(quelle)
+        felder.grid(row=zeile + 1, column=1, columnspan=2, sticky="w", pady=3)
+        ttk.Label(felder, text="Von:").pack(side=tk.LEFT)
+        self.ent_ab = ttk.Entry(felder, width=11)
+        self.ent_ab.pack(side=tk.LEFT, padx=(5, 10))
+        ttk.Label(felder, text="Bis:").pack(side=tk.LEFT)
+        self.ent_bis = ttk.Entry(felder, width=11)
+        self.ent_bis.pack(side=tk.LEFT, padx=5)
+        hinweis = "TT.MM.JJJJ, auch nur Jahr (2024) oder Monat (03.2024); leer = offen. Mails außerhalb liest KID nicht ein."
+        for feld in (self.ent_ab, self.ent_bis):
+            feld.bind("<FocusIn>", lambda _e, f=feld: UIUtils.clear_placeholder(f, PLATZHALTER_DATUM))
+            feld.bind("<FocusOut>", lambda _e, f=feld: UIUtils.add_placeholder(f, PLATZHALTER_DATUM))
+            feld.bind("<KeyRelease>", lambda _e: self._zeitraum_getippt())
+            feld.bind("<Return>", lambda _e: self._einlesen())
+            Tooltip(feld, hinweis)
+        self._zeitraum_vorbelegen()
+
+    @staticmethod
+    def _feldtext(feld):
+        text = feld.get().strip()
+        return "" if text == PLATZHALTER_DATUM else text
+
+    def _setze_zeitraum_felder(self, ab_text, bis_text):
+        for feld, text in ((self.ent_ab, ab_text), (self.ent_bis, bis_text)):
+            feld.delete(0, tk.END)
+            feld.insert(0, text or PLATZHALTER_DATUM)
+        self._zeitraum_gefuellt = (ab_text, bis_text)
+
+    def _schnellwahl(self):
+        ab, bis = mail_import.schnellwahl_zeitraum(self.var_zeitraum.get(), datetime.date.today())
+        self._setze_zeitraum_felder(ab.strftime("%d.%m.%Y") if ab else "", bis.strftime("%d.%m.%Y") if bis else "")
+
+    def _zeitraum_getippt(self):
+        """Weicht ein Feld von der Schnellwahl ab, gilt der Zeitraum als selbst gewählt."""
+        if (self._feldtext(self.ent_ab), self._feldtext(self.ent_bis)) != getattr(self, "_zeitraum_gefuellt", None):
+            self.var_zeitraum.set(EIGENER_ZEITRAUM)
+
+    def _zeitraum_vorbelegen(self):
+        """Wie beim letzten Lauf: eine Schnellwahl wird ab heute neu gerechnet, ein eigener Zeitraum steht wieder da
+        (ältere Journale kennen nur „ab“/„bis“)."""
+        z = self.journal.zuletzt
+        art = z.get("zeitraum")
+        if art is None:
+            art = EIGENER_ZEITRAUM if (z.get("ab") or z.get("bis")) else ""
+        self.var_zeitraum.set(art)
+        if art == EIGENER_ZEITRAUM:
+            self._setze_zeitraum_felder(z.get("ab", ""), z.get("bis", ""))
+        else:
+            self._schnellwahl()
+
     def _baue_schritt2(self, schritt):
         zeile = ttk.Frame(schritt)
         zeile.pack(fill=tk.X, padx=6, pady=(2, 3))
@@ -435,19 +508,12 @@ class MailImportFenster(tk.Toplevel):
         self.btn_suchen.pack(side=tk.LEFT)
         Tooltip(self.ent_suche, "Sucht in Betreff, Absender, Empfängern, Text und Namen der Anhänge. Mehrere Wörter: alle "
                                 "müssen vorkommen. Ein Tippfehler je Wort wird verziehen, ab 9 Buchstaben zwei; "
-                                "\"in Anführungszeichen\" gilt genau. Eine Jahreszahl wie 2024 gilt als Zeitraum, "
-                                "solange die Felder „ab“ und „bis“ leer sind.")
+                                "\"in Anführungszeichen\" gilt genau. Eine Jahreszahl wie 2024 gilt als Zeitraum "
+                                "innerhalb der eingelesenen Mails.")
         filter_ = ttk.Frame(schritt)
         filter_.pack(fill=tk.X, padx=6, pady=3)
-        ttk.Label(filter_, text="Zeitraum ab").pack(side=tk.LEFT)
-        self.ent_ab = ttk.Entry(filter_, width=11)
-        self.ent_ab.pack(side=tk.LEFT, padx=4)
-        ttk.Label(filter_, text="bis").pack(side=tk.LEFT)
-        self.ent_bis = ttk.Entry(filter_, width=11)
-        self.ent_bis.pack(side=tk.LEFT, padx=4)
-        Tooltip(self.ent_ab, "TT.MM.JJJJ, auch nur Jahr (2024) oder Monat (03.2024); leer = offen")
-        Tooltip(self.ent_bis, "TT.MM.JJJJ, auch nur Jahr (2024) oder Monat (03.2024); leer = offen")
-        ttk.Label(filter_, text="Von/An:").pack(side=tk.LEFT, padx=(12, 0))
+        # Der Zeitraum steht seit 18.11.2026 im ersten Reiter und wirkt schon beim Einlesen
+        ttk.Label(filter_, text="Von/An:").pack(side=tk.LEFT)
         self.ent_von_an = ttk.Entry(filter_, width=22)
         self.ent_von_an.pack(side=tk.LEFT, padx=4)
         Tooltip(self.ent_von_an, "Name oder Adresse von Absender oder Empfänger, zum Beispiel „vivafone“")
@@ -455,9 +521,6 @@ class MailImportFenster(tk.Toplevel):
         for wert, text in RICHTUNGEN:
             ttk.Radiobutton(filter_, text=text, value=wert or "", variable=self.var_richtung,
                             command=self._suche).pack(side=tk.LEFT, padx=(8 if wert is None else 0, 4))
-        # Peter 04.11. (T20.1): der Zeitraum des letzten Laufs steht wieder da; den Suchtext merkt sich KID nicht (F10)
-        self.ent_ab.insert(0, self.journal.zuletzt.get("ab", ""))
-        self.ent_bis.insert(0, self.journal.zuletzt.get("bis", ""))
         haken = ttk.Frame(schritt)
         haken.pack(fill=tk.X, padx=6, pady=(0, 3))
         self.var_anhang = tk.BooleanVar(value=False)
@@ -473,7 +536,7 @@ class MailImportFenster(tk.Toplevel):
         Tooltip(chk, "Erkannt am Abmeldelink im Mailkopf, an Absendern wie newsletter@… oder …@news… und am Wort "
                      "„Newsletter“ im Betreff; dazu, was per Rechtsklick als Newsletter gilt. Achtung: Auch Shops "
                      "schicken Rechnungen mit Abmeldelink.")
-        for feld in (self.ent_suche, self.ent_ab, self.ent_bis, self.ent_von_an):
+        for feld in (self.ent_suche, self.ent_von_an):
             feld.bind("<Return>", lambda _e: self._suche())
 
         kopf = ttk.Frame(schritt)
@@ -708,8 +771,10 @@ class MailImportFenster(tk.Toplevel):
         self.btn_abbrechen.config(text="Bricht ab…", state=tk.DISABLED)
 
     def _merke_zuletzt(self, **werte):
-        """Quelle und Zeitraum für das nächste Öffnen (T20.1, Konzept F10); den Suchtext nicht."""
-        self.journal.zuletzt.update(werte, ab=self.ent_ab.get().strip(), bis=self.ent_bis.get().strip())
+        """Quelle und Zeitraum für das nächste Öffnen (T20.1, Konzept F10); den Suchtext nicht. Die Schnellwahl wird
+        beim nächsten Öffnen ab dem dann heutigen Tag neu gerechnet (Peter 18.11.2026)."""
+        self.journal.zuletzt.update(werte, zeitraum=self.var_zeitraum.get(), ab=self._feldtext(self.ent_ab),
+                                    bis=self._feldtext(self.ent_bis))
 
     def _einlesen(self):
         if self._laeuft:
@@ -740,10 +805,19 @@ class MailImportFenster(tk.Toplevel):
             mb.showerror("Mails importieren", "Zum Lesen von .pst/.ost-Dateien fehlt in dieser Version das Paket "
                                               "libpff-python.", parent=self)
             return
+        try:
+            ab, bis = zeitraum_aus_feldern(self._feldtext(self.ent_ab), self._feldtext(self.ent_bis))
+        except ValueError as e:
+            mb.showwarning("Mails importieren", f"„{e}“ ist kein Datum. Zeitraum bitte als TT.MM.JJJJ, als Jahr (2024) "
+                                                "oder Monat (03.2024), oder leer lassen.", parent=self)
+            return
+        if ab and bis and ab > bis:
+            mb.showwarning("Mails importieren", "„Von“ liegt nach „Bis“.", parent=self)
+            return
         eigene = eigene_aus_text(self.ent_eigene.get())
         if not eigene and not mb.askyesno("Mails importieren", "Noch keine eigenen Adressen eingetragen. KID schlägt "
                                           "nach dem Einlesen die Absender aus den gesendeten Mails vor. Ohne eigene "
-                                          "Adressen gelten alle Mails als eingegangen.\n\nEinlesen?", parent=self):
+                                          "Adressen gelten alle Mails als erhalten.\n\nEinlesen?", parent=self):
             return
         self.journal.eigene = eigene
         self.journal.zuletzt = {}
@@ -782,7 +856,7 @@ class MailImportFenster(tk.Toplevel):
                                                   auto_pilot.ordner_fuer_zweitmeinung(ordnerliste),
                                                   getattr(self.app, "logger", None))
             try:
-                bestand = mail_import.lies_quelle(quelle, self.journal, abbrechen=self._abbruch.is_set,
+                bestand = mail_import.lies_quelle(quelle, self.journal, ab=ab, bis=bis, abbrechen=self._abbruch.is_set,
                                                   nur_kopf=True, lage=p1["lage"])
             except OSError:                # eine einzelne Datei, kaputt oder gesperrt (T20.26: sonst libpff-Rohtext)
                 return unlesbar_text(quelle)
@@ -1036,16 +1110,10 @@ class MailImportFenster(tk.Toplevel):
             self._suche_zeigen(ergebnis)
 
     def _suche_rechnen(self, warnen):
-        """Das Suchergebnis zu den Feldern, None bei falschem Zeitraum (`warnen`: dann mit Meldung)."""
-        try:
-            ab, bis = zeitraum_aus_feldern(self.ent_ab.get(), self.ent_bis.get())
-        except ValueError as e:
-            if warnen:
-                mb.showwarning("Mails importieren", f"„{e}“ ist kein Datum. Zeitraum bitte als TT.MM.JJJJ, als Jahr "
-                                                    "(2024) oder Monat (03.2024), oder leer lassen.", parent=self)
-            return None
+        """Das Suchergebnis zu den Feldern. Den Zeitraum hat schon das Einlesen angewandt (erster Reiter, seit
+        18.11.2026); eine Jahreszahl im Suchtext grenzt weiter ein. `warnen` bleibt für die Aufrufer."""
         self._nachgezogen = time.monotonic()
-        return mail_import.suche(self.bestand, self.ent_suche.get(), ab, bis, von_an=self.ent_von_an.get(),
+        return mail_import.suche(self.bestand, self.ent_suche.get(), None, None, von_an=self.ent_von_an.get(),
                                  richtung=self.var_richtung.get() or None, nur_anhang=self.var_anhang.get(),
                                  auch_vorfilter=self.var_vorfilter.get(), ohne_newsletter=self.var_newsletter.get(),
                                  newsletter_regeln=set(self.journal.newsletter))

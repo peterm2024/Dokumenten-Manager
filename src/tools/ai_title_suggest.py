@@ -11,6 +11,7 @@ from tag_manager import TagManager
 from tools.base_tool import BaseTool, ToolContext
 from tools.title_cleanup import CandidatePickerDialog
 from ui_utils import UIUtils
+import ui_theme
 
 try:
     import fitz  # PyMuPDF
@@ -222,8 +223,11 @@ class AiTitleSuggestWindow(tk.Toplevel):
 
         bottom = tk.Frame(self)
         bottom.pack(fill=tk.X, padx=10, pady=(0, 10))
-        tk.Label(bottom, text="Doppelklick auf Titel/Tags = bearbeiten, Leertaste = an/abwählen. Tag-Vorschläge kommen nur aus dem Katalog und erst per Klick ins Dokument.", fg="#666").pack(side=tk.LEFT)
+        # Knopf zuerst: pack verteilt den Platz in Aufrufreihenfolge - mit der breiteren Windows-11-Schrift nahm
+        # der lange Hinweis dem Knopf sonst ein Drittel weg (Etappe 11 Schritt 3)
         ttk.Button(bottom, text="Markierte übernehmen", command=self._apply_checked, style="Accent.TButton").pack(side=tk.RIGHT)
+        ttk.Label(bottom, text="Doppelklick auf Titel/Tags = bearbeiten, Leertaste = an/abwählen. Tag-Vorschläge kommen nur aus dem Katalog und erst per Klick ins Dokument.", foreground="gray40", justify=tk.LEFT,
+                  wraplength=UIUtils.px(self, 680)).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def _populate(self, paths):
         if not HAS_FITZ:
@@ -462,10 +466,10 @@ class TagSuggestionDialog(tk.Toplevel):
     Text-Marker "(neu)" auf dem Button - im Textfeld selbst steht immer der reine,
     speicherbare Tag-Text ohne Marker.
     """
-    CHECKED_BG = "steelblue"
+    CHECKED_BG = ui_theme.FARBEN["akzent"]      # helles Design (Etappe 11): Akzent statt steelblue,
     CHECKED_FG = "white"
-    UNCHECKED_BG = "SystemButtonFace"
-    UNCHECKED_FG = "black"
+    UNCHECKED_BG = ui_theme.FARBEN["knopf"]     # Knopffarbe statt Windows-Grau
+    UNCHECKED_FG = ui_theme.FARBEN["text"]
 
     def __init__(self, parent, title, current_tags_csv, suggested_tags, known_tags_lower):
         super().__init__(parent)
@@ -489,14 +493,14 @@ class TagSuggestionDialog(tk.Toplevel):
                 var = tk.BooleanVar(value=(tag in current))
                 self.check_vars[tag] = var
                 btn = tk.Checkbutton(box, text=label, variable=var, indicatoron=False,
-                                      relief="raised", bd=1, padx=8, pady=4,
+                                      relief="flat", offrelief="flat", bd=0, padx=8, pady=4,
                                       command=lambda t=tag: self._apply_check(t))
                 btn.grid(row=i // 3, column=i % 3, sticky="w", padx=2, pady=2)
                 self.check_buttons[tag] = btn
                 self._refresh_button_look(tag)
 
         tk.Label(self, text="Tags (frei editierbar, Komma-getrennt):", anchor="w").pack(fill=tk.X, padx=10, pady=(10, 2))
-        self.text = tk.Text(self, height=3, width=60, wrap="word")
+        self.text = tk.Text(self, height=3, width=60, wrap="word", font="TkDefaultFont")   # sonst Courier
         self.text.insert("1.0", current_tags_csv)
         self.text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         # Return bestätigt wie vorher beim Entry (Zeilenumbrüche ergeben in einer
@@ -544,7 +548,7 @@ class TagSuggestionDialog(tk.Toplevel):
         bg = self.CHECKED_BG if checked else self.UNCHECKED_BG
         fg = self.CHECKED_FG if checked else self.UNCHECKED_FG
         self.check_buttons[tag].config(bg=bg, fg=fg, activebackground=bg, activeforeground=fg,
-                                        selectcolor=bg, relief="sunken" if checked else "raised")
+                                        selectcolor=bg, relief="flat", offrelief="flat")   # flach wie alle Knöpfe, die Farbe zeigt den Zustand
 
     def _confirm(self):
         self.result = ", ".join(self._current_list())

@@ -195,6 +195,15 @@ def kopfzeilen(m):
     return kopf
 
 
+def zeit(m):
+    """Versand- bzw. Eingangszeit aus den Eigenschaften, ohne die Kopfzeilen zu lesen (Vorprüfung des Zeitraums beim
+    Einlesen, 18.11.2026). None, wenn keine da ist oder sie sich nicht lesen lässt."""
+    try:
+        return m.client_submit_time or m.delivery_time or m.creation_time
+    except Exception:                      # noqa: BLE001 - dann entscheidet der Kopf wie bisher
+        return None
+
+
 def anhang_namen(m):
     """Die Namen der Anhänge wie in `baue_eml`, ohne einen davon zu lesen."""
     namen = []
@@ -249,10 +258,21 @@ def zaehle(datei):
         return 0
 
 
-def hole(datei, ort):
-    """Den Eintrag zu einem Ort aus `mails`."""
+def hole(datei, ort, ordner_merker=None):
+    """Den Eintrag zu einem Ort aus `mails`. `ordner_merker` (dict) hält die schon geöffneten Ordner, wenn viele Mails
+    nacheinander direkt geholt werden (Textdurchgang, 18.11.2026) - sonst hangelte sich jeder Zugriff neu hinab."""
     ordner_teil, _, nachricht = ort.rpartition("/")
-    ordner = datei.root_folder
-    for i in filter(None, ordner_teil.split(".")):
-        ordner = ordner.get_sub_folder(int(i))
+    ordner = ordner_merker.get(ordner_teil) if ordner_merker is not None else None
+    if ordner is None:
+        ordner = datei.root_folder
+        for i in filter(None, ordner_teil.split(".")):
+            ordner = ordner.get_sub_folder(int(i))
+        if ordner_merker is not None:
+            ordner_merker[ordner_teil] = ordner
     return ordner.get_sub_message(int(nachricht))
+
+
+def ort_reihenfolge(ort):
+    """Sortierschlüssel: Orte in der Reihenfolge, in der `mails` sie liefert (Ordner für Ordner, darin aufsteigend)."""
+    ordner_teil, _, nachricht = ort.rpartition("/")
+    return tuple(int(i) for i in filter(None, ordner_teil.split("."))), int(nachricht)

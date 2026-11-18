@@ -392,6 +392,13 @@ def kopie_groesse(ordner):
     return sum(e.stat().st_size for e in os.scandir(ordner) if e.is_file()) if os.path.isdir(ordner) else 0
 
 
+def kopie_zeiten(ordner):
+    """{Pfad in der Kopie: Änderungszeit des ORIGINALS in Sekunden} - die Kopie selbst ist frisch geschrieben, die
+    Markierungsdatei kennt den Stand des Originals (Zeitraum beim Einlesen, 18.11.2026)."""
+    d = lies_kopie(ordner)
+    return {os.path.join(ordner, e["datei"]): e["zeit"] / 1e9 for e in d["dateien"] if e.get("zeit")} if d else {}
+
+
 def kopie_dateien(ordner):
     """[(Pfad in der Kopie, Ordnername)] einer vollständigen Kopie."""
     d = lies_kopie(ordner)

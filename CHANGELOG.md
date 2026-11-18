@@ -2,6 +2,13 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.33 — 2026-11-18
+
+- Mails importieren: Zeitraum schon vor dem Einlesen wählen - Schnellwahl Alle, Letzte Woche, Letzter Monat, Letztes Quartal, Letztes Halbjahr, Letztes Jahr (gleitend bis heute) oder Von/Bis von Hand. Mails außerhalb werden gar nicht erst eingelesen; die Wahl bleibt fürs nächste Mal gemerkt.
+- Mails importieren deutlich schneller mit Zeitraum: An einer großen .pst (gut 15.000 Mails, ein Jahr gewählt) ist die Liste nach 9,5 statt 17 Sekunden da, der Text für die Suche nach 6 statt 39 Sekunden. Mail-Dateien, die vor dem Zeitraum zuletzt geändert wurden, öffnet das Programm gar nicht.
+- Mails importieren: Die Zeile unten sagt „insgesamt“ statt „gelesen“, wenn ein Zeitraum gesetzt ist, und „erhalten“ statt „eingegangen“.
+- Helles Design auch in den Werkzeugfenstern: kein abgeschnittener Knopf mehr in „Titel-Vorschlag (KI)“ und „Begleitet erfassen“, Tag-Auswahl flach in den neuen Farben, einheitliche Vorschauflächen, Auswahlfelder nicht mehr dunkelblau.
+
 ## v0.9.32 — 2026-11-17
 
 - Neues Aussehen: helles, ruhiges Design im Stil von Windows 11 - weißer Fenstergrund passend zur Menüleiste, Bereiche ohne Rahmen mit einheitlichen Abständen, flache Knöpfe und Spaltenköpfe, Windows-11-Schrift, Titelleiste in Fensterfarbe. Die Farben mit Bedeutung (Zeilenstatus, Tags, Suchfeld) bleiben wie gewohnt.

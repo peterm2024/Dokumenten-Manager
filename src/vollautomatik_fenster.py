@@ -30,6 +30,9 @@ from tkinter import messagebox, ttk
 
 from pdf_handler import PDFHandler
 from ui_utils import UIUtils
+import ui_theme
+
+VORSCHAU_GRUND = ui_theme.FARBEN["vorschau"]   # Fläche hinter dem Vorschaubild (wie die Vorschau im Hauptfenster)
 
 try:
     from PIL import Image, ImageTk
@@ -165,10 +168,10 @@ class VollautomatikFenster(tk.Toplevel):
                         padx=(0, self._px(8)) if spalte_nr == 0 else 0)
             ttk.Label(spalte, text=titel, anchor="center", font=self._schrift(0, fett=True)).pack(fill=tk.X)
             rahmen = tk.Frame(spalte, width=self._thumb_breite + self._px(12),
-                              height=self._thumb_hoehe + self._px(8), bg="#f0f0f0")
+                              height=self._thumb_hoehe + self._px(8), bg=ui_theme.FARBEN["rand"])
             rahmen.pack(pady=(self._px(2), self._px(2)))
             rahmen.pack_propagate(False)
-            thumb = tk.Label(rahmen, bg="#e4e4e4", anchor="center")
+            thumb = tk.Label(rahmen, bg=VORSCHAU_GRUND, anchor="center")
             thumb.pack(fill=tk.BOTH, expand=True, padx=2, pady=2)
             name_var = tk.StringVar()
             ttk.Label(spalte, textvariable=name_var, anchor="center",
@@ -394,7 +397,7 @@ class VollautomatikFenster(tk.Toplevel):
             self._plane_ausblenden("rechts", None, None)
             self._bild = None
             self.doku_var.set("")
-            self._thumb.config(image="", text="", bg="#e4e4e4", font="TkDefaultFont")
+            self._thumb.config(image="", text="", bg=VORSCHAU_GRUND, font="TkDefaultFont")
             return
         rest = self._rest(pfad)
         if rest == 0:
@@ -402,7 +405,7 @@ class VollautomatikFenster(tk.Toplevel):
             self._blende_rechts_aus()
             return
         self.doku_var.set(os.path.basename(pfad))
-        self._thumb.config(bg="#e4e4e4", font="TkDefaultFont")
+        self._thumb.config(bg=VORSCHAU_GRUND, font="TkDefaultFont")
         self._plane_ausblenden("rechts", rest, self._blende_rechts_aus)
         if not HAS_PIL:
             return
@@ -431,7 +434,7 @@ class VollautomatikFenster(tk.Toplevel):
             self._plane_ausblenden("links", None, None)
             self._blende_links_aus(self._links_sicher)
             return
-        self._thumb_links.config(bg="#e4e4e4", fg="black", font="TkDefaultFont")
+        self._thumb_links.config(bg=VORSCHAU_GRUND, fg="black", font="TkDefaultFont")
         if self._bild is not None:
             self._bild_links = self._bild
             self._thumb_links.config(image=self._bild_links, text="")

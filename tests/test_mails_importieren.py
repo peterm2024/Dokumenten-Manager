@@ -397,3 +397,23 @@ class TestMailProgramm(_FensterBasis):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestKennzahlen(unittest.TestCase):
+    """Die Zeile unter den Reitern (Peter 18.11.2026): mit Zeitraum „insgesamt“ statt „gelesen“, „erhalten“."""
+
+    @staticmethod
+    def bestand(**zahlen):
+        b = mail_import.Bestand("x")
+        b.zahlen.update(zahlen)
+        return b
+
+    def test_mit_zeitraum_insgesamt(self):
+        text = mi.kennzahlen(self.bestand(gesamt=15446, ein=1698, aus=4, **{"außerhalb des Zeitraums": 13744}))
+        self.assertTrue(text.startswith("15446 Mails insgesamt, 1698 erhalten, 4 gesendet"), text)
+        self.assertIn("13744 außerhalb des Zeitraums (nicht eingelesen)", text)
+
+    def test_ohne_zeitraum_gelesen(self):
+        text = mi.kennzahlen(self.bestand(gesamt=356, ein=355))
+        self.assertTrue(text.startswith("356 Mails gelesen, 355 erhalten"), text)
+

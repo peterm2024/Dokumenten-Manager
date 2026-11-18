@@ -35,6 +35,7 @@ import dubletten_geprueft
 from pdf_handler import PDFHandler
 from tools.base_tool import BaseTool, ToolContext
 from ui_utils import UIUtils, ProgressDialog
+import ui_theme
 
 try:
     from PIL import Image, ImageTk
@@ -167,7 +168,7 @@ class SeitenVorschau(ttk.Frame):
 
         rumpf = ttk.Frame(self)
         rumpf.pack(fill=tk.BOTH, expand=True)
-        self.canvas = tk.Canvas(rumpf, bg="#f4f4f4", highlightthickness=0)
+        self.canvas = tk.Canvas(rumpf, bg=ui_theme.FARBEN["vorschau"], highlightthickness=0)
         vs = ttk.Scrollbar(rumpf, orient=tk.VERTICAL, command=self.canvas.yview)
         hs = ttk.Scrollbar(rumpf, orient=tk.HORIZONTAL, command=self.canvas.xview)
         self._vs = vs
