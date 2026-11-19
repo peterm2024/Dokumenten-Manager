@@ -2,6 +2,12 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.34 — 2026-11-19
+
+- Wiki: Angaben als Tabelle Merkmal | Wert | Stand | Belege statt freier Sätze. Dieselbe Angabe aus mehreren Dokumenten steht einmal da (mit allen Quellen), ein geänderter Wert zeigt den jüngsten oben und die älteren grau darunter. Ab 5 Dokumenten „viele (N)“, Rechtsklick → „In der Sammlung suchen“. Bisherige Angaben werden beim ersten Öffnen geleert (Sicherung `wissen_vor_umbau.sqlite`).
+- Wiki, „Von der KI lesen lassen“: Die KI schlägt Merkmal, Wert und Zitat vor; das Programm sortiert aus, was nicht im Dokument steht, Sätze, Bankdaten, Rechnungs-Einzelangaben und Aufsichtsbehörden. Kundennummern stehen immer bei der Firma, Personen aus Aufzählungen (Briefkopf) sind nicht vorgehakt.
+- Wiki: Werte einheitlich nach DIN 5008 - Telefon/Fax „01234 56789“, Adressen „Straße Nr., PLZ Ort“ ohne „D-“, Daten TT.MM.JJJJ. Im KI-Fenster Dokument-ID statt Dokumentname und Rechtsklick „Dokument zeigen“ / „Dokument-ID kopieren“.
+
 ## v0.9.33 — 2026-11-18
 
 - Mails importieren: Zeitraum schon vor dem Einlesen wählen - Schnellwahl Alle, Letzte Woche, Letzter Monat, Letztes Quartal, Letztes Halbjahr, Letztes Jahr (gleitend bis heute) oder Von/Bis von Hand. Mails außerhalb werden gar nicht erst eingelesen; die Wahl bleibt fürs nächste Mal gemerkt.

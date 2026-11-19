@@ -10,10 +10,16 @@ etwas im Wiki.
    Zugangsdaten, kein Impressum und keine Bankdaten (`IMPRESSUM`), keine Sätze über das Dokument; das Dokument selbst
    („Rechnung Nr. …“, `DOKUMENT`) ist kein Ding; die Bezeichnung braucht ein Wort aus dem Text. Was durchfällt, wird nur
    gezählt.
+   Seit 19.11.2026 (Etappe 12, Schritt W3) ist eine Angabe Merkmal + Wert + Zitat statt eines Satzes: der Wert steht im
+   Zitat (`wert_im_zitat`), ist kein Satz (`MAX_WERT_WOERTER`), wiederholt nicht die Bezeichnung und nennt kein anderes
+   Ding desselben Dokuments (dafür gibt es „Verbinden“ beim Übernehmen); eine Dokumentart ist weder Ding noch Schublade
+   (`DOKUMENTART`). Die KI bekommt die schon benutzten Merkmale (`baue_prompt(merkmale=)`), damit sie dieselben Namen
+   wählt.
 4. `finde_eintrag` und `finde_ueber_zitate` erkennen, welches Ding es im Wiki schon gibt (gleicher Name in anderer
    Schreibweise bzw. dieselben Zitate nach einer Umbenennung), `neue_angaben` lässt weg, was dort schon steht;
    `text_guete` erkennt schlecht erkannten Text.
-Messung: `KID-Messungen/wiki_von_hand/dinge_messen.py` (Ergebnis im Konzept, „Messung N1“).
+Messung: `KID-Messungen/wiki_von_hand/dinge_messen.py` (Ergebnis im Konzept, „Messung N1“); seit W3
+`merkmale_messen.py` (vorher/nachher, gespeicherte Antworten offline nachrechnen).
 
 GUI-frei, nur Standardbibliothek (+ ollama_client, wissen). Datenschutz: ins Protokoll nur Zahlen.
 """
@@ -150,31 +156,35 @@ Nenne, wer und was in diesem Dokument eine Rolle spielt und ins Wiki gehört - h
 - laufende Verträge und Versicherungen (Strom, Versicherung, Abo, Wartung),
 - ALLE Personen, die im Dokument mit Namen eine Rolle spielen: Empfänger, Mieter, Patient, Versicherter,
   Miteigentümer, Ansprechpartner, wer etwas ausgeführt hat - jede als eigenes Ding.
-KEIN Ding ist: das Dokument selbst (eine Rechnung, ein Bescheid, ein Schreiben, eine Rechnungsnummer), eine Bank nur
-wegen der Bankverbindung, ein Zähler, ein Artikel oder Betrag.
+KEIN Ding ist: das Dokument selbst oder seine Art (eine Rechnung, ein Bescheid, ein Schreiben, eine
+Datenschutzerklärung, ein Merkblatt), eine Bank nur wegen der Bankverbindung, ein Zähler, ein Artikel oder Betrag.
 
 Je Ding:
-- "schublade": eine aus «SCHUBLADEN»; passt wirklich keine, ein neues kurzes Wort.
+- "schublade": eine aus «SCHUBLADEN»; passt wirklich keine, ein neues kurzes Wort (keine Dokumentart).
 - "bezeichnung": kurzer Name mit Wörtern aus dem Text (z.B. "Musterversicherung AG", "Haus Musterstraße 1",
   "VW Golf M-XY 123", "Stromvertrag Musterwerke").
-- "angaben": bis zu 6 kurze Sätze mit Fakten, die auch in Jahren noch nützen, zu GENAU DIESEM Ding: Anschrift, Telefon,
-  E-Mail, Kunden-, Vertrags- oder Versicherungsnummer, Kennzeichen, was wann geschah (z.B. "Feuerlöscher geprüft am
-  19.02.2016"), wofür die Firma zuständig ist. Je Angabe "zitat": die WÖRTLICHE Stelle aus dem Text, höchstens eine
-  Zeile.
+- "angaben": bis zu 6 Merkmale mit ihrem Wert, die auch in Jahren noch nützen, zu GENAU DIESEM Ding. Je Angabe:
+  "merkmal": ein kurzer Name aus 1 bis 3 Wörtern, z.B. Telefon, E-Mail, Adresse, Kundennummer, Vertragsnummer,
+  Versicherungsnummer, Kennzeichen, Beitrag, Zählernummer, Baujahr, Wohnfläche, geprüft am, zuständig für.«MERKMALE»
+  "wert": NUR der Wert, so wie er im Text steht (z.B. "01234 56789", "V-4711", "19.02.2016", "140,86 €",
+  "Feuerlöscher") - kein Satz.
+  "zitat": die WÖRTLICHE Stelle aus dem Text, in der der Wert steht, höchstens eine Zeile.
+  Die Bezeichnung selbst ist keine Angabe (bei einem Haus ist die Adresse schon die Bezeichnung). Nennt ein Wert eine
+  andere Person oder Firma, ist das keine Angabe - nenne sie als eigenes Ding.
   Eine Kunden- oder Vertragsnummer gehört zur Firma bzw. zum Vertrag, nicht zur eigenen Person.
   NICHT: Geschäftsführer, Vorstand, Aufsichtsrat, Handelsregister, Steuer- oder USt-Nummer der Firma,
-  Sachbearbeiter, Bankverbindung, Nummer, Datum, Beträge und Steuern einer einzelnen Rechnung, Sätze über das
-  Dokument selbst („Es handelt sich um …“, „Das Dokument bezieht sich auf …“), die Rolle in diesem Dokument
-  („Empfänger der Rechnung“, „hat eine Rechnung erhalten“), Beschriftungen ohne den Wert („Telefonnummer der Firma“
-  ohne die Nummer).
+  Sachbearbeiter, Bankverbindung, Nummer, Datum, Beträge und Steuern einer einzelnen Rechnung, die Rolle in diesem
+  Dokument („Empfänger der Rechnung“, „Ort der Leistung“).
 
 Regeln: Nur was im Text steht. Nichts schätzen, rechnen oder ergänzen. Keine Passwörter, PINs oder Zugangscodes.
 
 Antworte NUR mit JSON:
-{"dinge": [{"schublade": "...", "bezeichnung": "...", "angaben": [{"text": "...", "zitat": "..."}]}]}
+{"dinge": [{"schublade": "...", "bezeichnung": "...", "angaben": [{"merkmal": "...", "wert": "...", "zitat": "..."}]}]}
 
 --- TEXT ---
 «TEXT»"""
+MAX_MERKMALE = 40                     # so viele schon benutzte Merkmale nennt der Prompt
+MAX_WERT_WOERTER = 10                 # mehr Wörter: ein Satz, kein Wert
 
 _WORT = re.compile(r"[\"„“‚‘'(\[]*[A-Za-zÄÖÜäöüßéèàç]+(?:-[A-Za-zÄÖÜäöüß]+)*[.,:;!?)\]\"“”‘']*")
 _ZAHLWORT = re.compile(r"[\d.,:/\-–€%+()§*]+|[A-Z]{2}\d[\d ]+")
@@ -185,9 +195,27 @@ _NAMENSWORT = re.compile(r"[A-Za-zÄÖÜäöüß]{4,}")
 # Die KI befolgt Verbote im Prompt nur teilweise (Messung N1) - diese Regeln entscheiden.
 IMPRESSUM = re.compile(r"gesch[aä]ftsf|vorstand|aufsichtsrat|verwaltungsrat|\bHR[AB]\b|handelsregister|registergericht|"
                        r"amtsgericht|ust[.\- ]*(id|ld)|steuer[ -]?n(r|umm)|sachbearbeit|\bIBAN\b|\bBI[CG]\b|"
-                       r"bankverbindung|sitz der gesellschaft|gl[aä]ubiger-id", re.I)
+                       r"bankverbindung|sitz der gesellschaft|gl[aä]ubiger-id|"
+                       # W3-Messung 19.11.2026: Bankdaten alter Art und „Bearbeiter“ kamen als Merkmal durch
+                       r"konto-?n(r|ummer)|bankleitzahl|\bblz\b|\bbearbeiter", re.I)
+# Aufsichtsbehörden stehen in jedem Datenschutzhinweis und jeder Versicherungsinformation - kein Ding der Sammlung
+# (Peter 19.11.2026)
+AUFSICHT = re.compile(r"datenschutz\w*\s*aufsicht|aufsichtsbeh[öo]rde|beauftragte\w* f[üu]r (den )?datenschutz|"
+                      r"\bBayLDA\b|\bBfDI\b|finanzdienstleistungsaufsicht|\bBaFin\b", re.I)
+KUNDE_BEI = {"firma", "behörde", "versicherung"}     # Schubladen, bei denen eine Kundennummer stehen darf
+AUFZAEHLUNG_AB = 3    # so viele Personen ohne eigene Kontaktangabe in einem Dokument = Aufzählung (Briefkopf)
+# Ein einzelner Rechnungsbetrag oder ein Datum nur dieses Dokuments als Merkmal (W3-Messung: „Zu zahlender Betrag“) -
+# gilt nur hier; „Beitrag“ (Versicherung, jedes Jahr) bleibt
+EINMALIG = re.compile(r"^(zu zahlende[rn]?\s*|rechnungs|gesamt|end|zahl|brutto|netto)?(betrag|summe)$|^(mwst|"
+                      r"umsatzsteuer|rechnungsdatum|zahlungsziel|zahlbar bis|f[aä]llig\w*)\b", re.I)
 DOKUMENT = re.compile(r"^(beitrags|strom|gas|ab)?rechnung\b|\brechnung (nr|vom)\b|^(bescheid|schreiben|mahnung|"
                       r"angebot|lieferschein|quittung)\b", re.I)
+# Eine Dokumentart ist weder ein Ding noch eine Schublade (Peters Bild 19.11.2026: eine Datenschutzerklärung unter
+# „Versicherung“, eine Schublade „Rechnung“)
+DOKUMENTART = re.compile(r"^(rechnungs?|rechnungen|schreiben|briefe?|bescheide?|mahnung(en)?|angebote?|lieferschein(e)?|"
+                         r"quittung(en)?|dokumente?|belege?|kontoauszüge?|formulare?|anträge?|mitteilung(en)?)$|"
+                         r"datenschutz(erklärung|hinweis|information)|merkblatt|informationsblatt|"
+                         r"\bagb\b|allgemeine geschäftsbedingungen|widerrufsbelehrung", re.I)
 UEBER_DAS_DOKUMENT = re.compile(r"^(es handelt sich|das dokument|dieses dokument|die rechnung wurde|das schreiben)", re.I)
 # Sagt nur, welche Rolle das Ding in DIESEM Dokument spielt („Kunde der Rechnung“, „hat eine Rechnung erhalten“) -
 # das Zitat stimmt, aber in zwei Jahren nützt der Satz nichts mehr (Peters Test 13.11.2026).
@@ -208,7 +236,10 @@ GRUENDE = {"leer": "ohne Text oder Zitat", "zugang": "Zugangsdaten", "zitat": "Z
            "zahl": "Zahl nicht im Zitat", "impressum": "Impressum oder Bankdaten", "lang": "zu lang",
            "dokument": "das Dokument selbst", "name": "Name nicht im Dokument", "ohne": "ohne brauchbare Angabe",
            "ueber": "Satz über das Dokument", "rolle": "gilt nur für dieses Dokument",
-           "etikett": "Beschriftung ohne Wert"}
+           "etikett": "Beschriftung ohne Wert", "merkmal": "Merkmal fehlt oder ist zu lang",
+           "satz": "Satz statt Wert", "wert": "Wert nicht im Zitat", "bezeichnung": "wiederholt die Bezeichnung",
+           "verbindung": "nennt ein anderes Ding (Verbinden)", "aufsicht": "Aufsichtsbehörde",
+           "kunde": "Kundennummer ohne eindeutige Firma"}
 
 
 def text_guete(text):
@@ -225,47 +256,69 @@ def text_guete(text):
     return gut / len(tokens) if tokens else 0.0
 
 
-def baue_prompt(text, titel="", schubladen=(), bekannte=()):
-    """:param bekannte: Bezeichnungen vorhandener Einträge - die KI soll sie in derselben Schreibweise nennen"""
+def baue_prompt(text, titel="", schubladen=(), bekannte=(), merkmale=()):
+    """:param bekannte: Bezeichnungen vorhandener Einträge - die KI soll sie in derselben Schreibweise nennen
+    :param merkmale: im Wiki schon benutzte Merkmale (wissen.Wissen.merkmale) - die KI soll dieselben Namen nehmen"""
     bekannt = ""
     if bekannte:
         namen = "; ".join(" ".join(str(b).split()) for b in list(bekannte)[:MAX_BEKANNTE])
         bekannt = f"\nIm Wiki stehen schon: {namen}. Kommt eines davon vor, nenne es mit GENAU dieser Bezeichnung."
-    return (PROMPT.replace("«TITEL»", titel or "-").replace("«BEKANNT»", bekannt)
+    schon = ""
+    if merkmale:
+        schon = ("\n  Im Wiki schon benutzte Merkmale - für dasselbe GENAU diesen Namen nehmen: "
+                 + ", ".join(" ".join(str(m).split()) for m in list(merkmale)[:MAX_MERKMALE]) + ".")
+    return (PROMPT.replace("«TITEL»", titel or "-").replace("«BEKANNT»", bekannt).replace("«MERKMALE»", schon)
             .replace("«SCHUBLADEN»", ", ".join(schubladen)).replace("«TEXT»", str(text or "")[:MAX_TEXT]))
 
 
-def _pruefe_angabe(angabe, text):
-    """:return: (Satz, Zitat, Grund) - Grund "" = gültig"""
-    satz, zitat = (" ".join(str(angabe.get(k) or "").split()) for k in ("text", "zitat"))
-    if not satz or not zitat:
-        return satz, zitat, "leer"
-    if len(satz) > wissen.MAX_ANGABE:
-        return satz, zitat, "lang"
+def wert_im_zitat(wert, zitat):
+    """Steht der Wert im Zitat? Die Ziffernfolgen des Werts stehen in denen des Zitats, und jedes Wort (ab 3 Buchstaben)
+    kommt im Zitat vor - Schreibweise, Leer- und Satzzeichen egal („140,86 €“ in „140,86 EUR“)."""
+    flach = _nur_zeichen(zitat)
+    ziffern = "".join(_ZIFFERN.findall(str(zitat)))
+    if any(z not in ziffern for z in _ZIFFERN.findall(str(wert))):
+        return False
+    woerter = [w for w in re.findall(r"[a-zäöüß]+", str(wert).lower()) if len(w) >= 3]
+    return all(w in flach for w in woerter) and bool(_nur_zeichen(wert))
+
+
+def _pruefe_angabe(angabe, text, bezeichnung=""):
+    """:return: (Merkmal, Wert, Zitat, Grund) - Grund "" = gültig"""
+    merkmal, wert, zitat = (" ".join(str(angabe.get(k) or "").split()) for k in ("merkmal", "wert", "zitat"))
+    merkmal = merkmal.rstrip(":").strip()
+    satz = f"{merkmal} {wert}"
+    if not wert or not zitat:
+        return merkmal, wert, zitat, "leer"
+    if not merkmal or len(merkmal) > wissen.MAX_MERKMAL or len(merkmal.split()) > 4:
+        return merkmal, wert, zitat, "merkmal"
+    if len(wissen.angabe_text(merkmal, wert)) > wissen.MAX_ANGABE:
+        return merkmal, wert, zitat, "lang"
+    if len(wert.split()) > MAX_WERT_WOERTER:
+        return merkmal, wert, zitat, "satz"
     if ZUGANG.search(zitat) or ZUGANG.search(satz):
-        return satz, zitat, "zugang"
+        return merkmal, wert, zitat, "zugang"
     if IMPRESSUM.search(zitat) or IMPRESSUM.search(satz):
-        return satz, zitat, "impressum"
-    if UEBER_DAS_DOKUMENT.search(satz):
-        return satz, zitat, "ueber"
-    if ROLLE.search(satz):
-        return satz, zitat, "rolle"
-    if ETIKETT.search(satz) and not _WERT.search(satz):
-        return satz, zitat, "etikett"
+        return merkmal, wert, zitat, "impressum"
+    if UEBER_DAS_DOKUMENT.search(wert) or ROLLE.search(satz) or ROLLE.search(wert) or EINMALIG.search(merkmal):
+        return merkmal, wert, zitat, "rolle"
     if not (zitat_im_text(zitat, text) or beleg_nahe(zitat, text)):
-        return satz, zitat, "zitat"
-    ziffern = "".join(_ZIFFERN.findall(zitat))
-    if any(z not in ziffern for z in _ZIFFERN.findall(satz)):
-        return satz, zitat, "zahl"
-    return satz, zitat, ""
+        return merkmal, wert, zitat, "zitat"
+    if not wert_im_zitat(wert, zitat):
+        return merkmal, wert, zitat, "wert"
+    k = kern(wert)
+    if k and k <= kern(bezeichnung):
+        return merkmal, wert, zitat, "bezeichnung"
+    return merkmal, wert, zitat, ""
 
 
 def pruefe_dinge(antwort, text):
     """Der Code entscheidet, was von der Antwort der KI gezeigt wird.
-    :return: (Dinge [{schublade, bezeichnung, angaben: [{text, zitat}]}], Counter verworfener Gründe)
+    :return: (Dinge [{schublade, bezeichnung, angaben: [{merkmal, wert, zitat, text}]}], Counter verworfener Gründe) -
+             `text` = „Merkmal: Wert“ (wissen.angabe_text), zum Vergleichen mit Vorhandenem und Abgelehntem
     Ein Ding braucht eine Bezeichnung mit einem Wort aus dem Dokument und mindestens eine gültige Angabe; das Dokument
-    selbst („Rechnung Nr. …“) ist kein Ding. Angaben, die nur für dieses eine Dokument gelten (`ROLLE`) oder nur eine
-    Beschriftung ohne den Wert sind (`ETIKETT`), fallen weg. Gleiche Bezeichnungen werden zusammengelegt, höchstens `MAX_DINGE`."""
+    selbst („Rechnung Nr. …“) oder eine Dokumentart ist kein Ding, eine Dokumentart auch keine Schublade (dann
+    „Sonstiges“). Eine Angabe, deren Wert ein anderes Ding desselben Dokuments nennt, fällt weg (`verbindung`) - das
+    verbindet „Verbinden“ beim Übernehmen. Gleiche Bezeichnungen werden zusammengelegt, höchstens `MAX_DINGE`."""
     roh = antwort.get("dinge") if isinstance(antwort, dict) else None
     dinge, verworfen = collections.OrderedDict(), collections.Counter()
     klein = str(text or "").casefold()
@@ -273,30 +326,81 @@ def pruefe_dinge(antwort, text):
         if not isinstance(d, dict):
             continue
         bezeichnung = " ".join(str(d.get("bezeichnung") or "").split())
-        schublade = " ".join(str(d.get("schublade") or "").split()) or "Sonstiges"
+        schublade = " ".join(str(d.get("schublade") or "").split())
+        if not schublade or DOKUMENTART.search(schublade):
+            schublade = "Sonstiges"
         if not any(w.casefold() in klein for w in _NAMENSWORT.findall(bezeichnung)):
             verworfen["name"] += 1
             continue
-        if DOKUMENT.search(bezeichnung):
+        if DOKUMENT.search(bezeichnung) or DOKUMENTART.search(bezeichnung):
             verworfen["dokument"] += 1
+            continue
+        if AUFSICHT.search(bezeichnung):
+            verworfen["aufsicht"] += 1
             continue
         angaben, gesehen = [], set()
         for a in d.get("angaben") if isinstance(d.get("angaben"), list) else []:
             if not isinstance(a, dict):
                 continue
-            satz, zitat, grund = _pruefe_angabe(a, text)
+            merkmal, wert, zitat, grund = _pruefe_angabe(a, text, bezeichnung)
+            wert = wissen.wert_einheitlich(merkmal, wert)    # erst nach der Prüfung: die prüft gegen das Zitat
+            schluessel = (wissen.merkmal_kern(merkmal), kern(wert))
             if grund:
                 verworfen[grund] += 1
-            elif satz.casefold() not in gesehen:
-                gesehen.add(satz.casefold())
-                angaben.append({"text": satz, "zitat": zitat})
-        if not angaben:
-            verworfen["ohne"] += 1
-            continue
+            elif schluessel not in gesehen:
+                gesehen.add(schluessel)
+                angaben.append({"merkmal": merkmal, "wert": wert, "zitat": zitat,
+                                "text": wissen.angabe_text(merkmal, wert)})
         ziel = dinge.setdefault(bezeichnung.casefold(), {"schublade": schublade, "bezeichnung": bezeichnung, "angaben": []})
         schon = {x["text"].casefold() for x in ziel["angaben"]}
         ziel["angaben"] += [a for a in angaben if a["text"].casefold() not in schon]
-    return list(dinge.values())[:MAX_DINGE], verworfen
+    # Eine Kundennummer gehört zur Firma, nie zur Person (Peter 19.11.2026: sonst sammeln sich bei einer Person die
+    # Kundennummern vieler Firmen) - die KI hält sich nicht immer an den Prompt. Ohne eindeutige Firma: weg.
+    firmen = [d for d in dinge.values() if d["schublade"].casefold() in KUNDE_BEI]
+    for d in dinge.values():
+        if not d["schublade"].casefold().startswith("person"):
+            continue
+        nummern = [a for a in d["angaben"] if wissen.merkmal_kern(a["merkmal"]) == "kundennummer"]
+        if not nummern:
+            continue
+        d["angaben"] = [a for a in d["angaben"] if not any(a is n for n in nummern)]
+        if len(firmen) != 1:
+            verworfen["kunde"] += len(nummern)
+            continue
+        for a in nummern:
+            if all((wissen.merkmal_kern(x["merkmal"]), kern(x["wert"])) != (wissen.merkmal_kern(a["merkmal"]), kern(a["wert"]))
+                   for x in firmen[0]["angaben"]):
+                firmen[0]["angaben"].append(a)
+    # Zweiter Durchgang: nennt ein Wert ein anderes Ding dieses Dokuments, ist das eine Verbindung, keine Angabe
+    for schl, d in dinge.items():
+        andere = [kern(x["bezeichnung"]) for s, x in dinge.items() if s != schl]
+        bleiben = [a for a in d["angaben"] if not any(len(o) >= 2 and o <= kern(a["wert"]) for o in andere)]
+        if len(bleiben) < len(d["angaben"]):
+            verworfen["verbindung"] += len(d["angaben"]) - len(bleiben)
+        d["angaben"] = bleiben
+    ergebnis = [d for d in dinge.values() if d["angaben"]]
+    if len(ergebnis) < len(dinge):
+        verworfen["ohne"] += len(dinge) - len(ergebnis)
+    # Personen ohne eigene Kontaktangabe (kein Wert mit Ziffer oder @), mehrere in einem Dokument: eine Aufzählung wie
+    # die Anwälte im Briefkopf - gezeigt, aber nicht vorgehakt (Peter 19.11.2026: „manchmal ganz sinnvoll“)
+    nebenbei = [d for d in ergebnis if d["schublade"].casefold().startswith("person")
+                and not any(re.search(r"[\d@]", a["wert"]) for a in d["angaben"])]
+    for d in ergebnis:
+        d["aufgezaehlt"] = len(nebenbei) >= AUFZAEHLUNG_AB and any(d is x for x in nebenbei)
+    return ergebnis[:MAX_DINGE], verworfen
+
+
+def einheitliche_merkmale(dinge, bekannte=()):
+    """Gleichbedeutende Merkmale (`wissen.merkmal_kern`) auf eine Schreibweise bringen: die im Wiki schon benutzte
+    (`bekannte`), sonst die zuerst genannte. Ändert die Angaben der Dinge (auch `text`) und gibt `dinge` zurück."""
+    schreibweise = {}
+    for m in bekannte:
+        schreibweise.setdefault(wissen.merkmal_kern(m), m)
+    for d in dinge:
+        for a in d["angaben"]:
+            a["merkmal"] = schreibweise.setdefault(wissen.merkmal_kern(a["merkmal"]), a["merkmal"])
+            a["text"] = wissen.angabe_text(a["merkmal"], a["wert"])
+    return dinge
 
 
 _STRASSE = re.compile(r"str(\.|asse)?(?=[^a-z]|$)")
@@ -307,7 +411,7 @@ def kern(text):
     """Wörter und Zahlen eines Namens oder einer Angabe, auf eine Schreibweise gebracht: klein, ß = ss, „Str.“ =
     „Straße“, ohne Satzzeichen und Füllwörter. Peter 13.11.2026: verschiedene Schreibweisen derselben Adresse ergaben
     neue Einträge."""
-    t = _STRASSE.sub("strasse ", str(text or "").casefold().replace("ß", "ss"))
+    t = _STRASSE.sub("strasse ", wissen.LAND_VOR_PLZ.sub("", str(text or "").casefold().replace("ß", "ss")))
     return frozenset(re.findall(r"[0-9a-zäöü]+", t)) - _FUELLWORT
 
 

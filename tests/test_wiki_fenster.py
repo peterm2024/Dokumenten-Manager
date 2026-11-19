@@ -104,36 +104,56 @@ class TestWikiFenster(unittest.TestCase):
     def test_angaben(self):
         f = self.fenster()
         haus = self.anlegen(f, "Haus Musterstraße 1", "Immobilie")
-        with patch("tools.wiki.simpledialog.askstring", return_value="  Baujahr   1975 "):
+        with patch("tools.wiki.AngabeDialog.frage", return_value=("  Baujahr ", "  1975 ")) as frage:
             f._angabe_hinzu()
-        with patch("tools.wiki.simpledialog.askstring", return_value="baujahr 1975"), \
+        self.assertEqual(frage.call_args[0][1:], ("Angabe hinzufügen", [], "", ""))   # noch keine Merkmale
+        with patch("tools.wiki.AngabeDialog.frage", return_value=("baujahr", "1975")), \
                 patch("tools.wiki.mb.showinfo") as info:
             f._angabe_hinzu()                                                      # steht schon da
         self.assertIn("steht schon da", info.call_args[0][1])
-        with patch("tools.wiki.simpledialog.askstring", return_value=None):
+        with patch("tools.wiki.AngabeDialog.frage", return_value=None):
             f._angabe_hinzu()                                                      # abgebrochen
-        self.w.angabe_hinzu(haus, "Feuerlöscher geprüft am 19.02.2016", "AAAA-0001", "Rechnung Prüfdienst",
-                            "Prüf-/Lieferdatum: 19.02.2016")
+        with patch("tools.wiki.AngabeDialog.frage", return_value=("Telefon", " ")), \
+                patch("tools.wiki.mb.showwarning") as warnung:
+            f._angabe_hinzu()                                                      # Merkmal ohne Wert
+        self.assertIn("Wert", warnung.call_args[0][1])
+        self.w.angabe_hinzu(haus, ("Feuerlöscher geprüft am", "19.02.2016"), "AAAA-0001", "Rechnung Prüfdienst",
+                            "Prüf-/Lieferdatum: 19.02.2016", "2016-02-19")
         f.var_bezeichnung.set("Haus Musterstraße 1a")                              # ungespeichert: bleibt stehen
         f._neu_laden()
         self.assertEqual(f.var_bezeichnung.get(), "Haus Musterstraße 1a")
         zeilen = [f.tree_angaben.item(i, "values") for i in f.tree_angaben.get_children()]
-        self.assertEqual(zeilen, [("Baujahr 1975", ""), ("Feuerlöscher geprüft am 19.02.2016", "Rechnung Prüfdienst")])
+        self.assertEqual(zeilen, [("Baujahr", "1975", "", ""), ("Feuerlöscher geprüft am", "19.02.2016", "19.02.2016", "1")])
         hand, ki = f.tree_angaben.get_children()
         f.tree_angaben.selection_set(ki)
         self.root.update()
-        self.assertEqual(f.lbl_zitat.cget("text"), "Im Dokument: „Prüf-/Lieferdatum: 19.02.2016“")
+        self.assertEqual(f.lbl_zitat.cget("text"),
+                         "Im Dokument: „Prüf-/Lieferdatum: 19.02.2016“ - Rechnung Prüfdienst, 19.02.2016")
         f.tree_angaben.selection_set(hand)
         self.root.update()
         self.assertEqual(f.lbl_zitat.cget("text"), "Von Hand eingetragen")
-        with patch("tools.wiki.simpledialog.askstring", return_value="Baujahr 1976") as frage:
+        with patch("tools.wiki.AngabeDialog.frage", return_value=("Baujahr", "1976")) as frage:
             f._angabe_aendern()
-        self.assertEqual(frage.call_args[1]["initialvalue"], "Baujahr 1975")
-        self.assertEqual(self.w.lade(haus)["angaben"][0]["text"], "Baujahr 1976")
+        self.assertEqual(frage.call_args[0][1:], ("Angabe ändern", ["Baujahr", "Feuerlöscher geprüft am"], "Baujahr",
+                                                  "1975"))                         # Merkmale der Schublade zur Wahl
+        self.assertEqual(self.w.lade(haus)["angaben"][0]["text"], "Baujahr: 1976")
         f.tree_angaben.selection_set(f.tree_angaben.get_children())
         f._angabe_weg()
         self.assertEqual((self.w.lade(haus)["angaben"], f.tree_angaben.get_children()), ([], ()))
         self.assertEqual(f.var_bezeichnung.get(), "Haus Musterstraße 1a")          # immer noch ungespeichert da
+
+    def test_angabe_in_der_sammlung_suchen(self):
+        haus = self.w.speichere("Immobilie", "Haus Musterstraße 1")
+        self.w.angabe_hinzu(haus, ("Zählernummer", "1ESY 1160"))
+        f = self.fenster()
+        f.zeige_eintrag(haus)
+        f.app.entry_search, f.app.search_manager = MagicMock(), MagicMock()
+        f._angabe_suchen()                                                      # nichts markiert: nichts
+        f.app.search_manager.apply_filters.assert_not_called()
+        f.tree_angaben.selection_set(f.tree_angaben.get_children()[0])
+        f._angabe_suchen()
+        f.app.entry_search.setze_text.assert_called_once_with('"1ESY 1160"')
+        f.app.search_manager.apply_filters.assert_called_once()
 
     def test_verbindungen(self):
         haus = self.w.speichere("Immobilie", "Haus Musterstraße 1", "Altbau")
@@ -182,7 +202,7 @@ class TestWikiFenster(unittest.TestCase):
         f.tree_belege.selection_set(f.tree_belege.get_children()[0])
         f._beleg_weg()
         self.assertEqual([f.tree_belege.item(i, "text") for i in f.tree_belege.get_children()], ["Zulassung"])
-        self.assertEqual(f.tree_angaben.item(f.tree_angaben.get_children()[0], "values"), ("Gekauft 2019", ""))
+        self.assertEqual(f.tree_angaben.item(f.tree_angaben.get_children()[0], "values"), ("", "Gekauft 2019", "", ""))
 
     def test_ungespeichert_fragt_und_abbrechen_bleibt(self):
         a = self.w.speichere("Person", "Max Mustermann")
@@ -356,8 +376,8 @@ class TestWikiFenster(unittest.TestCase):
             self.assertTrue(f.zusammenlegen(b))
         self.assertEqual([e["bezeichnung"] for e in self.w.liste()], ["Hausrat Musterversicherung"])
         self.assertEqual(f.eintrag["id"], a)
-        self.assertEqual([f.tree_angaben.item(i, "values")[0] for i in f.tree_angaben.get_children()],
-                         ["Versicherungsnummer: 4711", "Auch: Muster Privatschutz"])
+        self.assertEqual([f.tree_angaben.item(i, "values")[:2] for i in f.tree_angaben.get_children()],
+                         [("Versicherungsnummer", "4711"), ("Auch", "Muster Privatschutz")])
         self.assertFalse(f.tree.exists(f"e:{b}"))
 
     def test_filter(self):
@@ -418,3 +438,54 @@ class TestWikiWerkzeug(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestAngabenZeilen(unittest.TestCase):
+    """Etappe 12 W2: Tabelle Merkmal | Wert | Stand | Belege mit Verlauf - ohne Tk."""
+
+    @staticmethod
+    def angabe(id_, merkmal, wert, quellen=(), aktuell=True):
+        quellen = [{"kid_id": k, "titel": t, "zitat": z, "datum": d} for k, t, z, d in quellen]
+        return {"id": id_, "merkmal": merkmal, "wert": wert, "quellen": quellen, "aktuell": aktuell,
+                "stand": quellen[0]["datum"] if quellen else ""}
+
+    def test_verlauf_grau_ohne_merkmal(self):
+        from tools.wiki import angaben_zeilen
+        zeilen = angaben_zeilen([
+            self.angabe(3, "Beitrag", "140,86 €", [("C", "Rechnung 2025", "140,86", "2025-01-05")]),
+            self.angabe(1, "Beitrag", "110,86 €", [("A", "Rechnung 2023", "110,86", "2023-01-05"),
+                                                   ("B", "Mahnung", "", "")], aktuell=False),
+            self.angabe(2, "", "Schlüssel beim Nachbarn", aktuell=False)])
+        self.assertEqual(zeilen, [
+            ("a:3", ("Beitrag", "140,86 €", "05.01.2025", "1"), ()),
+            ("a:1", ("", "110,86 €", "05.01.2023", "2"), ("verlauf",)),
+            ("a:2", ("", "Schlüssel beim Nachbarn", "", ""), ())])          # freie Zeile: nicht grau
+
+    def test_quellen_text(self):
+        from tools.wiki import QUELLEN_HOECHSTENS, quellen_text
+        self.assertEqual(quellen_text(self.angabe(1, "Telefon", "0123")), "Von Hand eingetragen")
+        self.assertEqual(quellen_text(self.angabe(1, "Telefon", "0123", [("A", "", "Tel. 0123", "")])),
+                         "Im Dokument: „Tel. 0123“ - A")                      # ohne Titel die Dokument-ID
+        viele = self.angabe(1, "Telefon", "0123", [(f"K{i}", f"Rechnung {i}", "" if i else "Tel. 0123", f"2024-0{i + 1}-01")
+                                                   for i in range(QUELLEN_HOECHSTENS + 2)])
+        self.assertEqual(quellen_text(viele).splitlines(), [
+            "In den Dokumenten:", "„Tel. 0123“ - Rechnung 0, 01.01.2024", "Rechnung 1, 01.02.2024",
+            "Rechnung 2, 01.03.2024", "und 2 weitere Dokumente"])
+
+    def test_viele_quellen(self):
+        from tools.wiki import QUELLEN_HOECHSTENS, angaben_zeilen, quellen_text
+        n = wissen.MAX_BELEG_QUELLEN + 1
+        a = self.angabe(1, "Adresse", "Musterstraße 1", [(f"K{i}", f"Brief {i}", "Musterstraße 1", "") for i in range(n)])
+        self.assertEqual(angaben_zeilen([a])[0][1][3], f"viele ({n})")
+        b = self.angabe(2, "Adresse", "Musterstraße 1", [(f"K{i}", f"Brief {i}", "", "") for i in range(n - 1)])
+        self.assertEqual(angaben_zeilen([b])[0][1][3], str(n - 1))            # genau an der Grenze: die Zahl
+        zeilen = quellen_text(a).splitlines()
+        self.assertEqual((zeilen[0], len(zeilen), zeilen[-1]),
+                         (f"In vielen Dokumenten belegt ({n}), zum Beispiel:", QUELLEN_HOECHSTENS + 2,
+                          "Alle findet Rechtsklick → „In der Sammlung suchen“."))
+
+    def test_suchtext_fuer(self):
+        from tools.wiki import suchtext_fuer
+        self.assertEqual(suchtext_fuer("  Musterstraße   1 "), '"Musterstraße 1"')
+        self.assertEqual(suchtext_fuer('Firma „Muster" GmbH'), '"Firma Muster GmbH"')
+        self.assertEqual(suchtext_fuer("  "), "")

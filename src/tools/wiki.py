@@ -10,8 +10,13 @@ sind beim Öffnen des Eintrags markiert (`wissen.fundstellen`). Rechts der gewä
   Fenster zum Umbenennen, Zusammenlegen und Löschen (Schritt N4, tools/wiki_schubladen.py).
 - „Zusammenlegen mit…“ unten: Ein anderer Eintrag meint dasselbe und geht im gezeigten auf
   (`wissen.eintraege_zusammenlegen`, nach Rückfrage).
-- Angaben: kurze freie Zeilen. Aus einem Dokument tragen sie Titel und Zitat (unter der Liste zu lesen), von Hand
-  eingetragene nicht. Hinzufügen, Ändern und Entfernen wirken sofort.
+- Angaben (seit 19.11.2026, Etappe 12 Schritt W2): Tabelle Merkmal | Wert | Stand | Belege (`angaben_zeilen`). Ein
+  Merkmal mit mehreren Werten ist ein Verlauf: der jüngste oben, die älteren grau darunter ohne Merkmal. Freie Zeilen
+  (von Hand, ohne Merkmal) stehen am Ende. Unter der Tabelle die Quellen der markierten Angabe (`quellen_text`).
+  Hinzufügen/Ändern über `AngabeDialog` (Merkmal mit Auswahl der Merkmale der Schublade, Wert); wirkt sofort.
+  Ab `wissen.MAX_BELEG_QUELLEN` Quellen steht „viele (N)“ (Peter 19.11.2026: die eigene Adresse steht in jedem
+  Dokument). Rechtsklick auf eine Angabe: Ändern, Entfernen und „In der Sammlung suchen“ - der Wert in
+  Anführungszeichen in der Suche des Hauptfensters (`suchtext_fuer`).
 - Verbunden mit: andere Einträge; Doppelklick springt dorthin.
 - Belege: Dokumente der Sammlung (über ihre Dokument-ID, sie bleiben nach Verschieben und Umbenennen gültig) - im
   Hauptfenster markierte oder über „Dokumente suchen…“ gefundene (tools/wiki_suche.py). Doppelklick zeigt das Dokument.
@@ -31,7 +36,6 @@ import collections
 import os
 import tkinter as tk
 import tkinter.messagebox as mb
-import tkinter.simpledialog as simpledialog
 from tkinter import ttk
 
 import app_paths
@@ -103,6 +107,110 @@ def baue_menue(menu, zeilen, ausfuehren):
             menu.add_cascade(label=text, menu=unter, state=zustand)
         else:
             menu.add_command(label=text, state=zustand, command=(lambda w=was: ausfuehren(w)) if was else None)
+
+
+SPALTEN_ANGABEN = ("merkmal", "wert", "stand", "belege")
+QUELLEN_HOECHSTENS = 3                    # so viele Quellen nennt die Zeile unter der Tabelle, der Rest als Zahl
+
+
+def _datum(iso):
+    """JJJJ-MM-TT → TT.MM.JJJJ; anderes unverändert."""
+    teile = str(iso or "").split("-")
+    return ".".join(reversed(teile)) if len(teile) == 3 and all(x.isdigit() for x in teile) else str(iso or "")
+
+
+def angaben_zeilen(angaben):
+    """Zeilen der Angaben-Tabelle aus `wissen.lade(...)["angaben"]` (schon geordnet): [(iid, Werte, Tags)].
+    Ältere Werte eines Merkmals (Verlauf) stehen ohne Merkmal grau unter dem jüngsten."""
+    zeilen = []
+    for a in angaben:
+        verlauf = bool(a["merkmal"]) and not a["aktuell"]
+        n = len(a["quellen"])
+        belege = f"viele ({n})" if n > wissen.MAX_BELEG_QUELLEN else (str(n) if n else "")
+        zeilen.append((f"a:{a['id']}", ("" if verlauf else a["merkmal"], a["wert"], _datum(a["stand"]), belege),
+                       ("verlauf",) if verlauf else ()))
+    return zeilen
+
+
+def quellen_text(angabe):
+    """Was unter der Tabelle zur markierten Angabe steht: je Quelle Zitat, Dokument und Datum, die jüngste zuerst."""
+    if not angabe["quellen"]:
+        return "Von Hand eingetragen"
+    zeilen = []
+    for q in angabe["quellen"][:QUELLEN_HOECHSTENS]:
+        wo = ", ".join(x for x in (q["titel"] or q["kid_id"], _datum(q["datum"])) if x)
+        zeilen.append(f"„{q['zitat']}“ - {wo}" if q["zitat"] else wo)
+    n = len(angabe["quellen"])
+    if n > wissen.MAX_BELEG_QUELLEN:
+        return (f"In vielen Dokumenten belegt ({n}), zum Beispiel:\n" + "\n".join(zeilen)
+                + "\nAlle findet Rechtsklick → „In der Sammlung suchen“.")
+    rest = n - QUELLEN_HOECHSTENS
+    if rest > 0:
+        zeilen.append(f"und {rest} weitere Dokument{'' if rest == 1 else 'e'}")
+    return "Im Dokument: " + "\n".join(zeilen) if len(zeilen) == 1 else "In den Dokumenten:\n" + "\n".join(zeilen)
+
+
+def suchtext_fuer(wert):
+    """Suchtext für das Hauptfenster: der Wert in Anführungszeichen (genau diese Wörter in dieser Folge, suchsyntax);
+    eigene Anführungszeichen im Wert stören dabei und fallen weg."""
+    rein = " ".join(str(wert or "").replace('"', " ").replace("„", " ").replace("“", " ").split())
+    return f'"{rein}"' if rein else ""
+
+
+class AngabeDialog(tk.Toplevel):
+    """Merkmal (Eingabefeld mit Auswahl der Merkmale der Schublade) und Wert. Modal, am Mauszeiger, unsichtbar
+    aufgebaut (FALLSTRICKE #90). `frage` liefert (Merkmal, Wert) oder None."""
+
+    def __init__(self, parent, titel, merkmale, merkmal="", wert=""):
+        super().__init__(parent)
+        self.withdraw()
+        self.title(titel)
+        self.resizable(False, False)
+        self.transient(parent)
+        self.ergebnis = None
+        rahmen = ttk.Frame(self, padding=(15, 12, 15, 6))
+        rahmen.pack(fill=tk.X)
+        rahmen.columnconfigure(1, weight=1)
+        ttk.Label(rahmen, text="Merkmal:").grid(row=0, column=0, sticky="w", padx=(0, 6), pady=3)
+        self.var_merkmal = tk.StringVar(value=merkmal)
+        self.cmb_merkmal = ttk.Combobox(rahmen, textvariable=self.var_merkmal, values=list(merkmale), width=30)
+        self.cmb_merkmal.grid(row=0, column=1, sticky="ew", pady=3)
+        ttk.Label(rahmen, text="Wert:").grid(row=1, column=0, sticky="w", padx=(0, 6), pady=3)
+        self.var_wert = tk.StringVar(value=wert)
+        self.ent_wert = ttk.Entry(rahmen, textvariable=self.var_wert, width=48)
+        self.ent_wert.grid(row=1, column=1, sticky="ew", pady=3)
+        ttk.Label(rahmen, text="Ohne Merkmal wird der Wert eine freie Zeile.", foreground="gray40").grid(
+            row=2, column=1, sticky="w", pady=(2, 0))
+        knoepfe = ttk.Frame(self)
+        knoepfe.pack(pady=(6, 12))
+        ttk.Button(knoepfe, text="OK", command=self._ok, width=10).pack(side=tk.LEFT, padx=5)
+        ttk.Button(knoepfe, text="Abbrechen", command=self._abbrechen, width=10).pack(side=tk.LEFT, padx=5)
+        self.bind("<Return>", lambda _e: self._ok())
+        self.bind("<Escape>", lambda _e: self._abbrechen())
+        self.protocol("WM_DELETE_WINDOW", self._abbrechen)
+        UIUtils.position_near_mouse_auto(self)
+        self.deiconify()
+        feld = self.ent_wert if merkmal else self.cmb_merkmal
+        feld.focus_set()
+
+    def _ok(self):
+        self.ergebnis = (self.var_merkmal.get(), self.var_wert.get())
+        self.destroy()
+
+    def _abbrechen(self):
+        self.ergebnis = None
+        self.destroy()
+
+    @staticmethod
+    def frage(parent, titel, merkmale, merkmal="", wert=""):
+        dialog = AngabeDialog(parent, titel, merkmale, merkmal, wert)
+        try:
+            dialog.wait_visibility()
+            dialog.grab_set()
+        except tk.TclError:
+            pass
+        dialog.wait_window()
+        return dialog.ergebnis
 
 
 class WikiFenster(tk.Toplevel):
@@ -256,19 +364,22 @@ class WikiFenster(tk.Toplevel):
         self.btn_angabe_aendern.pack(side=tk.RIGHT, padx=6)
         self.btn_angabe = ttk.Button(kopf, text="Hinzufügen…", command=self._angabe_hinzu)
         self.btn_angabe.pack(side=tk.RIGHT)
-        Tooltip(self.btn_angabe, "Eine kurze Zeile, etwa „Telefon: 01234 56789“ oder „Heizung erneuert 2019“")
+        Tooltip(self.btn_angabe, "Ein Merkmal mit seinem Wert, etwa Telefon / 01234 56789 - oder von Hand eine freie "
+                                 "Zeile ohne Merkmal, etwa „Schlüssel liegt beim Nachbarn“")
         self.lbl_zitat = ttk.Label(self.rahmen_angaben, foreground="gray40", wraplength=UIUtils.px(self, 680),
                                    justify=tk.LEFT)
         self.lbl_zitat.pack(side=tk.BOTTOM, anchor="w", pady=(2, 0))
-        self.tree_angaben = ttk.Treeview(self.rahmen_angaben, columns=("text", "quelle"), show="headings", height=5,
+        self.tree_angaben = ttk.Treeview(self.rahmen_angaben, columns=SPALTEN_ANGABEN, show="headings", height=5,
                                          selectmode="extended")
-        self.tree_angaben.heading("text", text="Angabe", anchor="w")
-        self.tree_angaben.heading("quelle", text="aus Dokument", anchor="w")
-        self.tree_angaben.column("text", width=UIUtils.px(self, 430), anchor="w")
-        self.tree_angaben.column("quelle", width=UIUtils.px(self, 220), anchor="w")
+        for spalte, titel, breite, dehnen in (("merkmal", "Merkmal", 170, False), ("wert", "Wert", 330, True),
+                                              ("stand", "Stand", 90, False), ("belege", "Belege", 60, False)):
+            self.tree_angaben.heading(spalte, text=titel, anchor="w")
+            self.tree_angaben.column(spalte, width=UIUtils.px(self, breite), anchor="w", stretch=dehnen)
+        self.tree_angaben.tag_configure("verlauf", foreground="gray50")       # älterer Wert eines Merkmals
         self.tree_angaben.pack(fill=tk.BOTH, expand=True, pady=(4, 0))
         self.tree_angaben.bind("<<TreeviewSelect>>", lambda _e: self._zeige_zitat())
         self.tree_angaben.bind("<Double-1>", lambda _e: self._angabe_aendern())
+        self.tree_angaben.bind("<Button-3>", self._angaben_menue)
 
     # ---------------------------------------------------------------- Liste
     def _fuelle_liste(self, waehle=None):
@@ -393,8 +504,8 @@ class WikiFenster(tk.Toplevel):
         self._stand = self._formular()
         self.lbl_kopf.config(text=f"{eintrag['art_name']}: {eintrag['bezeichnung']}")
         self.lbl_stand.config(text=f"geändert {eintrag['geaendert'][:16].replace('T', ' ')}")
-        for a in eintrag["angaben"]:
-            self.tree_angaben.insert("", tk.END, iid=f"a:{a['id']}", values=(a["text"], a["titel"] or a["kid_id"]))
+        for iid, werte, tags in angaben_zeilen(eintrag["angaben"]):
+            self.tree_angaben.insert("", tk.END, iid=iid, values=werte, tags=tags)
         for v in eintrag["verbunden"]:
             self.tree_verbunden.insert("", tk.END, iid=f"v:{v['id']}", text=f"{v['bezeichnung']} ({v['art_name']})")
         for b in eintrag["belege"]:
@@ -603,24 +714,20 @@ class WikiFenster(tk.Toplevel):
     def _zeige_zitat(self):
         ids = self._markierte_angaben()
         angabe = next((a for a in self.eintrag["angaben"] if a["id"] == ids[0]), None) if self.eintrag and ids else None
-        if angabe is None:
-            self.lbl_zitat.config(text="")
-        elif angabe["zitat"]:
-            self.lbl_zitat.config(text=f"Im Dokument: „{angabe['zitat']}“")
-        else:
-            self.lbl_zitat.config(text="Von Hand eingetragen" if not angabe["kid_id"] else "")
+        self.lbl_zitat.config(text=quellen_text(angabe) if angabe else "")
 
-    def _frage_angabe(self, titel, vorgabe=""):
-        return simpledialog.askstring(titel, "Angabe (eine kurze Zeile):", initialvalue=vorgabe, parent=self)
+    def _frage_angabe(self, titel, merkmal="", wert=""):
+        """(Merkmal, Wert) oder None (abgebrochen). Zur Auswahl die Merkmale der Schublade des Eintrags."""
+        return AngabeDialog.frage(self, titel, self.wissen.merkmale(self.eintrag["art"]), merkmal, wert)
 
     def _angabe_hinzu(self):
         if not self.eintrag:
             return
-        text = self._frage_angabe("Angabe hinzufügen")
-        if text is None:
+        angabe = self._frage_angabe("Angabe hinzufügen")
+        if angabe is None:
             return
         try:
-            neu = self.wissen.angabe_hinzu(self.eintrag["id"], text)
+            neu = self.wissen.angabe_hinzu(self.eintrag["id"], angabe)
         except wissen.Eingabefehler as e:
             mb.showwarning("Wiki", str(e), parent=self)
             return
@@ -634,15 +741,43 @@ class WikiFenster(tk.Toplevel):
         if not self.eintrag or len(ids) != 1:
             return
         alt = next(a for a in self.eintrag["angaben"] if a["id"] == ids[0])
-        text = self._frage_angabe("Angabe ändern", alt["text"])
-        if text is None or " ".join(text.split()) == alt["text"]:
+        angabe = self._frage_angabe("Angabe ändern", alt["merkmal"], alt["wert"])
+        if angabe is None or wissen.teile_angabe(angabe) == (alt["merkmal"], alt["wert"]):
             return
         try:
-            self.wissen.angabe_aendern(ids[0], text)
+            self.wissen.angabe_aendern(ids[0], angabe)
         except wissen.Eingabefehler as e:
             mb.showwarning("Wiki", str(e), parent=self)
             return
         self._neu_laden()
+
+    def _angaben_menue(self, event):
+        """Rechtsklick auf eine Angabe: die Zeile markieren (außer sie ist schon Teil der Markierung), dann das Menü."""
+        zeile = self.tree_angaben.identify_row(event.y)
+        if not zeile or not self.eintrag:
+            return
+        if zeile not in self.tree_angaben.selection():
+            self.tree_angaben.selection_set(zeile)
+        eine = len(self._markierte_angaben()) == 1
+        menue = tk.Menu(self, tearoff=0)
+        menue.add_command(label="Ändern…", command=self._angabe_aendern, state=tk.NORMAL if eine else tk.DISABLED)
+        menue.add_command(label="Entfernen", command=self._angabe_weg)
+        menue.add_separator()
+        menue.add_command(label="In der Sammlung suchen", command=self._angabe_suchen,
+                          state=tk.NORMAL if eine else tk.DISABLED)
+        menue.tk_popup(event.x_root, event.y_root)
+
+    def _angabe_suchen(self):
+        """Der Wert der markierten Angabe als Suche im Hauptfenster - findet alle Dokumente, in denen er steht, auch
+        die, die nicht Quelle sind (Peter 19.11.2026: „einfach nach diesem Beleg suchen“)."""
+        ids = self._markierte_angaben()
+        angabe = next((a for a in self.eintrag["angaben"] if a["id"] == ids[0]), None) if self.eintrag and ids else None
+        feld, suche = getattr(self.app, "entry_search", None), getattr(self.app, "search_manager", None)
+        if angabe is None or feld is None or suche is None:
+            return
+        feld.setze_text(suchtext_fuer(angabe["wert"]))
+        suche.apply_filters()
+        self._log("Wiki: Wert einer Angabe in der Sammlung gesucht")
 
     def _angabe_weg(self):
         ids = self._markierte_angaben()

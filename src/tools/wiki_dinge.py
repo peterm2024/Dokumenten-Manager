@@ -56,22 +56,32 @@ def dokumente_aus_belegen(app, belege):
     return dokumente, fehlt
 
 
+def _schluessel(angabe):
+    """Zum Vergleichen zweier Angaben aus verschiedenen Dokumenten (Peter 19.11.2026: „Musterstr. 8, D-…“ und
+    „Musterstr. 8 …“ standen beide da)."""
+    if "wert" not in angabe:
+        return angabe["text"].casefold()
+    return wissen.merkmal_kern(angabe["merkmal"]), wissen_ki.kern(angabe["wert"])
+
+
 def lege_zusammen(je_dokument):
     """Dinge aus mehreren Dokumenten zusammenlegen: gleiche Bezeichnung (Schreibweise egal) = ein Ding.
     :param je_dokument: [(dokument, [Dinge aus wissen_ki.pruefe_dinge], schlecht_erkannt)]
-    :return: [{schublade, bezeichnung, angaben: [{text, zitat, dok}], doks: [dokument], schlecht}] - `schlecht`, wenn
+    :return: [{schublade, bezeichnung, angaben: [{merkmal, wert, text, zitat, dok}], doks: [dokument], schlecht}] - `schlecht`, wenn
              alle Quellen schlecht erkannt sind. Reine Funktion."""
     gruppen = collections.OrderedDict()
     for dok, dinge, schlecht in je_dokument:
         for d in dinge:
             g = gruppen.setdefault(d["bezeichnung"].casefold(), {"schublade": d["schublade"], "bezeichnung": d["bezeichnung"],
-                                                                 "angaben": [], "doks": [], "schlecht": True})
+                                                                 "angaben": [], "doks": [], "schlecht": True,
+                                                                 "aufgezaehlt": True})
             g["schlecht"] = g["schlecht"] and schlecht
+            g["aufgezaehlt"] = g["aufgezaehlt"] and d.get("aufgezaehlt", False)
             if dok not in g["doks"]:
                 g["doks"].append(dok)
-            schon = {a["text"].casefold() for a in g["angaben"]}
-            g["angaben"] += [{"text": a["text"], "zitat": a["zitat"], "dok": dok} for a in d["angaben"]
-                             if a["text"].casefold() not in schon]
+            for a in d["angaben"]:                   # gleich wie in pruefe_dinge: Merkmal und Wert, Schreibweise egal
+                if all(_schluessel(a) != _schluessel(x) for x in g["angaben"]):
+                    g["angaben"].append(dict(a, dok=dok))
     return list(gruppen.values())
 
 
@@ -79,10 +89,10 @@ class Lauf:
     """Liest die Dokumente nacheinander (Hintergrund-Thread) und legt Meldungen ins Postfach:
     ("stand", n, gesamt, sekunden_bisher), ("fertig", ergebnis) oder ("fehler", text)."""
 
-    def __init__(self, app, dokumente, base_url, model, schubladen, bekannte):
+    def __init__(self, app, dokumente, base_url, model, schubladen, bekannte, merkmale=()):
         self.app, self.dokumente = app, dokumente[:wissen_ki.HOECHSTENS]
         self.base_url, self.model = base_url, model
-        self.schubladen, self.bekannte = list(schubladen), list(bekannte)
+        self.schubladen, self.bekannte, self.merkmale = list(schubladen), list(bekannte), list(merkmale)
         self.postfach = queue.Queue()
         self.abbrechen = threading.Event()
 
@@ -106,7 +116,7 @@ class Lauf:
                 zahlen["ohne_text"] += 1
                 continue
             schlecht = wissen_ki.text_guete(text) < wissen_ki.GUETE_MIN
-            prompt = wissen_ki.baue_prompt(text, dok["titel"], self.schubladen, self.bekannte)
+            prompt = wissen_ki.baue_prompt(text, dok["titel"], self.schubladen, self.bekannte, self.merkmale)
             try:
                 antwort, _sek = wissen_ki.lies_json(prompt, self.base_url, self.model)
             except OSError as fehler:                          # Server weg: der ganze Lauf endet hier
@@ -119,6 +129,8 @@ class Lauf:
                 zahlen["fehler"] += 1
                 continue
             dinge, weg = wissen_ki.pruefe_dinge(antwort, text)
+            wissen_ki.einheitliche_merkmale(dinge, self.merkmale)
+            self.merkmale += [a["merkmal"] for d in dinge for a in d["angaben"] if a["merkmal"] not in self.merkmale]
             verworfen.update(weg)
             zahlen["gelesen"] += 1
             zahlen["schlecht"] += schlecht
@@ -148,7 +160,8 @@ class DingeFenster(tk.Toplevel):
         config = self.app.config
         self.lauf = Lauf(self.app, dokumente, config.get("ollama_url", ollama_client.DEFAULT_URL),
                          config.get("ollama_model", ollama_client.DEFAULT_MODEL),
-                         [a["name"] for a in wiki.wissen.arten()], [e["bezeichnung"] for e in wiki.wissen.liste()])
+                         [a["name"] for a in wiki.wissen.arten()], [e["bezeichnung"] for e in wiki.wissen.liste()],
+                         wiki.wissen.merkmale())
         weg = len(dokumente) - len(self.lauf.dokumente)
         self._hinweis_menge = (f" (die ersten {wissen_ki.HOECHSTENS}; {weg} weitere bitte in einem zweiten Lauf)"
                                if weg > 0 else "")
@@ -194,8 +207,8 @@ class DingeFenster(tk.Toplevel):
         self.tree.heading("zitat", text="im Dokument", anchor="w")
         self.tree.heading("quelle", text="Dokument", anchor="w")
         self.tree.column("#0", width=UIUtils.px(self, 470), anchor="w")
-        self.tree.column("zitat", width=UIUtils.px(self, 300), anchor="w")
-        self.tree.column("quelle", width=UIUtils.px(self, 180), anchor="w")
+        self.tree.column("zitat", width=UIUtils.px(self, 380), anchor="w")
+        self.tree.column("quelle", width=UIUtils.px(self, 100), anchor="w")
         self.tree.tag_configure("ding", font=("", UIUtils.schriftgroesse(self, 0), "bold"))
         self.tree.tag_configure("aus", foreground="gray55")
         rolle = ttk.Scrollbar(rahmen, orient=tk.VERTICAL, command=self.tree.yview)
@@ -204,6 +217,7 @@ class DingeFenster(tk.Toplevel):
         self.tree.pack(fill=tk.BOTH, expand=True)
         self.tree.bind("<Button-1>", self._klick)
         self.tree.bind("<Double-1>", lambda _e: self._doppelklick())
+        self.tree.bind("<Button-3>", self._menue)
         self.tree.bind("<space>", lambda _e: self._schalte_markierte())
         self.tree.bind("<<TreeviewSelect>>", lambda _e: self._summe())
 
@@ -252,7 +266,7 @@ class DingeFenster(tk.Toplevel):
         for i, d in enumerate(self.dinge):
             d["alle"] = list(d["angaben"])                # wie die KI sie nannte; „angaben“ = was davon neu ist
             self._ordne_zu(i, self._finde_ziel(d))
-            if not d["schlecht"]:
+            if not d["schlecht"] and not d["aufgezaehlt"]:
                 self.dinge_an.add(i)
         n_angaben = sum(len(d["angaben"]) for d in self.dinge)
         teile = [f"{z['gelesen']} Dokument{'' if z['gelesen'] == 1 else 'e'} gelesen in {z['sekunden']} s",
@@ -374,7 +388,13 @@ class DingeFenster(tk.Toplevel):
             text += "   - neue Schublade"
         if d["schlecht"]:
             text += "   - Text schlecht erkannt"
+        elif d["aufgezaehlt"]:
+            text += "   - aus einer Aufzählung (z.B. Briefkopf)"
         return text
+
+    def _ids(self, doks):
+        """Dokument-IDs statt Titel in der Spalte „Dokument“ (Peter 19.11.2026: kurz und eindeutig)."""
+        return ", ".join(self._kid_id(dok) or "(noch ohne ID)" for dok in doks)
 
     def _fuelle(self):
         self.tree.delete(*self.tree.get_children())
@@ -382,12 +402,12 @@ class DingeFenster(tk.Toplevel):
             an = i in self.dinge_an
             self.tree.insert("", tk.END, iid=f"d:{i}", text=self._ding_text(i), open=True,
                              tags=("ding",) if an else ("ding", "aus"),
-                             values=("", ", ".join(dok["titel"] for dok in d["doks"])))
+                             values=("", self._ids(d["doks"])))
             for j, a in enumerate(d["angaben"]):
                 hakt = (i, j) in self.angaben_an
                 self.tree.insert(f"d:{i}", tk.END, iid=f"a:{i}:{j}", tags=() if an and hakt else ("aus",),
                                  text=f"{HAKEN if hakt else OHNE_HAKEN} {a['text']}",
-                                 values=(f"„{a['zitat']}“", a["dok"]["titel"]))
+                                 values=(f"„{a['zitat']}“", self._ids([a["dok"]]) if len(d["doks"]) > 1 else ""))
         self._summe()
 
     def _schalte(self, iid):
@@ -434,11 +454,50 @@ class DingeFenster(tk.Toplevel):
         if markiert[0].startswith("d:"):
             self._umbenennen()
             return
-        _, i, j = markiert[0].split(":")
-        dok = self.dinge[int(i)]["angaben"][int(j)]["dok"]
+        self._zeige(self._doks_der_zeile(markiert[0])[0])
+
+    def _doks_der_zeile(self, iid):
+        """Die Dokumente einer Zeile: bei einer Angabe ihres, bei einem Eintrag alle, aus denen er stammt."""
+        teile = iid.split(":")
+        d = self.dinge[int(teile[1])]
+        return [d["angaben"][int(teile[2])]["dok"]] if teile[0] == "a" else list(d["doks"])
+
+    def _zeige(self, dok):
+        """Das Dokument im Hauptfenster zeigen, zum Vergleichen mit dem Zitat."""
         folder_manager = getattr(self.app, "folder_manager", None)
         if folder_manager is None or not folder_manager.zeige_dokument(os.path.join(self.app.master_folder, dok["rel_path"])):
             mb.showinfo("Aus dem Dokument", "Das Dokument ist in der Sammlung nicht (mehr) zu finden.", parent=self)
+
+    def _kopiere_id(self, dok):
+        self.clipboard_clear()
+        self.clipboard_append(self._kid_id(dok))
+
+    def baue_menue(self, iid):
+        """Rechtsklick (Peter 19.11.2026: Angaben am Dokument überprüfen): Dokument zeigen, Dokument-ID kopieren - bei
+        mehreren Dokumenten je eines als Untermenü. :return: das Menü (zum Testen getrennt vom Aufklappen)"""
+        doks = self._doks_der_zeile(iid)
+        menue = tk.Menu(self, tearoff=0)
+        if len(doks) == 1:
+            dok = doks[0]
+            menue.add_command(label="Dokument zeigen", command=lambda: self._zeige(dok))
+            menue.add_command(label=f"Dokument-ID kopieren ({self._ids([dok])})", command=lambda: self._kopiere_id(dok),
+                              state=tk.NORMAL if self._kid_id(dok) else tk.DISABLED)
+            return menue
+        zeigen, kopieren = tk.Menu(menue, tearoff=0), tk.Menu(menue, tearoff=0)
+        for dok in doks:
+            zeigen.add_command(label=self._ids([dok]), command=lambda dok=dok: self._zeige(dok))
+            kopieren.add_command(label=self._ids([dok]), command=lambda dok=dok: self._kopiere_id(dok),
+                                 state=tk.NORMAL if self._kid_id(dok) else tk.DISABLED)
+        menue.add_cascade(label="Dokument zeigen", menu=zeigen)
+        menue.add_cascade(label="Dokument-ID kopieren", menu=kopieren)
+        return menue
+
+    def _menue(self, event):
+        zeile = self.tree.identify_row(event.y)
+        if not zeile:
+            return
+        self.tree.selection_set(zeile)
+        self.baue_menue(zeile).tk_popup(event.x_root, event.y_root)
 
     def _umbenennen(self):
         markiert = self.tree.selection()
@@ -472,6 +531,14 @@ class DingeFenster(tk.Toplevel):
                 zahlen["ohne_id"] += not kid_ids[dok["rel_path"]]
             return kid_ids[dok["rel_path"]]
 
+        def datum(dok):
+            """Dokumentdatum der Quelle (ordnet den Verlauf im Wiki), '' ohne."""
+            if dok["rel_path"] not in daten:
+                daten[dok["rel_path"]] = (PDFHandler.get_metadata(os.path.join(self.app.master_folder, dok["rel_path"]))
+                                          .get("KID_DokumentenDatum") or "").strip()
+            return daten[dok["rel_path"]]
+        daten = {}
+
         for i in sorted(self.dinge_an):
             d = self.dinge[i]
             try:
@@ -489,8 +556,9 @@ class DingeFenster(tk.Toplevel):
                 for j, a in enumerate(d["angaben"]):
                     if (i, j) in self.angaben_an:
                         kid = kid_id(a["dok"])
-                        neu = w.wissen.angabe_hinzu(eintrag_id, a["text"], kid, a["dok"]["titel"] if kid else "",
-                                                    a["zitat"] if kid else "")
+                        angabe = (a["merkmal"], a["wert"]) if "wert" in a else a["text"]
+                        neu = w.wissen.angabe_hinzu(eintrag_id, angabe, kid, a["dok"]["titel"] if kid else "",
+                                                    a["zitat"] if kid else "", datum(a["dok"]) if kid else "")
                         zahlen["angaben"] += neu is not None
             except wissen.Eingabefehler as fehler:
                 mb.showwarning("Aus dem Dokument", f"„{d['bezeichnung']}“ ließ sich nicht übernehmen:\n{fehler}", parent=self)
@@ -499,7 +567,7 @@ class DingeFenster(tk.Toplevel):
         # Was abgehakt blieb, ist abgelehnt - je Dokument gemerkt (schlecht erkannte, nie angehakte zählen nicht)
         abgelehnt = collections.defaultdict(list)
         for i, d in enumerate(self.dinge):
-            if i not in self.dinge_an and d["schlecht"]:
+            if i not in self.dinge_an and (d["schlecht"] or d["aufgezaehlt"]):
                 continue
             for j, a in enumerate(d["angaben"]):
                 if i not in self.dinge_an or (i, j) not in self.angaben_an:

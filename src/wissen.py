@@ -6,8 +6,11 @@ Ein Eintrag hat
 - eine Schublade (`art`): nur die Ordnung der Liste, ohne eigene Felder. Die Schubladen stehen in der Datei und sind
   erweiterbar (`art_neu`, `art_umbenennen`, `arten_zusammenlegen`); neu angelegte Dateien bekommen `START_ARTEN`.
 - eine Bezeichnung und eine Notiz,
-- Angaben: kurze freie Zeilen („Telefon: 01234 56789“, „Feuerlöscher geprüft am 19.02.2016“). Stammt eine Angabe aus
-  einem Dokument, trägt sie dessen Dokument-ID (KID_ID), Titel und das wörtliche Zitat; von Hand Eingetragenes nicht.
+- Angaben (seit 19.11.2026, Schema 5, KONZEPT_WIKI_VON_HAND „Umbau: Angaben als ‚Merkmal: Wert‘“): ein Merkmal mit
+  einem Wert („Telefon“ / „01234 56789“, „Beitrag“ / „140,86 €“). Von Hand darf das Merkmal fehlen (freie Zeile).
+  Gleiches Merkmal mit gleichem Wert gibt es je Eintrag nur einmal; jedes Dokument, aus dem sie stammt, ist eine
+  Quelle (Dokument-ID, Titel, wörtliches Zitat, Dokumentdatum). Gleiches Merkmal mit verschiedenen Werten ist ein
+  Verlauf: `lade` liefert je Merkmal den Wert mit der jüngsten Quelle zuerst (`aktuell`).
 - Belege: die Dokumente des Eintrags (über ihre KID_ID, also auch nach Verschieben und Umbenennen). Das Dokument einer
   Angabe ist immer auch Beleg.
 - Verbindungen zu anderen Einträgen („Verbunden mit“), ohne Richtung.
@@ -23,8 +26,11 @@ Sammlung - nach dem Umbenennen gilt der Ausschluss nicht mehr (dann bildet sich 
 
 Bis 12.11.2026 hatte jede Art feste Felder (Kennzeichen, Halter …). Peters Test an einer Rechnung zeigte: Dokumente
 passen selten in ein Schema. Eine Datei im alten Aufbau wird beim ersten Zugriff als `wissen_alt.sqlite` beiseitegelegt
-und leer neu begonnen (Peter: keine Rücksicht auf vorhandene Einträge). Neuere Dateien werden nur nachgerüstet
-(`_NACHRUESTEN`, Version 2 → 3: Tabelle `abgelehnt`), alles Vorhandene bleibt.
+und leer neu begonnen (Peter: keine Rücksicht auf vorhandene Einträge). Neuere Dateien werden nachgerüstet
+(`_NACHRUESTEN`, Version 2 → 3: Tabelle `abgelehnt`, 3 → 4: `merkmal_aus`). Beim Schritt 4 → 5 werden die Angaben
+geleert (freie Sätze lassen sich nicht sinnvoll in Merkmal und Wert zerlegen, Peter 19.11.2026: „Angaben leeren“ - die
+KI liest die Belege neu) und mit ihnen das Abgelehnte (es waren Sätze); Schubladen, Einträge, Belege, Verbindungen und
+die Ausschlüsse der Ablageordner bleiben.
 
 Speicher: `wissen.sqlite` im Daten-Ordner der Sammlung (app_paths.wissen_path). Jede Änderung ist eine Transaktion;
 `sichere()` legt beim Öffnen des Fensters `wissen.sqlite.bak` an. Verbindungen sind kurzlebig (je Aufruf eine), damit
@@ -43,7 +49,11 @@ import app_paths
 
 START_ARTEN = ("Person", "Firma", "Behörde", "Immobilie", "Fahrzeug", "Vertrag", "Versicherung", "Sonstiges")
 MAX_ANGABE = 300                      # Zeichen je Angabe - eine Zeile, kein Aufsatz
-SCHEMA = 4                            # 3 (13.11.2026): Tabelle `abgelehnt`; 4 (15.11.2026): `merkmal_aus`
+MAX_MERKMAL = 40                      # ein Merkmal ist ein kurzer Name („Versicherungsnummer“), kein Satz
+# Peter 19.11.2026: Die eigene Adresse steht in jedem Dokument - ab so vielen Quellen ist eine Angabe „in vielen
+# Dokumenten belegt“: weitere Dokumente zählen als Quelle (Anzahl, Stand), werden aber nicht mehr Beleg des Eintrags.
+MAX_BELEG_QUELLEN = 5
+SCHEMA = 5                            # 3 (13.11.2026): `abgelehnt`; 4 (15.11.2026): `merkmal_aus`; 5 (19.11.2026): Merkmal + Wert
 ALTER_AUFBAU = 2                      # darunter: feste Felder (bis 12.11.2026), wird beiseitegelegt
 _TABELLEN = """
 CREATE TABLE art (
@@ -51,9 +61,6 @@ CREATE TABLE art (
 CREATE TABLE eintrag (
     id INTEGER PRIMARY KEY, art INTEGER NOT NULL REFERENCES art(id), bezeichnung TEXT NOT NULL,
     notiz TEXT NOT NULL DEFAULT '', geprueft TEXT NOT NULL DEFAULT '', angelegt TEXT NOT NULL, geaendert TEXT NOT NULL);
-CREATE TABLE angabe (
-    id INTEGER PRIMARY KEY, eintrag INTEGER NOT NULL REFERENCES eintrag(id) ON DELETE CASCADE, text TEXT NOT NULL,
-    kid_id TEXT NOT NULL DEFAULT '', titel TEXT NOT NULL DEFAULT '', zitat TEXT NOT NULL DEFAULT '');
 CREATE TABLE beleg (
     id INTEGER PRIMARY KEY, eintrag INTEGER NOT NULL REFERENCES eintrag(id) ON DELETE CASCADE, kid_id TEXT NOT NULL,
     titel TEXT NOT NULL DEFAULT '', UNIQUE (eintrag, kid_id));
@@ -74,7 +81,34 @@ CREATE TABLE merkmal_aus (
     id INTEGER PRIMARY KEY, ordner TEXT NOT NULL COLLATE NOCASE, art TEXT NOT NULL, wert TEXT NOT NULL,
     wann TEXT NOT NULL, UNIQUE (ordner, art, wert));
 """
-_NACHRUESTEN = {2: _ABGELEHNT, 3: _MERKMAL_AUS}  # von Version n auf n + 1, ohne vorhandene Daten anzufassen
+# Angaben als Merkmal + Wert (Schema 5): eine Angabe je Merkmal und Wert, jedes Dokument dazu eine Quelle
+_ANGABEN = """
+CREATE TABLE angabe (
+    id INTEGER PRIMARY KEY, eintrag INTEGER NOT NULL REFERENCES eintrag(id) ON DELETE CASCADE,
+    merkmal TEXT NOT NULL DEFAULT '', wert TEXT NOT NULL);
+CREATE TABLE quelle (
+    id INTEGER PRIMARY KEY, angabe INTEGER NOT NULL REFERENCES angabe(id) ON DELETE CASCADE, kid_id TEXT NOT NULL,
+    titel TEXT NOT NULL DEFAULT '', zitat TEXT NOT NULL DEFAULT '', datum TEXT NOT NULL DEFAULT '',
+    UNIQUE (angabe, kid_id));
+"""
+# Von Version n auf n + 1. Bis 4 kommt nur etwas dazu; 4 → 5 leert die Angaben (freie Sätze) und das Abgelehnte.
+_NACHRUESTEN = {2: _ABGELEHNT, 3: _MERKMAL_AUS, 4: "DROP TABLE angabe;" + _ANGABEN + "DELETE FROM abgelehnt;"}
+
+# Gleiche Merkmale verschieden geschrieben - beim Vergleichen gleich (die Anzeige behält die erste Schreibweise)
+_MERKMAL_GLEICH = {"telefonnummer": "telefon", "tel": "telefon", "tel.": "telefon", "rufnummer": "telefon",
+                   "faxnummer": "fax", "e-mail-adresse": "e-mail", "email": "e-mail", "mail": "e-mail",
+                   "anschrift": "adresse", "internet": "webseite", "website": "webseite", "homepage": "webseite",
+                   "spezialgebiet": "fachgebiet", "schwerpunkt": "fachgebiet", "tätigkeitsschwerpunkt": "fachgebiet",
+                   "telefax": "fax", "fax-nr.": "fax", "fax-nr": "fax", "tel.-nr.": "telefon", "telefon-nr.": "telefon",
+                   "mobilnummer": "mobil", "mobiltelefon": "mobil", "handy": "mobil", "mobilfunk": "mobil",
+                   "kunden-nr.": "kundennummer", "kunden-nr": "kundennummer", "kundennr.": "kundennummer",
+                   "kundennr": "kundennummer", "kd.-nr.": "kundennummer", "kd-nr.": "kundennummer",
+                   "kd-nr": "kundennummer", "kunden-nummer": "kundennummer"}
+_TELEFONISCH = {"telefon", "fax", "mobil"}
+# Länderkennung vor der Postleitzahl („D-12345“) - beim Vergleichen egal
+LAND_VOR_PLZ = re.compile(r"\b(?:d|de)-\s?(?=\d{5}\b)", re.I)
+_STR = re.compile(r"str(\.|asse)?(?=[^a-z]|$)")
+_MERKMAL_VORSPANN = re.compile(r"^[^\W\d_][^:\d]{0,%d}$" % (MAX_MERKMAL - 1))
 
 
 def _leer(text):
@@ -117,6 +151,96 @@ def _gleich(text):
     return _leer(text).casefold()
 
 
+def merkmal_kern(merkmal):
+    """Zum Vergleichen von Merkmalen: Schreibweise, ß/ss, Doppelpunkt und gängige Synonyme egal („Telefonnummer“ =
+    „Tel.:“ = „Telefon“)."""
+    kern = _gleich(merkmal).rstrip(":").strip().replace("ß", "ss")
+    return _MERKMAL_GLEICH.get(kern, kern)
+
+
+def telefon_einheitlich(wert):
+    """Eine Telefon-/Faxnummer nach DIN 5008: „Vorwahl Rufnummer“ ohne Gruppierung, Ländervorwahl als „+49 “
+    („01234/567 89“ → „01234 56789“, „+49 (0)1234-56789“ → „+49 1234 56789“). Mit Buchstaben (Zusätze wie
+    „Zentrale“) oder weniger als 5 Ziffern bleibt der Wert, wie er ist (Peter 19.11.2026)."""
+    w = _leer(wert)
+    if re.search(r"[^\d\s/\-–().+]", w) or len(re.sub(r"\D", "", w)) < 5:
+        return w
+    land = ""
+    m = re.match(r"(?:\+|00)(\d{2})\s*(?:\(0\)\s*)?", w)
+    if m:
+        land, w = f"+{m.group(1)} ", w[m.end():]
+    m = re.match(r"\(\s*([\d\s]+)\)\s*(.*)", w)
+    if m:
+        vor, rest = m.groups()
+    elif "/" in w:
+        vor, _, rest = w.partition("/")
+    else:
+        vor, rest = (re.split(r"[\s\-–.]+", w.strip(), maxsplit=1) + [""])[:2]
+    vor, rest = re.sub(r"\D", "", vor), re.sub(r"\D", "", rest)
+    return f"{land}{vor} {rest}".strip()
+
+
+def adresse_einheitlich(wert):
+    """Eine Anschrift als „Straße Nr., PLZ Ort“ ohne „D-“ vor der Postleitzahl (DIN 5008: die Länderkennung nur bei
+    Auslandsanschriften) - Peter 19.11.2026: „Musterstr. 8, D-12345 …“ neben „Musterstr. 8 12345 …“."""
+    w = LAND_VOR_PLZ.sub("", _leer(wert))
+    return re.sub(r"(?<=[^\s,])\s*,?\s+(?=\d{5}\s+\S)", ", ", w)
+
+
+_DATUM = re.compile(r"(?<![\d.])(\d{1,2})\.(\d{1,2})\.(\d{4}|\d{2})(?!\d|\.\d)")
+
+
+def datum_einheitlich(wert, heute=None):
+    """Daten als TT.MM.JJJJ (DIN 5008, Peter 19.11.2026: „mit 4-stelliger Jahreszahl“): „17.03.19“ → „17.03.2019“,
+    „1.2.2019“ → „01.02.2019“. Zweistellige Jahre bis 5 Jahre in die Zukunft gelten als 20.., ältere als 19..
+    Was kein gültiger Tag oder Monat ist, bleibt stehen."""
+    grenze = (heute or datetime.date.today()).year % 100 + 5
+
+    def ersetze(m):
+        tag, monat, jahr = int(m.group(1)), int(m.group(2)), m.group(3)
+        if not (1 <= tag <= 31 and 1 <= monat <= 12):
+            return m.group(0)
+        if len(jahr) == 2:
+            jahr = f"{20 if int(jahr) <= grenze else 19}{jahr}"
+        return f"{tag:02d}.{monat:02d}.{jahr}"
+    return _DATUM.sub(ersetze, wert)
+
+
+def wert_einheitlich(merkmal, wert):
+    """Werte, die es in vielen Schreibweisen gibt, auf eine bringen - Telefon, Fax, Mobil, Adresse und Daten."""
+    kern = merkmal_kern(merkmal)
+    if kern in _TELEFONISCH:
+        return telefon_einheitlich(wert)
+    return adresse_einheitlich(wert) if kern == "adresse" else datum_einheitlich(_leer(wert))
+
+
+def _wert_kern(wert):
+    """Zum Vergleichen von Werten: nur Wörter und Zahlen in ihrer Reihenfolge - Schreibweise, Satzzeichen, „D-“ vor der
+    Postleitzahl und „Str.“/„Straße“ egal (Peter 19.11.2026: dieselbe Adresse kam zweimal, „Musterstr. 8, D-…“ und
+    „Musterstr. 8 …“)."""
+    t = LAND_VOR_PLZ.sub("", _gleich(wert).replace("ß", "ss"))
+    return " ".join(re.findall(r"[0-9a-zäöü]+", _STR.sub("strasse ", t)))
+
+
+def angabe_text(merkmal, wert):
+    """Eine Angabe als eine Zeile: „Merkmal: Wert“, ohne Merkmal nur der Wert."""
+    return f"{_leer(merkmal)}: {_leer(wert)}" if _leer(merkmal) else _leer(wert)
+
+
+def teile_angabe(angabe):
+    """(Merkmal, Wert) aus einem Paar oder einer Zeile „Merkmal: Wert“. Ein Merkmal ist, was vor dem ersten Doppelpunkt
+    steht, wenn es mit einem Buchstaben beginnt, keine Ziffer enthält und kurz ist („Telefon: 0123“); sonst ist die
+    ganze Zeile der Wert („Heizung erneuert 2019“, „Termin 10:30 Uhr“)."""
+    if isinstance(angabe, (tuple, list)):
+        merkmal, wert = angabe
+        return _leer(merkmal).rstrip(":").strip(), _leer(wert)
+    text = _leer(angabe)
+    vorn, doppelpunkt, hinten = text.partition(":")
+    if doppelpunkt and _leer(hinten) and _MERKMAL_VORSPANN.match(vorn.strip()):
+        return vorn.strip(), _leer(hinten)
+    return "", text
+
+
 class Eingabefehler(ValueError):
     """Ein Eintrag lässt sich so nicht speichern; der Text ist für den Nutzer gedacht."""
 
@@ -135,6 +259,11 @@ class Wissen:
     def pfad_alt(self):
         return os.path.join(os.path.dirname(self.pfad), "wissen_alt.sqlite")
 
+    @property
+    def pfad_vor_umbau(self):
+        """Kopie vom Stand vor dem Umbau auf Merkmal + Wert (Schema 4 → 5), einmalig angelegt."""
+        return os.path.join(os.path.dirname(self.pfad), "wissen_vor_umbau.sqlite")
+
     def _verbinde(self):
         os.makedirs(os.path.dirname(self.pfad), exist_ok=True)
         con = sqlite3.connect(self.pfad, timeout=5)
@@ -148,12 +277,22 @@ class Wissen:
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys = ON")
         if version == 0:
-            con.executescript("BEGIN;" + _TABELLEN + _ABGELEHNT + _MERKMAL_AUS + "".join(
+            con.executescript("BEGIN;" + _TABELLEN + _ANGABEN + _ABGELEHNT + _MERKMAL_AUS + "".join(
                 f"INSERT INTO art (name, reihe) VALUES ('{name}', {n});" for n, name in enumerate(START_ARTEN))
                 + f"PRAGMA user_version = {SCHEMA}; COMMIT;")
-        elif version < SCHEMA:                                  # neuerer Aufbau: nur nachrüsten, alles bleibt
+        elif version < SCHEMA:                                  # neuerer Aufbau: nachrüsten (4 → 5 leert die Angaben)
+            alte = con.execute("SELECT COUNT(*) FROM angabe").fetchone()[0] if version < 5 else 0
+            if version < 5 and not os.path.exists(self.pfad_vor_umbau):   # einmal den Stand davor aufheben
+                kopie = sqlite3.connect(self.pfad_vor_umbau)
+                try:
+                    con.backup(kopie)
+                finally:
+                    kopie.close()
             con.executescript("BEGIN;" + "".join(_NACHRUESTEN[v] for v in range(version, SCHEMA))
                               + f"PRAGMA user_version = {SCHEMA}; COMMIT;")
+            if version < 5:
+                logging.getLogger("DocManager").info(f"Wiki: Angaben auf Merkmal und Wert umgestellt, {alte} alte "
+                                                     "Angaben geleert")
         return con
 
     def _mit(self, arbeit):
@@ -258,10 +397,59 @@ class Wissen:
         """{eintrag_id: [Bezeichnung, Notiz, Angaben …]} - wonach der Filter im Fenster sucht (`passt`). Liest nur."""
         def arbeit(con):
             texte = {z["id"]: [z["bezeichnung"], z["notiz"]] for z in con.execute("SELECT id, bezeichnung, notiz FROM eintrag")}
-            for z in con.execute("SELECT eintrag, text FROM angabe ORDER BY id"):
-                texte[z["eintrag"]].append(z["text"])
+            for e, angaben in self._angaben(con).items():
+                texte[e] += [a["text"] for a in angaben]
             return texte
         return self._lies(arbeit, {})
+
+    @staticmethod
+    def _angaben(con, eintrag_id=None):
+        """{eintrag_id: [Angabe]} geordnet zum Anzeigen. Eine Angabe: {id, merkmal, wert, text, quellen, stand,
+        aktuell, kid_id, titel, zitat} - `quellen` [{kid_id, titel, zitat, datum}] die jüngste zuerst, `stand` deren
+        Datum ('' ohne datierte Quelle); `kid_id`/`titel`/`zitat` die der jüngsten Quelle (leer: von Hand).
+        Reihenfolge: Merkmale in der Reihenfolge ihres ersten Auftretens, darin der Verlauf mit dem jüngsten Wert
+        zuerst (`aktuell` nur bei diesem); freie Zeilen ohne Merkmal am Ende."""
+        wo, werte = ("WHERE eintrag = ?", (eintrag_id,)) if eintrag_id is not None else ("", ())
+        angaben = {z["id"]: dict(z, quellen=[]) for z in con.execute(
+            f"SELECT id, eintrag, merkmal, wert FROM angabe {wo} ORDER BY id", werte)}
+        for q in con.execute(f"SELECT q.angabe, q.kid_id, q.titel, q.zitat, q.datum FROM quelle q JOIN angabe a "
+                             f"ON a.id = q.angabe {wo.replace('eintrag', 'a.eintrag')} ORDER BY q.id", werte):
+            angaben[q["angabe"]]["quellen"].append({k: q[k] for k in ("kid_id", "titel", "zitat", "datum")})
+        je_eintrag = {}
+        for a in angaben.values():
+            a["quellen"].sort(key=lambda q: q["datum"], reverse=True)
+            jung = a["quellen"][0] if a["quellen"] else {"kid_id": "", "titel": "", "zitat": "", "datum": ""}
+            a.update(text=angabe_text(a["merkmal"], a["wert"]), stand=jung["datum"], kid_id=jung["kid_id"],
+                     titel=jung["titel"], zitat=jung["zitat"], aktuell=False)
+            je_eintrag.setdefault(a.pop("eintrag"), []).append(a)
+        for e, liste in je_eintrag.items():
+            gruppen = {}                                        # merkmal_kern → Angaben, in Reihenfolge des Auftretens
+            for a in liste:
+                gruppen.setdefault(merkmal_kern(a["merkmal"]), []).append(a)
+            geordnet = []
+            for kern, gruppe in sorted(gruppen.items(), key=lambda g: (g[0] == "", g[1][0]["id"])):
+                if kern:
+                    gruppe.sort(key=lambda a: (a["stand"], a["id"]), reverse=True)
+                    gruppe[0]["aktuell"] = True
+                geordnet += gruppe
+            je_eintrag[e] = geordnet
+        return je_eintrag
+
+    def merkmale(self, art=None):
+        """Merkmale, die in einer Schublade (Id) schon benutzt werden, die häufigsten zuerst - als Auswahl im Fenster
+        und als Vorgabe für die KI (gleiche Namen statt neuer Schreibweisen). Ohne `art`: alle."""
+        wo, werte = ("WHERE e.art = ?", (art,)) if art is not None else ("", ())
+
+        def arbeit(con):
+            zahl, schreibweise = {}, {}
+            for z in con.execute(f"SELECT a.merkmal FROM angabe a JOIN eintrag e ON e.id = a.eintrag {wo} "
+                                 "ORDER BY a.id", werte):
+                kern = merkmal_kern(z["merkmal"])
+                if kern:
+                    zahl[kern] = zahl.get(kern, 0) + 1
+                    schreibweise.setdefault(kern, z["merkmal"])
+            return [schreibweise[k] for k in sorted(zahl, key=lambda k: -zahl[k])]
+        return self._lies(arbeit, [])
 
     def anzahl(self):
         """Zahl der Einträge - fürs Protokoll (nur Zahlen)."""
@@ -269,16 +457,14 @@ class Wissen:
 
     def lade(self, eintrag_id):
         """Ein Eintrag mit allem, oder None: {id, art, art_name, bezeichnung, notiz, geprueft, angelegt, geaendert,
-        angaben: [{id, text, kid_id, titel, zitat}], belege: [{id, kid_id, titel}],
-        verbunden: [{id, bezeichnung, art_name}]}"""
+        angaben: [wie `_angaben`], belege: [{id, kid_id, titel}], verbunden: [{id, bezeichnung, art_name}]}"""
         def arbeit(con):
             e = con.execute("SELECT e.*, a.name AS art_name FROM eintrag e JOIN art a ON a.id = e.art WHERE e.id = ?",
                             (eintrag_id,)).fetchone()
             if e is None:
                 return None
             d = dict(e)
-            d["angaben"] = [dict(z) for z in con.execute(
-                "SELECT id, text, kid_id, titel, zitat FROM angabe WHERE eintrag = ? ORDER BY id", (eintrag_id,))]
+            d["angaben"] = self._angaben(con, eintrag_id).get(eintrag_id, [])
             d["belege"] = [dict(z) for z in con.execute(
                 "SELECT id, kid_id, titel FROM beleg WHERE eintrag = ? ORDER BY titel COLLATE NOCASE, id", (eintrag_id,))]
             d["verbunden"] = [dict(z) for z in con.execute(
@@ -351,8 +537,8 @@ class Wissen:
     def eintraege_zusammenlegen(self, bleibt, geht):
         """Zwei Einträge sind dasselbe (Peter 13.11.2026: zwei Einträge für dieselbe Versicherung): Alles von
         `geht` kommt zu `bleibt`, `geht` verschwindet - in EINER Transaktion, nichts geht verloren.
-        - Angaben ziehen um; steht derselbe Text dort schon (Schreibweise egal), bleibt die vorhandene und bekommt
-          Dokument und Zitat der anderen, falls sie selbst keines hat.
+        - Angaben ziehen um; steht dasselbe Merkmal mit demselben Wert dort schon (Schreibweise egal), bleibt die
+          vorhandene und bekommt die Quellen der anderen dazu.
         - Belege und Verbindungen ziehen um, ohne Doppelte; die Verbindung der beiden untereinander entfällt.
         - Die Notiz von `geht` wird angehängt, seine Bezeichnung steht als Angabe „Auch: …“ dabei, wenn sie anders lautet.
         :return: {"angaben": …, "belege": …, "verbunden": …} - was dazukam"""
@@ -365,20 +551,17 @@ class Wissen:
             ziel = con.execute("SELECT bezeichnung, notiz FROM eintrag WHERE id = ?", (bleibt,)).fetchone()
             quelle = con.execute("SELECT bezeichnung, notiz FROM eintrag WHERE id = ?", (geht,)).fetchone()
             zahlen = {"angaben": 0, "belege": 0, "verbunden": 0}
-            da = {_gleich(z["text"]): z for z in con.execute("SELECT id, text, kid_id FROM angabe WHERE eintrag = ?", (bleibt,))}
-            for a in con.execute("SELECT id, text, kid_id, titel, zitat FROM angabe WHERE eintrag = ? ORDER BY id",
-                                 (geht,)).fetchall():
-                schon = da.get(_gleich(a["text"]))
+            for a in con.execute("SELECT id, merkmal, wert FROM angabe WHERE eintrag = ? ORDER BY id", (geht,)).fetchall():
+                schon = self._gleiche_angabe(con, bleibt, a["merkmal"], a["wert"])
                 if schon is None:
                     con.execute("UPDATE angabe SET eintrag = ? WHERE id = ?", (bleibt, a["id"]))
                     zahlen["angaben"] += 1
-                elif a["kid_id"] and not schon["kid_id"]:
-                    con.execute("UPDATE angabe SET kid_id = ?, titel = ?, zitat = ? WHERE id = ?",
-                                (a["kid_id"], a["titel"], a["zitat"], schon["id"]))
+                else:
+                    self._quellen_umziehen(con, a["id"], schon)
             if _gleich(quelle["bezeichnung"]) != _gleich(ziel["bezeichnung"]):
-                auch = self._angabe_text(f"Auch: {quelle['bezeichnung']}"[:MAX_ANGABE])
-                if _gleich(auch) not in da:
-                    con.execute("INSERT INTO angabe (eintrag, text) VALUES (?, ?)", (bleibt, auch))
+                merkmal, wert = self._angabe_werte(("Auch", quelle["bezeichnung"][:MAX_ANGABE - 10]))
+                if self._gleiche_angabe(con, bleibt, merkmal, wert) is None:
+                    con.execute("INSERT INTO angabe (eintrag, merkmal, wert) VALUES (?, ?, ?)", (bleibt, merkmal, wert))
             zahlen["belege"] = con.execute(
                 "INSERT OR IGNORE INTO beleg (eintrag, kid_id, titel) SELECT ?, kid_id, titel FROM beleg WHERE eintrag = ? "
                 "ORDER BY id", (bleibt, geht)).rowcount
@@ -396,61 +579,94 @@ class Wissen:
 
     # ------------------------------------------------------------ Schreiben: Angaben
     @staticmethod
-    def _angabe_text(text):
-        text = _leer(text)
-        if not text:
-            raise Eingabefehler("Die Angabe ist leer.")
-        if len(text) > MAX_ANGABE:
+    def _angabe_werte(angabe):
+        """(Merkmal, Wert) geprüft - `angabe` als Paar oder Zeile „Merkmal: Wert“ (`teile_angabe`)."""
+        merkmal, wert = teile_angabe(angabe)
+        if not wert:
+            raise Eingabefehler("Die Angabe braucht einen Wert." if merkmal else "Die Angabe ist leer.")
+        if len(merkmal) > MAX_MERKMAL:
+            raise Eingabefehler(f"Ein Merkmal ist ein kurzer Name (höchstens {MAX_MERKMAL} Zeichen), etwa „Telefon“ "
+                                "oder „Versicherungsnummer“.")
+        if len(angabe_text(merkmal, wert)) > MAX_ANGABE:
             raise Eingabefehler(f"Eine Angabe ist eine kurze Zeile (höchstens {MAX_ANGABE} Zeichen). Längeres passt in "
                                 "die Notiz.")
-        return text
+        return merkmal, wert_einheitlich(merkmal, wert)
 
-    def angabe_hinzu(self, eintrag_id, text, kid_id="", titel="", zitat=""):
-        """Eine Angabe; mit `kid_id` stammt sie aus diesem Dokument (das dann auch Beleg wird). Steht derselbe Text
-        schon da (Schreibweise egal), kommt nichts dazu - hatte die vorhandene noch kein Dokument, bekommt sie dieses.
+    @staticmethod
+    def _gleiche_angabe(con, eintrag_id, merkmal, wert, ausser=None):
+        """Id der Angabe des Eintrags mit demselben Merkmal und Wert (Schreibweise egal) oder None."""
+        schluessel = (merkmal_kern(merkmal), _wert_kern(wert))
+        return next((z["id"] for z in con.execute("SELECT id, merkmal, wert FROM angabe WHERE eintrag = ?", (eintrag_id,))
+                     if (merkmal_kern(z["merkmal"]), _wert_kern(z["wert"])) == schluessel and z["id"] != ausser), None)
+
+    @staticmethod
+    def _quellen_umziehen(con, von, nach):
+        """Die Quellen der Angabe `von` kommen zu `nach` (ohne doppelte Dokumente), `von` verschwindet."""
+        con.execute("INSERT OR IGNORE INTO quelle (angabe, kid_id, titel, zitat, datum) "
+                    "SELECT ?, kid_id, titel, zitat, datum FROM quelle WHERE angabe = ? ORDER BY id", (nach, von))
+        con.execute("DELETE FROM angabe WHERE id = ?", (von,))
+
+    def angabe_hinzu(self, eintrag_id, angabe, kid_id="", titel="", zitat="", datum=""):
+        """Eine Angabe; mit `kid_id` stammt sie aus diesem Dokument (das dann Quelle der Angabe und Beleg des Eintrags
+        wird - Beleg nur, solange die Angabe weniger als `MAX_BELEG_QUELLEN` Quellen hat). Steht dasselbe Merkmal mit
+        demselben Wert schon da (Schreibweise egal), kommt nur die Quelle dazu.
+        :param angabe: (Merkmal, Wert) oder eine Zeile „Merkmal: Wert“ (`teile_angabe`)
+        :param datum: Dokumentdatum JJJJ-MM-TT der Quelle - ordnet den Verlauf
         :return: Id der neuen Angabe oder None"""
-        text = self._angabe_text(text)
+        merkmal, wert = self._angabe_werte(angabe)
         if zitat and not kid_id:
             raise Eingabefehler("Ein Zitat braucht das Dokument, aus dem es stammt.")
 
         def arbeit(con):
             self._gibt_es(con, eintrag_id)
-            if kid_id:
+            da = self._gleiche_angabe(con, eintrag_id, merkmal, wert)
+            quellen = con.execute("SELECT COUNT(*) FROM quelle WHERE angabe = ?", (da,)).fetchone()[0] if da else 0
+            if kid_id and quellen < MAX_BELEG_QUELLEN:
                 con.execute("INSERT OR IGNORE INTO beleg (eintrag, kid_id, titel) VALUES (?, ?, ?)",
                             (eintrag_id, kid_id, _leer(titel)))
-            for z in con.execute("SELECT id, text, kid_id FROM angabe WHERE eintrag = ?", (eintrag_id,)).fetchall():
-                if _gleich(z["text"]) == _gleich(text):
-                    if kid_id and not z["kid_id"]:
-                        con.execute("UPDATE angabe SET kid_id = ?, titel = ?, zitat = ? WHERE id = ?",
-                                    (kid_id, _leer(titel), _leer(zitat), z["id"]))
-                    return None
-            self._beruehrt(con, eintrag_id)
-            return con.execute("INSERT INTO angabe (eintrag, text, kid_id, titel, zitat) VALUES (?, ?, ?, ?, ?)",
-                               (eintrag_id, text, kid_id or "", _leer(titel), _leer(zitat))).lastrowid
+            neu = None
+            if da is None:
+                da = neu = con.execute("INSERT INTO angabe (eintrag, merkmal, wert) VALUES (?, ?, ?)",
+                                       (eintrag_id, merkmal, wert)).lastrowid
+                self._beruehrt(con, eintrag_id)
+            if kid_id:
+                con.execute("INSERT OR IGNORE INTO quelle (angabe, kid_id, titel, zitat, datum) VALUES (?, ?, ?, ?, ?)",
+                            (da, kid_id, _leer(titel), _leer(zitat), _leer(datum)))
+            return neu
         return self._mit(arbeit)
 
-    def angabe_aendern(self, angabe_id, text):
-        """Den Text einer Angabe ändern. Dokument und Zitat bleiben - der Mensch hat das Zitat vor Augen."""
-        text = self._angabe_text(text)
+    def angabe_aendern(self, angabe_id, angabe):
+        """Merkmal und Wert einer Angabe ändern. Die Quellen bleiben - der Mensch hat das Zitat vor Augen. Gibt es das
+        Ergebnis im Eintrag schon, werden beide eine Angabe mit allen Quellen.
+        :param angabe: (Merkmal, Wert) oder eine Zeile „Merkmal: Wert“ :return: Id der Angabe danach"""
+        merkmal, wert = self._angabe_werte(angabe)
 
         def arbeit(con):
             z = con.execute("SELECT eintrag FROM angabe WHERE id = ?", (angabe_id,)).fetchone()
             if z is None:
                 raise Eingabefehler("Die Angabe gibt es nicht mehr.")
-            con.execute("UPDATE angabe SET text = ? WHERE id = ?", (text, angabe_id))
             self._beruehrt(con, z["eintrag"])
-        self._mit(arbeit)
+            andere = self._gleiche_angabe(con, z["eintrag"], merkmal, wert, ausser=angabe_id)
+            if andere is not None:
+                self._quellen_umziehen(con, angabe_id, andere)
+                return andere
+            con.execute("UPDATE angabe SET merkmal = ?, wert = ? WHERE id = ?", (merkmal, wert, angabe_id))
+            return angabe_id
+        return self._mit(arbeit)
 
     def angabe_weg(self, angabe_id):
-        """Eine Angabe entfernen. Stammt sie aus einem Dokument, merkt sich das Wiki sie als abgelehnt - ein neuer Lauf
-        über dieses Dokument schlägt sie nicht wieder vor."""
+        """Eine Angabe entfernen. Stammt sie aus Dokumenten, merkt sich das Wiki sie je Dokument als abgelehnt - ein
+        neuer Lauf über diese Dokumente schlägt sie nicht wieder vor."""
         def arbeit(con):
-            z = con.execute("SELECT eintrag, text, kid_id, zitat FROM angabe WHERE id = ?", (angabe_id,)).fetchone()
-            if z is not None:
-                con.execute("DELETE FROM angabe WHERE id = ?", (angabe_id,))
-                self._beruehrt(con, z["eintrag"])
-                if z["kid_id"] and z["zitat"]:
-                    self._merke_abgelehnt(con, z["kid_id"], [z])
+            z = con.execute("SELECT eintrag, merkmal, wert FROM angabe WHERE id = ?", (angabe_id,)).fetchone()
+            if z is None:
+                return
+            text = angabe_text(z["merkmal"], z["wert"])
+            for q in con.execute("SELECT kid_id, zitat FROM quelle WHERE angabe = ?", (angabe_id,)).fetchall():
+                if q["kid_id"] and q["zitat"]:
+                    self._merke_abgelehnt(con, q["kid_id"], [{"text": text, "zitat": q["zitat"]}])
+            con.execute("DELETE FROM angabe WHERE id = ?", (angabe_id,))
+            self._beruehrt(con, z["eintrag"])
         self._mit(arbeit)
 
     # ------------------------------------------------------------ Abgelehntes
@@ -516,15 +732,15 @@ class Wissen:
         return self._mit(arbeit)
 
     def beleg_weg(self, beleg_id):
-        """Das Dokument ist nicht mehr Beleg. Angaben aus ihm bleiben stehen, verlieren aber Dokument und Zitat - sie
-        gelten dann wie von Hand eingetragen."""
+        """Das Dokument ist nicht mehr Beleg. Angaben aus ihm bleiben stehen, verlieren aber diese Quelle - ohne
+        weitere Quelle gelten sie wie von Hand eingetragen."""
         def arbeit(con):
             z = con.execute("SELECT eintrag, kid_id FROM beleg WHERE id = ?", (beleg_id,)).fetchone()
             if z is None:
                 return
             con.execute("DELETE FROM beleg WHERE id = ?", (beleg_id,))
-            con.execute("UPDATE angabe SET kid_id = '', titel = '', zitat = '' WHERE eintrag = ? AND kid_id = ?",
-                        (z["eintrag"], z["kid_id"]))
+            con.execute("DELETE FROM quelle WHERE kid_id = ? AND angabe IN (SELECT id FROM angabe WHERE eintrag = ?)",
+                        (z["kid_id"], z["eintrag"]))
         self._mit(arbeit)
 
     def verbinde(self, a, b):

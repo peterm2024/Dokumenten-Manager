@@ -21,37 +21,52 @@ from tools import wiki_dinge as wd
 
 TEXT = """Muster Prüfdienst Feuerlöscher  Musterweg 17  12345 Musterstadt  Tel.: 01234/5678
 Bankverbindung: Musterbank IBAN: DE00123456780000012345  Geschäftsführer: Erwin Muster
-Herrn Max Mustermann  Musterstraße 8  12345 Musterstadt
+Herrn Max Mustermann  geb. 01.02.1950  Musterstraße 8  12345 Musterstadt  Kunden-Nr. 4711
 Rechnung Nr. 20090006 vom 21.09.2020  Prüf-/Lieferdatum: 19.02.2016
-für das Gebäude Altes Schloss in Musterdorf  Ihr Online-Passwort: geheim123
+für das Gebäude Altes Schloss in Musterdorf, Standort Keller  Ihr Online-Passwort: geheim123
 Prüfgebühr 16,90 EUR"""
+
+KANZLEI_TEXT = """Datenschutzhinweise  Kanzlei Muster & Partner  Musterweg 1  12345 Musterstadt  Tel. 01234/1111
+Anna Muster Rechtsanwalt  Fachanwältin für Familienrecht  Bernd Beispiel Rechtsanwalt  Carla Probe Rechtsanwalt
+Fachanwältin für Erbrecht  Herrn Max Mustermann  Musterstraße 8, D-12345 Musterstadt  Musterstraße 8, 12345 Musterstadt
+Zuständig ist das Landesamt für Datenschutzaufsicht, Musterallee 1, 12345 Musterstadt"""
 
 
 def ding(schublade, bezeichnung, *angaben):
+    """Ein Ding, wie die KI es liefert; je Angabe (Merkmal, Wert, Zitat) - seit Etappe 12 W3 kein Satz mehr."""
     return {"schublade": schublade, "bezeichnung": bezeichnung,
-            "angaben": [{"text": t, "zitat": z} for t, z in angaben]}
+            "angaben": [{"merkmal": m, "wert": w, "zitat": z} for m, w, z in angaben]}
 
 
 ANTWORT = {"dinge": [
     ding("Firma", "Muster Prüfdienst",
-         ("Anschrift: Musterweg 17, 12345 Musterstadt", "Musterweg 17 12345 Musterstadt"),
-         ("Telefon: 01234/5678", "Tel.: 01234/5678"),
-         ("Geschäftsführer ist Erwin Muster", "Geschäftsführer: Erwin Muster"),             # Impressum
-         ("IBAN DE00123456780000012345", "IBAN: DE00123456780000012345"),                   # Bankdaten
-         ("Telefon: 01234/9999", "Tel.: 01234/5678"),                                       # Zahl nicht im Zitat
-         ("Das Dokument bezieht sich auf eine Prüfung", "Prüf-/Lieferdatum: 19.02.2016"),   # Satz über das Dokument
-         ("Passwort geheim123", "Ihr Online-Passwort: geheim123"),                          # Zugangsdaten
-         ("Sitz in Berlin", "Sitz der Firma ist Berlin"),                                   # erfunden
-         ("Telefonnummer der Firma.", "Tel.: 01234/5678"),                                  # Beschriftung ohne Wert
-         ("Rechnungsnummer: 20090006", "Rechnung Nr. 20090006")),                           # gilt nur für dieses Dokument
+         ("Adresse", "Musterweg 17, 12345 Musterstadt", "Musterweg 17 12345 Musterstadt"),
+         ("Telefon", "01234/5678", "Tel.: 01234/5678"),
+         ("Geschäftsführer", "Erwin Muster", "Geschäftsführer: Erwin Muster"),                # Impressum
+         ("IBAN", "DE00123456780000012345", "IBAN: DE00123456780000012345"),                  # Bankdaten
+         ("Telefon", "01234/9999", "Tel.: 01234/5678"),                                      # Wert nicht im Zitat
+         ("Prüfung", "Das Dokument bezieht sich auf eine Prüfung", "Prüf-/Lieferdatum: 19.02.2016"),   # über das Dokument
+         ("Passwort", "geheim123", "Ihr Online-Passwort: geheim123"),                         # Zugangsdaten
+         ("Sitz", "Berlin", "Sitz der Firma ist Berlin"),                                     # erfunden
+         ("Telefon", "", "Tel.: 01234/5678"),                                                 # Merkmal ohne Wert
+         ("Rechnungsnummer", "20090006", "Rechnung Nr. 20090006"),                            # gilt nur für dieses Dokument
+         ("", "01234/5678", "Tel.: 01234/5678"),                                              # ohne Merkmal
+         ("Leistung", "prüft jedes Jahr alle Feuerlöscher im Gebäude Altes Schloss in Musterdorf und schickt die "
+                      "Rechnung", "Muster Prüfdienst Feuerlöscher")),                         # ein Satz
     ding("Immobilie", "Altes Schloss Musterdorf",
-         ("Feuerlöscher geprüft am 19.02.2016", "Prüf-/Lieferdatum: 19.02.2016"),
-         ("Ort der Prüfung und Empfänger der Rechnung", "Prüf-/Lieferdatum: 19.02.2016")),  # Rolle im Dokument
-    ding("Vertrag", "Rechnung Nr. 20090006", ("Rechnung vom 21.09.2020", "vom 21.09.2020")),   # das Dokument selbst
-    ding("Firma", "Hausverwaltung Sonnenschein", ("Telefon: 01234/5678", "Tel.: 01234/5678")),  # Name nicht im Text
-    ding("Person", "Max Mustermann", ("Geschäftsführer Erwin Muster", "Geschäftsführer: Erwin Muster")),   # nichts bleibt
-    ding("Gerät", "muster prüfdienst", ("Telefon: 01234/5678", "Tel.: 01234/5678"),         # derselbe noch einmal
-         ("Prüfgebühr 16,90 EUR", "Prüfgebühr 16,90 EUR")),
+         ("Feuerlöscher geprüft am", "19.02.2016", "Prüf-/Lieferdatum: 19.02.2016"),
+         ("Rolle", "Empfänger der Rechnung", "Prüf-/Lieferdatum: 19.02.2016"),               # Rolle im Dokument
+         ("Lage", "Altes Schloss in Musterdorf", "für das Gebäude Altes Schloss in Musterdorf")),   # = Bezeichnung
+    ding("Vertrag", "Rechnung Nr. 20090006", ("Datum", "21.09.2020", "vom 21.09.2020")),    # das Dokument selbst
+    ding("Versicherung", "Datenschutzhinweise Muster Prüfdienst",
+         ("Stand", "2020", "vom 21.09.2020")),                                                # eine Dokumentart
+    ding("Rechnungen", "Musterbank Musterstadt", ("Postleitzahl", "12345", "12345 Musterstadt")),   # Schublade = Dokumentart
+    ding("Firma", "Hausverwaltung Sonnenschein", ("Telefon", "01234/5678", "Tel.: 01234/5678")),   # Name nicht im Text
+    ding("Person", "Max Mustermann",
+         ("Adresse", "Musterstraße 8, 12345 Musterstadt", "Musterstraße 8  12345 Musterstadt"),
+         ("Kunde bei", "Muster Prüfdienst", "Muster Prüfdienst Feuerlöscher")),               # ein anderes Ding: Verbinden
+    ding("Gerät", "muster prüfdienst", ("Telefon", "01234/5678", "Tel.: 01234/5678"),       # derselbe noch einmal
+         ("Prüfgebühr", "16,90 EUR", "Prüfgebühr 16,90 EUR")),
     "Unsinn", {"bezeichnung": None}]}
 
 
@@ -59,17 +74,22 @@ class TestPruefung(unittest.TestCase):
     def test_der_code_sortiert_aus(self):
         dinge, weg = wissen_ki.pruefe_dinge(ANTWORT, TEXT)
         self.assertEqual([(d["schublade"], d["bezeichnung"], [a["text"] for a in d["angaben"]]) for d in dinge], [
-            ("Firma", "Muster Prüfdienst", ["Anschrift: Musterweg 17, 12345 Musterstadt", "Telefon: 01234/5678",
-                                           "Prüfgebühr 16,90 EUR"]),
-            ("Immobilie", "Altes Schloss Musterdorf", ["Feuerlöscher geprüft am 19.02.2016"])])
-        self.assertEqual(weg, collections.Counter(impressum=3, zahl=1, ueber=1, zugang=1, zitat=1, dokument=1, name=2,
-                                                  ohne=1, rolle=2, etikett=1))
+            ("Firma", "Muster Prüfdienst", ["Adresse: Musterweg 17, 12345 Musterstadt", "Telefon: 01234 5678",
+                                           "Prüfgebühr: 16,90 EUR"]),
+            ("Immobilie", "Altes Schloss Musterdorf", ["Feuerlöscher geprüft am: 19.02.2016"]),
+            ("Sonstiges", "Musterbank Musterstadt", ["Postleitzahl: 12345"]),
+            ("Person", "Max Mustermann", ["Adresse: Musterstraße 8, 12345 Musterstadt"])])
+        self.assertEqual(dinge[0]["angaben"][0], {"merkmal": "Adresse", "wert": "Musterweg 17, 12345 Musterstadt",
+                                                  "zitat": "Musterweg 17 12345 Musterstadt",
+                                                  "text": "Adresse: Musterweg 17, 12345 Musterstadt"})
+        self.assertEqual(weg, collections.Counter(impressum=2, wert=1, rolle=3, zugang=1, zitat=1, leer=1, merkmal=1,
+                                                  satz=1, bezeichnung=1, dokument=2, name=2, verbindung=1))
         self.assertEqual(set(weg) - set(wissen_ki.GRUENDE), set())
         for kaputt in (None, [], {"dinge": "x"}, {"dinge": [{"bezeichnung": "Muster", "angaben": "x"}]}):
             self.assertEqual(wissen_ki.pruefe_dinge(kaputt, TEXT)[0], [])
-        viele = {"dinge": [ding("Firma", f"Muster {wort}", ("Telefon: 01234/5678", "Tel.: 01234/5678"))
+        viele = {"dinge": [ding("Firma", f"Muster {wort}", ("Telefon", "01234/5678", "Tel.: 01234/5678"))
                            for wort in ("Prüfdienst", "Feuerlöscher", "Musterweg", "Musterstadt", "Musterbank", "Schloss",
-                                        "Gebäude", "Rechnung", "Musterdorf", "Prüfgebühr")]}
+                                        "Gebäude", "Keller", "Musterdorf", "Prüfgebühr")]}
         self.assertEqual(len(wissen_ki.pruefe_dinge(viele, TEXT)[0]), wissen_ki.MAX_DINGE)
 
     def test_prompt(self):
@@ -79,6 +99,11 @@ class TestPruefung(unittest.TestCase):
         self.assertIn("x" * wissen_ki.MAX_TEXT, p)
         self.assertNotIn("x" * (wissen_ki.MAX_TEXT + 1), p)
         self.assertNotIn("Im Wiki stehen schon", wissen_ki.baue_prompt("Text", "", ["Person"]))
+        # Etappe 12 W3: die schon benutzten Merkmale, damit die KI dieselben Namen nimmt
+        p = wissen_ki.baue_prompt("Text", "", ["Person"], [], ["Telefon", " Kunden  nummer"])
+        self.assertIn("Im Wiki schon benutzte Merkmale - für dasselbe GENAU diesen Namen nehmen: Telefon, Kunden nummer.", p)
+        self.assertNotIn("schon benutzte Merkmale", wissen_ki.baue_prompt("Text", "", ["Person"]))
+        self.assertNotIn("«", p)
 
     def test_schon_im_wiki(self):
         liste = [{"id": 1, "bezeichnung": "Max Mustermann"}, {"id": 2, "bezeichnung": "Muster Prüfdienst"},
@@ -91,23 +116,36 @@ class TestPruefung(unittest.TestCase):
                                                                     {"id": 5, "bezeichnung": "MUSTER"}]))   # mehrdeutig
 
     def test_angaben_ohne_wert(self):
-        # Peters Test 13.11.2026: Sätze mit richtigem Zitat, die in zwei Jahren nichts mehr sagen
-        def grund(satz):
-            return wissen_ki._pruefe_angabe({"text": satz, "zitat": "Tel.: 01234/5678"}, TEXT)[2]
-        for satz in ("Kunde der Rechnung mit Wohnadresse in Musterstadt", "Patientin und Empfängerin der Rechnung",
-                     "Er wohnt in Musterstadt und hat eine Rechnung erhalten", "Hat das Schreiben verfasst",
-                     "Verbrauchsdaten sind im Dokument nicht ausgefüllt", "Zahnarzt, Name im Kopf der Rechnung",
-                     "Rechnungsdatum: heute", "Gesamtbetrag der Rechnung: hoch", "Belegnummer ist unbekannt"):
-            self.assertEqual(grund(satz), "rolle", satz)
-        for satz in ("Telefonnummer der Praxis.", "Anschrift des Kunden Max Mustermann.", "Webseite der Praxis",
-                     "Zählernummer für den Brunnenwasserverbrauch.", "Die Wohnadresse befindet sich in Musterstadt"):
-            self.assertEqual(grund(satz), "etikett", satz)
-        for satz in ("Zuständig für Abfallgebühren und Erlass des Bescheides", "Stellt jedes Jahr die Rechnung für die Wartung",
-                     "E-Mail: info@muster.example", "Webseite: www.muster.example", "Internet: muster.de",
-                     "Kundennummer bei der Firma lautet 5678", "Kontakt: Telefon 01234/5678", "Zahnarzt in Musterstadt",
-                     "Kontaktansprechpartner Max Mustermann ist Leiter der Abteilung",
-                     "Hat die Prüfung des Feuerlöschers durchgeführt", "Vertragsnummer (Rechnungsnummer): 5678"):
-            self.assertEqual(grund(satz), "", satz)
+        # Peters Test 13.11.2026: Sätze mit richtigem Zitat, die in zwei Jahren nichts mehr sagen - seit W3 (19.11.2026)
+        # ist eine Angabe Merkmal + Wert, der Wert muss im Zitat stehen
+        def grund(merkmal, wert, zitat="Tel.: 01234/5678", bezeichnung="Muster Prüfdienst"):
+            return wissen_ki._pruefe_angabe({"merkmal": merkmal, "wert": wert, "zitat": zitat}, TEXT, bezeichnung)[3]
+        for merkmal, wert in (("Rolle", "Kunde der Rechnung mit Wohnadresse in Musterstadt"),
+                              ("Rolle", "Patientin und Empfängerin der Rechnung"), ("Info", "Hat das Schreiben verfasst"),
+                              ("Rechnungsdatum", "heute"), ("Gesamtbetrag der Rechnung", "hoch")):
+            self.assertEqual(grund(merkmal, wert), "rolle", wert)
+        for merkmal in ("Zu zahlender Betrag", "Betrag", "Rechnungsdatum", "fällig am", "MwSt"):   # W3-Messung
+            self.assertEqual(grund(merkmal, "01234/5678"), "rolle", merkmal)
+        for merkmal in ("Kontonummer", "Konto-Nr", "BLZ", "Bankleitzahl", "Bearbeiter"):
+            self.assertEqual(grund(merkmal, "01234/5678"), "impressum", merkmal)
+        self.assertEqual(grund("Beitrag", "01234/5678"), "")                    # Versicherungsbeitrag: jedes Jahr
+        for merkmal, wert in (("Telefon", "Telefonnummer der Praxis."), ("Adresse", "Anschrift des Kunden"),
+                              ("Webseite", "Webseite der Praxis")):
+            self.assertEqual(grund(merkmal, wert), "wert", wert)                 # Beschriftung statt Wert
+        self.assertEqual(grund("Telefon", "1 2 3 4 5 6 7 8 9 10 11"), "satz")
+        self.assertEqual(grund("Wie man die Firma telefonisch erreicht", "01234/5678"), "merkmal")   # zu viele Wörter
+        self.assertEqual(grund("x" * (wissen.MAX_MERKMAL + 1), "01234/5678"), "merkmal")
+        self.assertEqual(grund("Name", "Muster Prüfdienst", "Muster Prüfdienst Feuerlöscher"), "bezeichnung")
+        for merkmal, wert, zitat in (("Telefon", "01234 5678", "Tel.: 01234/5678"),
+                                     ("Prüfgebühr", "16,90 €", "Prüfgebühr 16,90 EUR"),            # Zeichen egal
+                                     ("geprüft am", "19.02.2016", "Prüf-/Lieferdatum: 19.02.2016"),
+                                     ("Kundennummer", "4711", "Kunden-Nr. 4711"),
+                                     ("zuständig für", "Feuerlöscher", "Muster Prüfdienst Feuerlöscher")):
+            self.assertEqual(grund(merkmal, wert, zitat), "", wert)
+        self.assertTrue(wissen_ki.wert_im_zitat("16,90 €", "Prüfgebühr 16,90 EUR"))
+        self.assertFalse(wissen_ki.wert_im_zitat("16,90 Euro", "Prüfgebühr 16,90 EUR"))    # „Euro“ steht nicht da
+        self.assertFalse(wissen_ki.wert_im_zitat("1690", "Gebühr 16,90 und 1690"[:10]))
+        self.assertFalse(wissen_ki.wert_im_zitat("€", "16,90 €"))                          # ohne Buchstaben/Ziffern
 
     def test_schreibweisen_derselben_sache(self):
         # Peter 13.11.2026: verschiedene Schreibweisen derselben Adresse führten zu neuen Einträgen
@@ -128,6 +166,86 @@ class TestPruefung(unittest.TestCase):
         self.assertFalse(angabe("Baujahr 1975", "Baujahr 1976"))
         self.assertFalse(angabe("Zuständig für Reinigung", "Zuständig für Heizung"))
         self.assertFalse(angabe("Einheiten: 3", "Stockwerke: 3"))                            # kurze Zahl sagt nichts
+
+    def test_telefon_einheitlich_und_kundennummer_bei_der_firma(self):
+        # Peters Abnahme W3 (19.11.2026): Telefon- und Faxnummern einheitlich (DIN 5008), Kundennummer nie bei der Person
+        tel = wissen.telefon_einheitlich
+        for roh, soll in (("01234/567 89", "01234 56789"), ("0987-65 43 21", "0987 654321"), ("04321 765432", "04321 765432"),
+                          ("(01234) 56789", "01234 56789"), ("+49 (0)1234-56789", "+49 1234 56789"),
+                          ("0049 1234 / 56789", "+49 1234 56789"), ("0 43 21 / 76 54 32", "04321 765432"),
+                          ("01234 56789 (Zentrale)", "01234 56789 (Zentrale)"), ("1234", "1234")):
+            self.assertEqual(tel(roh), soll, roh)
+        self.assertEqual(wissen.wert_einheitlich("Telefax", "01234/567 99"), "01234 56799")
+        self.assertEqual(wissen.wert_einheitlich("Kundennummer", "081/31"), "081/31")      # nur Telefonisches
+        for roh in ("Musterstr. 8, D-12345 Musterstadt", "Musterstr. 8 12345 Musterstadt", "Musterstr. 8 ,  12345 Musterstadt",
+                    "Musterstr. 8 DE-12345 Musterstadt"):
+            self.assertEqual(wissen.wert_einheitlich("Anschrift", roh), "Musterstr. 8, 12345 Musterstadt", roh)
+        self.assertEqual(wissen.wert_einheitlich("Adresse", "12345 Musterstadt"), "12345 Musterstadt")
+        self.assertEqual(wissen.wert_einheitlich("Vertragsnummer", "D-12345 X"), "D-12345 X")    # nur bei Anschriften
+        # Daten nach DIN 5008 mit vierstelliger Jahreszahl (Peter 19.11.2026)
+        import datetime
+        heute = datetime.date(2026, 11, 19)
+        for roh, soll in (("17.03.19 bis 16.03.20", "17.03.2019 bis 16.03.2020"), ("1.2.2019", "01.02.2019"),
+                          ("31.12.31", "31.12.2031"), ("01.02.32", "01.02.1932"), ("geprüft am 5.6.16.", "geprüft am 05.06.2016."),
+                          ("32.01.2019", "32.01.2019"), ("1.2.3.4", "1.2.3.4"), ("12.345.67", "12.345.67"),
+                          ("Version 1.13.2019", "Version 1.13.2019")):
+            self.assertEqual(wissen.datum_einheitlich(roh, heute), soll, roh)
+        self.assertEqual(wissen.wert_einheitlich("Leistungszeitraum", "17.03.19 bis 16.03.20")[:10], "17.03.2019")
+        text = TEXT + "  Fax: 01234/56 79"
+        firma = ding("Firma", "Muster Prüfdienst", ("Telefon", "01234/5678", "Tel.: 01234/5678"),
+                     ("Telefon", "01234 5678", "Tel.: 01234/5678"), ("Fax", "01234/56 79", "Fax: 01234/56 79"))
+        person = ding("Person", "Max Mustermann", ("Kunden-Nr.", "4711", "Kunden-Nr. 4711"),
+                      ("Geburtsdatum", "01.02.1950", "geb. 01.02.1950"))
+        dinge, weg = wissen_ki.pruefe_dinge({"dinge": [person, firma]}, text)
+        self.assertEqual([(d["bezeichnung"], [a["text"] for a in d["angaben"]]) for d in dinge], [
+            ("Max Mustermann", ["Geburtsdatum: 01.02.1950"]),
+            ("Muster Prüfdienst", ["Telefon: 01234 5678", "Fax: 01234 5679", "Kunden-Nr.: 4711"])])
+        # mehrere oder keine Firma: welche wäre es? Dann lieber gar nicht
+        zweite = ding("Versicherung", "Musterbank Musterstadt", ("Telefon", "01234/5678", "Tel.: 01234/5678"))
+        dinge, weg = wissen_ki.pruefe_dinge({"dinge": [person, firma, zweite]}, text)
+        self.assertEqual(weg["kunde"], 1)
+        self.assertNotIn("4711", str(dinge))
+        dinge, weg = wissen_ki.pruefe_dinge({"dinge": [person]}, text)
+        self.assertEqual(weg["kunde"], 1)
+        ohne_nummer = ding("Person", "Max Mustermann", ("Geburtsdatum", "01.02.1950", "geb. 01.02.1950"))
+        _, weg = wissen_ki.pruefe_dinge({"dinge": [ohne_nummer, firma, zweite]}, text)
+        self.assertNotIn("kunde", weg)                      # sonst stand „0× Kundennummer …“ in der Statuszeile
+
+    def test_datenschutzhinweis_einer_kanzlei(self):
+        # Peters Abnahme W3 (19.11.2026): dieselbe Adresse mit und ohne „D-“ kam zweimal, die Aufsichtsbehörde aus dem
+        # Datenschutzhinweis als Eintrag, die Anwälte aus dem Briefkopf vorgehakt, „Spezialgebiet“ neben „Fachgebiet“
+        self.assertEqual(wissen_ki.kern("Musterstr. 8, D-12345 Musterstadt"), wissen_ki.kern("Musterstraße 8 12345 Musterstadt"))
+        self.assertNotEqual(wissen_ki.kern("Haus D-12"), wissen_ki.kern("Haus 12"))          # nur vor einer Postleitzahl
+        text = KANZLEI_TEXT
+
+        def anwalt(name, *fach):
+            return ding("Person", name, ("Beruf", "Rechtsanwalt", f"{name} Rechtsanwalt"),
+                        *[("Spezialgebiet", f, f) for f in fach])
+        antwort = {"dinge": [
+            ding("Person", "Max Mustermann",
+                 ("Adresse", "Musterstraße 8, D-12345 Musterstadt", "Musterstraße 8, D-12345 Musterstadt"),
+                 ("Adresse", "Musterstraße 8, 12345 Musterstadt", "Musterstraße 8, 12345 Musterstadt")),
+            ding("Firma", "Kanzlei Muster & Partner", ("Telefon", "01234/1111", "Tel. 01234/1111")),
+            anwalt("Anna Muster", "Fachanwältin für Familienrecht"), anwalt("Bernd Beispiel"),
+            ding("Behörde", "Landesamt für Datenschutzaufsicht", ("Adresse", "Musterallee 1, 12345 Musterstadt",
+                                                                  "Musterallee 1, 12345 Musterstadt"))]}
+        dinge, weg = wissen_ki.pruefe_dinge(antwort, text)
+        self.assertEqual(weg["aufsicht"], 1)
+        self.assertEqual([(d["bezeichnung"], len(d["angaben"]), d["aufgezaehlt"]) for d in dinge],
+                         [("Max Mustermann", 1, False), ("Kanzlei Muster & Partner", 1, False),
+                          ("Anna Muster", 2, False), ("Bernd Beispiel", 1, False)])      # zwei sind noch keine Aufzählung
+        antwort["dinge"].append(anwalt("Carla Probe", "Fachanwältin für Erbrecht"))
+        dinge, _ = wissen_ki.pruefe_dinge(antwort, text)
+        self.assertEqual([d["aufgezaehlt"] for d in dinge], [False, False, True, True, True])
+        # Merkmale auf eine Schreibweise: die im Wiki schon benutzte, sonst die zuerst genannte
+        self.assertEqual(wissen.merkmal_kern("Spezialgebiet"), wissen.merkmal_kern("Fachgebiet"))
+        wissen_ki.einheitliche_merkmale(dinge, ["Fachgebiet", "Tel."])
+        self.assertEqual([a["text"] for d in dinge for a in d["angaben"]][:3],
+                         ["Adresse: Musterstraße 8, 12345 Musterstadt", "Tel.: 01234 1111", "Beruf: Rechtsanwalt"])
+        self.assertEqual(dinge[2]["angaben"][1]["text"], "Fachgebiet: Fachanwältin für Familienrecht")
+        self.assertEqual(wissen_ki.einheitliche_merkmale(
+            [ding("Person", "x", ("Spezialgebiet", "a", "a"), ("Fachgebiet", "b", "b"))])[0]["angaben"][1]["merkmal"],
+            "Spezialgebiet")
 
     def test_wiedererkennen_nach_umbenennung(self):
         # Peter 13.11.2026: gefundene und danach geänderte Einträge wurden beim nächsten Lauf neu genannt
@@ -166,12 +284,21 @@ class TestPruefung(unittest.TestCase):
 class TestLauf(unittest.TestCase):
     def test_schlecht_nur_wenn_alle_quellen_schlecht_sind(self):
         a, b = {"rel_path": "a.pdf", "titel": "a"}, {"rel_path": "b.pdf", "titel": "b"}
-        eins = [ding("Firma", "Muster GmbH", ("Telefon: 1", "Tel. 1"))]
-        zwei = [ding("Firma", "Muster GmbH", ("Telefon: 1", "Tel. 1")), ding("Person", "Max", ("x", "x"))]
+        eins = [{"schublade": "Firma", "bezeichnung": "Muster GmbH", "angaben": [{"text": "Telefon: 1", "zitat": "Tel. 1"}]}]
+        zwei = eins + [{"schublade": "Person", "bezeichnung": "Max", "angaben": [{"text": "x", "zitat": "x"}]}]
         g = wd.lege_zusammen([(a, eins, False), (b, zwei, True)])
         self.assertEqual([(x["bezeichnung"], x["schlecht"], len(x["doks"]), len(x["angaben"])) for x in g],
                          [("Muster GmbH", False, 2, 1), ("Max", True, 1, 1)])
         self.assertTrue(wd.lege_zusammen([(b, eins, True), (a, eins, True)])[0]["schlecht"])
+        # Peters Abnahme W3: dieselbe Adresse aus zwei Dokumenten, verschieden geschrieben, ist eine Angabe
+        def person(merkmal, wert):
+            return [{"schublade": "Person", "bezeichnung": "Max", "angaben": [
+                {"merkmal": merkmal, "wert": wert, "zitat": wert, "text": wissen.angabe_text(merkmal, wert)}]}]
+        g = wd.lege_zusammen([(a, person("Adresse", "Musterstraße 8, D-12345 Musterstadt"), False),
+                              (b, person("Anschrift", "Musterstr. 8 12345 Musterstadt"), False),
+                              (b, person("Adresse", "Musterstraße 18, 12345 Musterstadt"), False)])
+        self.assertEqual([(x["wert"], x["dok"]["rel_path"]) for x in g[0]["angaben"]],
+                         [("Musterstraße 8, D-12345 Musterstadt", "a.pdf"), ("Musterstraße 18, 12345 Musterstadt", "b.pdf")])
 
     def lauf(self, texte, dokumente=None):
         index = types.SimpleNamespace(wiki_text=lambda rel: (texte[rel], ""))
@@ -189,8 +316,8 @@ class TestLauf(unittest.TestCase):
     def test_liest_prueft_und_legt_zusammen(self):
         lauf = self.lauf({"a.pdf": TEXT, "b.pdf": TEXT, "leer.pdf": "  ", "salat.pdf": "X^y} i*H «BAN O^r Qz{ " * 20})
         antworten = [({"dinge": ANTWORT["dinge"][:2]}, 1.0),
-                     ({"dinge": [ding("Firma", "MUSTER PRÜFDIENST", ("Telefon: 01234/5678", "Tel.: 01234/5678"),
-                                      ("Prüft Feuerlöscher", "Muster Prüfdienst Feuerlöscher"))]}, 1.0),
+                     ({"dinge": [ding("Firma", "MUSTER PRÜFDIENST", ("Telefon", "01234/5678", "Tel.: 01234/5678"),
+                                      ("zuständig für", "Feuerlöscher", "Muster Prüfdienst Feuerlöscher"))]}, 1.0),
                      ({"dinge": []}, 1.0)]
         with patch("tools.wiki_dinge.wissen_ki.lies_json", side_effect=antworten) as ki:
             m = self.meldungen(lauf)
@@ -203,8 +330,9 @@ class TestLauf(unittest.TestCase):
         self.assertEqual((firma["bezeichnung"], [d["rel_path"] for d in firma["doks"]], firma["schlecht"]),
                          ("Muster Prüfdienst", ["a.pdf", "b.pdf"], False))
         self.assertEqual([(a["text"], a["dok"]["rel_path"]) for a in firma["angaben"]],
-                         [("Anschrift: Musterweg 17, 12345 Musterstadt", "a.pdf"), ("Telefon: 01234/5678", "a.pdf"),
-                          ("Prüft Feuerlöscher", "b.pdf")])
+                         [("Adresse: Musterweg 17, 12345 Musterstadt", "a.pdf"), ("Telefon: 01234 5678", "a.pdf"),
+                          ("zuständig für: Feuerlöscher", "b.pdf")])
+        self.assertEqual((firma["angaben"][2]["merkmal"], firma["angaben"][2]["wert"]), ("zuständig für", "Feuerlöscher"))
         self.assertEqual([d["rel_path"] for d in schloss["doks"]], ["a.pdf"])
         self.assertEqual(e["verworfen"]["impressum"], 2)
 
@@ -267,9 +395,11 @@ class TestDingeFenster(unittest.TestCase):
         f = wf.WikiFenster(self.app)
         self.addCleanup(lambda: f.winfo_exists() and f.destroy())
         antwort = {"dinge": ANTWORT["dinge"][:2] + [
-            ding("Person", "Herrn Max Mustermann", ("Anschrift: Musterstraße 8, 12345 Musterstadt", "Musterstraße 8 12345 Musterstadt"),
-                 ("Kunde beim Muster Prüfdienst", "Herrn Max Mustermann")),
-            ding("Gerät", "Feuerlöscher", ("Prüfgebühr 16,90 EUR", "Prüfgebühr 16,90 EUR"))]}
+            ding("Person", "Herrn Max Mustermann",
+                 ("Adresse", "Musterstraße 8, 12345 Musterstadt", "Musterstraße 8 12345 Musterstadt"),
+                 ("Geburtsdatum", "01.02.1950", "geb. 01.02.1950"),
+                 ("Kundennummer", "4711", "Kunden-Nr. 4711")),                                  # gehört zur Firma
+            ding("Gerät", "Feuerlöscher", ("Prüfgebühr", "16,90 EUR", "Prüfgebühr 16,90 EUR"))]}
         with patch("tools.wiki_dinge.wissen_ki.lies_json", return_value=(antwort, 1.0)):
             f.dinge_lesen([{"rel_path": "Rechnung.pdf", "titel": "Rechnung Prüfdienst"}])
             d = f.dinge
@@ -282,8 +412,10 @@ class TestDingeFenster(unittest.TestCase):
                                   "☑ Person: Herrn Max Mustermann   - schon im Wiki, wird ergänzt",
                                   "☑ Gerät: Feuerlöscher   - neue Schublade"])
         # schon im Wiki: nur die Angabe, die dort noch nicht steht
-        self.assertEqual([d.tree.item(i, "text") for i in d.tree.get_children("d:2")], ["☑ Kunde beim Muster Prüfdienst"])
-        self.assertEqual(d.tree.item("a:0:1", "values"), ("„Tel.: 01234/5678“", "Rechnung Prüfdienst"))
+        self.assertEqual([d.tree.item(i, "text") for i in d.tree.get_children("d:2")], ["☑ Geburtsdatum: 01.02.1950"])
+        # Spalte „Dokument“: die Dokument-ID beim Eintrag (hier noch keine), bei der Angabe nur, wenn er mehrere hat
+        self.assertEqual(d.tree.item("d:0", "values"), ("", "(noch ohne ID)"))
+        self.assertEqual(d.tree.item("a:0:1", "values"), ("„Tel.: 01234/5678“", ""))
         self.assertEqual(self.w.anzahl(), 1)                                       # noch nichts im Wiki
         d._schalte("d:3")                                                          # das Gerät nicht
         d._schalte("a:0:1")                                                        # die Telefonnummer nicht
@@ -301,18 +433,21 @@ class TestDingeFenster(unittest.TestCase):
         kid = PDFHandler.get_metadata(self.pdf).get("KID_ID")
         self.assertTrue(kid)
         self.assertEqual([(a["text"], a["kid_id"], a["zitat"]) for a in firma["angaben"]],
-                         [("Anschrift: Musterweg 17, 12345 Musterstadt", kid, "Musterweg 17 12345 Musterstadt")])
+                         [("Anschrift: Musterweg 17, 12345 Musterstadt", kid, "Musterweg 17 12345 Musterstadt"),
+                          ("Kundennummer: 4711", kid, "Kunden-Nr. 4711")])
+        # „Adresse“ der KI heißt wie das schon benutzte Merkmal „Anschrift“ (einheitliche_merkmale); die Kundennummer,
+        # die die KI bei der Person nannte, steht bei der Firma (Peter 19.11.2026)
         self.assertEqual(([b["titel"] for b in firma["belege"]], sorted(v["bezeichnung"] for v in firma["verbunden"])),
                          (["Rechnung Prüfdienst"], ["Altes Schloss", "Max Mustermann"]))
         person = self.w.lade(max_)
         self.assertEqual([a["text"] for a in person["angaben"]],
-                         ["Anschrift: Musterstraße 8, 12345 Musterstadt", "Kunde beim Muster Prüfdienst"])
+                         ["Anschrift: Musterstraße 8, 12345 Musterstadt", "Geburtsdatum: 01.02.1950"])
         self.assertEqual(len(person["belege"]), 1)
         self.assertEqual(f.eintrag["bezeichnung"], "Muster Prüfdienst")            # das Wiki zeigt den ersten
 
         # Was abgehakt blieb (Telefon, das Gerät mit seiner Prüfgebühr), ist je Dokument als abgelehnt gemerkt
-        self.assertEqual(self.w.abgelehnte([kid]), {kid: [{"text": "Telefon: 01234/5678", "zitat": "Tel.: 01234/5678"},
-                                                          {"text": "Prüfgebühr 16,90 EUR", "zitat": "Prüfgebühr 16,90 EUR"}]})
+        self.assertEqual(self.w.abgelehnte([kid]), {kid: [{"text": "Telefon: 01234 5678", "zitat": "Tel.: 01234/5678"},
+                                                          {"text": "Prüfgebühr: 16,90 EUR", "zitat": "Prüfgebühr 16,90 EUR"}]})
 
         # Zweiter Lauf über dasselbe Dokument (Peter 13.11.2026): Die umbenannte Immobilie und der umformulierte
         # Firmeneintrag werden wiedererkannt, nichts entsteht doppelt; nur wirklich Neues wird angeboten - Abgelehntes
@@ -320,22 +455,22 @@ class TestDingeFenster(unittest.TestCase):
         self.w.speichere("Firma", "Prüfdienst Muster & Söhne", eintrag_id=firma["id"])
         self.w.angabe_aendern(firma["angaben"][0]["id"], "Sitz im Musterweg 17 in Musterstadt")
         antwort2 = {"dinge": antwort["dinge"][:3] + [
-            ding("Gerät", "Feuerlöscher", ("Prüfgebühr: 16,90 Euro", "Prüfgebühr 16,90 EUR"),
-                 ("Gerät steht im Alten Fass", "für das Gebäude Altes Schloss in Musterdorf"))]}
+            ding("Gerät", "Feuerlöscher", ("Gebühr", "16,90 EUR", "Prüfgebühr 16,90 EUR"),   # anders benannt, gleiches Zitat
+                 ("Standort", "Keller", "Standort Keller"))]}
         antwort2["dinge"][0] = dict(antwort2["dinge"][0], angaben=antwort2["dinge"][0]["angaben"] + [
-            {"text": "Telefonnummer ist 01234 5678", "zitat": "Tel.: 01234/5678"}])
+            {"merkmal": "Telefonnummer", "wert": "01234 5678", "zitat": "Tel.: 01234/5678"}])
         with patch("tools.wiki_dinge.wissen_ki.lies_json", return_value=(antwort2, 1.0)):
             f.dinge_lesen([{"rel_path": "Rechnung.pdf", "titel": "Rechnung Prüfdienst"}])
             d = f.dinge
             self.warte(d)
-        self.assertIn("3 früher abgelehnte Angaben ausgeblendet", d.lbl_status.cget("text"))
+        self.assertIn("2 früher abgelehnte Angaben ausgeblendet", d.lbl_status.cget("text"))
         self.assertEqual([d.tree.item(i, "text") for i in d.tree.get_children()], [
             "☑ Firma: Muster Prüfdienst   - schon im Wiki als „Prüfdienst Muster & Söhne“, wird ergänzt",
             "☑ Immobilie: Altes Schloss Musterdorf   - schon im Wiki als „Altes Schloss“, wird ergänzt",
             "☑ Person: Herrn Max Mustermann   - schon im Wiki, wird ergänzt",
             "☑ Gerät: Feuerlöscher   - neue Schublade"])
         self.assertEqual([[d.tree.item(a, "text") for a in d.tree.get_children(i)] for i in d.tree.get_children()],
-                         [[], [], [], ["☑ Gerät steht im Alten Fass"]])
+                         [[], [], [], ["☑ Standort: Keller"]])
         # von Hand zuordnen: das Gerät gehört zum Schloss - oder wird neu in einer vorhandenen Schublade angelegt
         schloss = next(e for e in self.w.liste() if e["bezeichnung"] == "Altes Schloss")
         d.zuordnen(3, ziel=schloss)
@@ -349,8 +484,9 @@ class TestDingeFenster(unittest.TestCase):
         d._uebernehmen()
         self.assertEqual(self.w.anzahl(), 3)                                       # kein neuer Eintrag
         self.assertEqual([a["text"] for a in self.w.lade(schloss["id"])["angaben"]],
-                         ["Feuerlöscher geprüft am 19.02.2016", "Gerät steht im Alten Fass"])
-        self.assertEqual([a["text"] for a in self.w.lade(firma["id"])["angaben"]], ["Sitz im Musterweg 17 in Musterstadt"])
+                         ["Feuerlöscher geprüft am: 19.02.2016", "Standort: Keller"])
+        self.assertEqual([a["text"] for a in self.w.lade(firma["id"])["angaben"]],
+                         ["Kundennummer: 4711", "Sitz im Musterweg 17 in Musterstadt"])   # freie Zeilen zuletzt
         self.assertEqual(len(self.w.abgelehnte([kid])[kid]), 2)                   # nichts abgehakt: nichts dazu
 
         # Ein Ding, von dem nur Abgelehntes käme, erscheint gar nicht
@@ -360,6 +496,45 @@ class TestDingeFenster(unittest.TestCase):
             self.warte(d)
         self.assertNotIn("Gerät", " ".join(d.tree.item(i, "text") for i in d.tree.get_children()))
         d.destroy()
+
+    def test_aufzaehlung_nicht_vorgehakt_und_spalte_mit_ids(self):
+        f = wf.WikiFenster(self.app)
+        self.addCleanup(lambda: f.winfo_exists() and f.destroy())
+        self.app.index_manager.wiki_text = lambda rel: (KANZLEI_TEXT, "")
+        kid = PDFHandler.ensure_kid_id(self.pdf)
+        zweites = os.path.join(self.sammlung, "Zweites.pdf")
+        shutil.copy(self.pdf, zweites)
+        PDFHandler.ensure_kid_id(zweites)                                  # Kopie trägt dieselbe ID - egal hier
+        antwort = {"dinge": [ding("Firma", "Kanzlei Muster & Partner", ("Telefon", "01234/1111", "Tel. 01234/1111"))] + [
+            ding("Person", name, ("Beruf", "Rechtsanwalt", f"{name} Rechtsanwalt"))
+            for name in ("Anna Muster", "Bernd Beispiel", "Carla Probe")]}
+        with patch("tools.wiki_dinge.wissen_ki.lies_json", return_value=(antwort, 1.0)):
+            f.dinge_lesen([{"rel_path": "Rechnung.pdf", "titel": "Rechnung"}, {"rel_path": "Zweites.pdf", "titel": "Z"}])
+            d = f.dinge
+            self.warte(d)
+        self.assertEqual([d.tree.item(i, "text") for i in d.tree.get_children()],
+                         ["☑ Firma: Kanzlei Muster & Partner"] +
+                         [f"☐ Person: {n}   - aus einer Aufzählung (z.B. Briefkopf)"
+                          for n in ("Anna Muster", "Bernd Beispiel", "Carla Probe")])
+        self.assertEqual(d.tree.item("d:0", "values"), ("", f"{kid}, {kid}"))
+        self.assertEqual(d.tree.item("a:0:0", "values")[1], kid)                     # zwei Dokumente: ID je Angabe
+        # Rechtsklick (Peter 19.11.2026): Dokument zeigen, Dokument-ID kopieren - beim Eintrag je Dokument ein Untermenü
+        menue = d.baue_menue("a:0:0")
+        self.assertEqual([menue.entrycget(n, "label") for n in range(menue.index("end") + 1)],
+                         ["Dokument zeigen", f"Dokument-ID kopieren ({kid})"])
+        menue.invoke(1)
+        self.assertEqual(d.clipboard_get(), kid)
+        menue.invoke(0)
+        self.assertEqual(self.gezeigt, [self.pdf])
+        menue = d.baue_menue("d:0")
+        self.assertEqual([menue.type(n) for n in range(2)], ["cascade", "cascade"])
+        unten = d.nametowidget(menue.entrycget(0, "menu"))
+        unten.invoke(1)
+        self.assertEqual(self.gezeigt, [self.pdf, zweites])
+        d._schalte("d:1")                                                          # eine Anwältin doch
+        d._uebernehmen()
+        self.assertEqual([e["bezeichnung"] for e in self.w.liste()], ["Anna Muster", "Kanzlei Muster & Partner"])
+        self.assertEqual(self.w.abgelehnte([kid]), {})                             # nicht vorgehakt: nicht abgelehnt
 
     def test_schlecht_erkannt_nicht_vorgehakt_ohne_verbinden_und_schliessen_bricht_ab(self):
         f = wf.WikiFenster(self.app)

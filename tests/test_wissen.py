@@ -144,6 +144,22 @@ class TestWissen(unittest.TestCase):
         self.w.angabe_weg(hand)                                              # zweimal schadet nicht
         self.assertEqual([x["id"] for x in self.w.lade(e)["angaben"]], [ki])
 
+    def test_ab_der_grenze_kein_beleg_mehr(self):
+        # Peter 19.11.2026: Die eigene Adresse steht in jedem Dokument - ab MAX_BELEG_QUELLEN Quellen zählt jedes
+        # weitere Dokument nur noch als Quelle, die Belege des Eintrags bleiben überschaubar
+        e = self.w.speichere(self.art("Person"), "Max Mustermann")
+        grenze = wissen.MAX_BELEG_QUELLEN
+        for i in range(grenze + 3):
+            self.w.angabe_hinzu(e, ("Adresse", "Musterstraße 1"), f"K-{i:04}", f"Brief {i}", "Musterstraße 1",
+                                f"2024-01-{i + 1:02}")
+        self.w.angabe_hinzu(e, ("Adresse", "Musterstraße 1"), "K-0000", "Brief 0", "Musterstraße 1")   # schon Quelle
+        d = self.w.lade(e)
+        self.assertEqual(len(d["angaben"][0]["quellen"]), grenze + 3)         # alle zählen, keine doppelt
+        self.assertEqual(d["angaben"][0]["stand"], f"2024-01-{grenze + 3:02}")  # der Stand kommt vom jüngsten
+        self.assertEqual(sorted(b["kid_id"] for b in d["belege"]), [f"K-{i:04}" for i in range(grenze)])
+        self.w.angabe_hinzu(e, ("Telefon", "0123"), "K-0007", "Brief 7", "Tel. 0123")   # andere Angabe: Beleg wie sonst
+        self.assertIn("K-0007", [b["kid_id"] for b in self.w.lade(e)["belege"]])
+
     def test_belege(self):
         e = self.w.speichere(self.art("Person"), "Max Mustermann")
         f = self.w.speichere(self.art("Fahrzeug"), "VW Golf")
@@ -228,10 +244,10 @@ class TestWissen(unittest.TestCase):
         e = self.w.lade(a)
         self.assertIsNone(self.w.lade(b))
         self.assertEqual([(x["text"], x["kid_id"], x["zitat"]) for x in e["angaben"]], [
-            ("Versicherungsnummer: 4711", "AAAA-0001", "Vers.-Nr. 4711"),          # bekam Dokument und Zitat
-            ("Beitrag jährlich zum 01.12.", "", ""),
+            ("Versicherungsnummer: 4711", "AAAA-0001", "Vers.-Nr. 4711"),          # bekam die Quelle dazu
             ("Versicherungsort: Musterstraße 8", "AAAA-0001", "Musterstraße 8"),
-            ("Auch: Muster Privatschutz", "", "")])
+            ("Auch: Muster Privatschutz", "", ""),
+            ("Beitrag jährlich zum 01.12.", "", "")])                              # freie Zeile: am Ende
         self.assertEqual(sorted(x["kid_id"] for x in e["belege"]), ["AAAA-0001", "BBBB-0002"])
         self.assertEqual(sorted(v["id"] for v in e["verbunden"]), [c, d])
         self.assertEqual((e["notiz"], e["art_name"], e["bezeichnung"]),
@@ -250,7 +266,7 @@ class TestWissen(unittest.TestCase):
         self.w.angabe_hinzu(e, "Telefon: 01234/5678")
         self.w.angabe_hinzu(e, "Anschrift: Musterstraße 8")
         texte = self.w.suchtexte()[e]
-        self.assertEqual(texte, ["Muster Prüfdienst", "Kommt jedes Jahr im Juni", "Telefon: 01234/5678",
+        self.assertEqual(texte, ["Muster Prüfdienst", "Kommt jedes Jahr im Juni", "Telefon: 01234 5678",
                                  "Anschrift: Musterstraße 8"])
         for suche in ("prüfdienst", "JUNI", "01234/5678", "01234 5678", "012345678", "5678", "musterstrasse",
                       "telefon 5678", "  "):
@@ -269,41 +285,143 @@ class TestWissen(unittest.TestCase):
         self.w.angabe_weg(aus_dok)                                           # aus einem Dokument: gemerkt
         self.w.angabe_weg(von_hand)                                          # von Hand: nichts zu merken
         self.assertEqual(self.w.abgelehnte(["AAAA-0001", "", "BBBB-0002"]),
-                         {"AAAA-0001": [{"text": "Telefon: 01234/5678", "zitat": "Tel.: 01234/5678"}]})
+                         {"AAAA-0001": [{"text": "Telefon: 01234 5678", "zitat": "Tel.: 01234/5678"}]})
         con = sqlite3.connect(self.w.pfad)
         self.assertEqual(con.execute("SELECT COUNT(*) FROM abgelehnt").fetchone()[0], 1)   # keine Zeile ohne Dokument
         con.close()
-        self.assertEqual(self.w.ablehnen("AAAA-0001", [{"text": " Telefon:  01234/5678", "zitat": "Tel.: 01234/5678"},
+        self.assertEqual(self.w.ablehnen("AAAA-0001", [{"text": " Telefon:  01234 5678", "zitat": "Tel.: 01234/5678"},
                                                        {"text": "Prüfgebühr 16,90 EUR", "zitat": ""},
                                                        {"text": " ", "zitat": "x"}]), 1)      # doppelt und leer: nicht
         self.assertEqual(self.w.ablehnen("", [{"text": "x", "zitat": "y"}]), 0)              # ohne Dokument-ID nichts
         self.assertEqual(len(self.w.abgelehnte(["AAAA-0001"])["AAAA-0001"]), 2)
         self.assertEqual(wissen.Wissen(os.path.join(self.basis, "leer")).abgelehnte(["AAAA-0001"]), {})
 
-    def test_datei_vom_12_11_wird_nachgeruestet(self):
-        # Aufbau vom 12.11.2026 (user_version 2) bekommt nur die neue Tabelle - kein Eintrag geht verloren
+    def _alter_stand(self, version):
+        """Datei wie vor dem 19.11.2026: Angaben als freier Text mit Dokument und Zitat; bis Version 2 ohne `abgelehnt`,
+        bis 3 ohne `merkmal_aus`. Mit einem Eintrag, Beleg, einer Verbindung, einer Angabe und ggf. Abgelehntem/Ausschluss."""
         e = self.w.speichere(self.art("Person"), "Max Mustermann")
-        self.w.angabe_hinzu(e, "Telefon: 01234/5678", "AAAA-0001", "Rechnung", "Tel.: 01234/5678")
+        f = self.w.speichere(self.art("Firma"), "Muster Prüfdienst")
+        self.w.beleg_hinzu(e, "AAAA-0001", "Rechnung")
+        self.w.verbinde(e, f)
+        self.w.merkmal_ausschliessen("S - T\\Stadtwerke Musterstadt", "Nummer", "47110815")
         con = sqlite3.connect(self.w.pfad)
-        con.executescript("DROP TABLE abgelehnt; DROP TABLE merkmal_aus; PRAGMA user_version = 2;")
+        con.executescript(
+            "DROP TABLE quelle; DROP TABLE angabe;"
+            "CREATE TABLE angabe (id INTEGER PRIMARY KEY, eintrag INTEGER NOT NULL REFERENCES eintrag(id) ON DELETE "
+            "CASCADE, text TEXT NOT NULL, kid_id TEXT NOT NULL DEFAULT '', titel TEXT NOT NULL DEFAULT '', "
+            "zitat TEXT NOT NULL DEFAULT '');"
+            f"INSERT INTO angabe (eintrag, text, kid_id, zitat) VALUES ({e}, 'Wohnt in der Musterstraße 1.', "
+            "'AAAA-0001', 'Musterstraße 1');"
+            "INSERT INTO abgelehnt (kid_id, text, zitat, wann) VALUES ('AAAA-0001', 'Kunde der Rechnung', 'Kunde', 'x');"
+            + ("DROP TABLE merkmal_aus;" if version < 4 else "")
+            + ("DROP TABLE abgelehnt;" if version < 3 else "")
+            + f"PRAGMA user_version = {version};")
         con.close()
-        with self.assertNoLogs("DocManager", "INFO"):                        # nichts beiseitegelegt
-            self.assertEqual([a["text"] for a in self.w.lade(e)["angaben"]], ["Telefon: 01234/5678"])
-        self.assertFalse(os.path.exists(self.w.pfad_alt))
-        self.w.angabe_weg(self.w.lade(e)["angaben"][0]["id"])
-        self.assertEqual(len(self.w.abgelehnte(["AAAA-0001"])["AAAA-0001"]), 1)
-        con = sqlite3.connect(self.w.pfad)
-        self.addCleanup(con.close)
-        self.assertEqual(con.execute("PRAGMA user_version").fetchone()[0], wissen.SCHEMA)
+        return e, f
 
-    def test_datei_vom_13_11_bekommt_die_ausgeschlossenen_merkmale(self):
-        # Aufbau vom 13.11.2026 (user_version 3): nur die Tabelle merkmal_aus kommt dazu, Abgelehntes bleibt
-        self.w.ablehnen("AAAA-0001", [{"text": "Telefon: 01234/5678", "zitat": "Tel."}])
-        con = sqlite3.connect(self.w.pfad)
-        con.executescript("DROP TABLE merkmal_aus; PRAGMA user_version = 3;")
-        con.close()
-        self.assertTrue(self.w.merkmal_ausschliessen("S - T\\Stadtwerke Musterstadt", "Nummer", "47110815"))
-        self.assertEqual(len(self.w.abgelehnte(["AAAA-0001"])["AAAA-0001"]), 1)
+    def test_alte_staende_leeren_nur_die_angaben(self):
+        # Peter 19.11.2026: „Angaben leeren“ - freie Sätze lassen sich nicht in Merkmal und Wert zerlegen. Alles andere
+        # bleibt, vor allem die Ausschlüsse der Ablageordner (liest die Vollautomatik im produktiven Einsatz).
+        for version in (2, 3, 4):
+            with self.subTest(version=version):
+                for alt in (self.w.pfad, self.w.pfad_vor_umbau):
+                    if os.path.exists(alt):
+                        os.remove(alt)
+                e, f = self._alter_stand(version)
+                with self.assertLogs("DocManager", "INFO") as log:
+                    d = self.w.lade(e)
+                self.assertEqual(log.output, ["INFO:DocManager:Wiki: Angaben auf Merkmal und Wert umgestellt, 1 alte "
+                                              "Angaben geleert"])          # nur Zahlen
+                self.assertFalse(os.path.exists(self.w.pfad_alt))           # nichts beiseitegelegt
+                vorher = sqlite3.connect(self.w.pfad_vor_umbau)             # aber der Stand davor ist aufgehoben
+                self.assertEqual(vorher.execute("SELECT COUNT(*) FROM angabe").fetchone()[0], 1)
+                vorher.close()
+                self.assertEqual((d["bezeichnung"], d["angaben"], [b["kid_id"] for b in d["belege"]],
+                                  [v["id"] for v in d["verbunden"]]), ("Max Mustermann", [], ["AAAA-0001"], [f]))
+                self.assertEqual(self.w.abgelehnte(["AAAA-0001"]), {})       # Abgelehntes waren Sätze
+                self.assertEqual(self.w.ausgeschlossene_merkmale(),
+                                 [("S - T\\Stadtwerke Musterstadt", "Nummer", "47110815")] if version >= 4 else [])
+                self.assertIsNotNone(self.w.angabe_hinzu(e, ("Telefon", "01234/5678"), "AAAA-0001", "Rechnung", "Tel."))
+                con = sqlite3.connect(self.w.pfad)
+                self.assertEqual(con.execute("PRAGMA user_version").fetchone()[0], wissen.SCHEMA)
+                con.close()
+
+    def test_merkmal_und_wert_aus_einer_zeile(self):
+        for zeile, erwartet in (("Telefon: 01234 56789", ("Telefon", "01234 56789")),
+                                ("  Versicherungs-Nr.:   V 4711 ", ("Versicherungs-Nr.", "V 4711")),
+                                ("Heizung erneuert 2019", ("", "Heizung erneuert 2019")),
+                                ("Termin 10:30 Uhr", ("", "Termin 10:30 Uhr")),          # Ziffer vor dem Doppelpunkt
+                                ("Telefon:", ("", "Telefon:")),                           # ohne Wert kein Merkmal
+                                ("x" * 41 + ": y", ("", "x" * 41 + ": y")),              # zu lang für ein Merkmal
+                                (("Beitrag:", "  140,86 €"), ("Beitrag", "140,86 €"))):
+            self.assertEqual(wissen.teile_angabe(zeile), erwartet, zeile)
+        self.assertEqual(wissen.angabe_text("Telefon", "0123"), "Telefon: 0123")
+        self.assertEqual(wissen.angabe_text("", "Schlüssel beim Nachbarn"), "Schlüssel beim Nachbarn")
+        for a, b in (("Telefonnummer", "Tel.:"), ("E-Mail", "email"), ("Anschrift", "Adresse"), ("Straße", "STRASSE")):
+            self.assertEqual(wissen.merkmal_kern(a), wissen.merkmal_kern(b), (a, b))
+        self.assertNotEqual(wissen.merkmal_kern("Telefon"), wissen.merkmal_kern("Fax"))
+        e = self.w.speichere(self.art("Firma"), "Muster Prüfdienst")
+        for falsch in (("Telefon", "  "), ("x" * (wissen.MAX_MERKMAL + 1), "1"), ("", "")):
+            with self.assertRaises(wissen.Eingabefehler, msg=falsch):
+                self.w.angabe_hinzu(e, falsch)
+
+    def test_gleiche_angabe_aus_mehreren_dokumenten_ist_eine_mit_mehreren_quellen(self):
+        e = self.w.speichere(self.art("Versicherung"), "Hausrat Musterversicherung")
+        erste = self.w.angabe_hinzu(e, ("Versicherungsnummer", "V-4711"), "AAAA-0001", "Police", "Vers.-Nr. V-4711",
+                                    "2023-01-10")
+        self.assertIsNotNone(self.w.angabe_hinzu(e, ("Vers.-Nummer", "v-4711"), "AAAA-0001", "Police", "x"))  # anderes Merkmal
+        self.assertIsNone(self.w.angabe_hinzu(e, "versicherungsnummer: V-4711.", "BBBB-0002", "Rechnung", "V-4711",
+                                              "2024-01-10"))
+        self.assertIsNone(self.w.angabe_hinzu(e, ("Versicherungsnummer", "V-4711"), "BBBB-0002", "Rechnung", "nochmal"))
+        d = self.w.lade(e)
+        self.assertEqual(len(d["angaben"]), 2)                    # „Vers.-Nummer“ ist ein anderes Merkmal
+        a = next(x for x in d["angaben"] if x["id"] == erste)
+        self.assertEqual([(q["kid_id"], q["datum"]) for q in a["quellen"]], [("BBBB-0002", "2024-01-10"),
+                                                                             ("AAAA-0001", "2023-01-10")])
+        self.assertEqual((a["stand"], a["kid_id"], a["zitat"], a["aktuell"]), ("2024-01-10", "BBBB-0002", "V-4711", True))
+        self.assertEqual(sorted(b["kid_id"] for b in d["belege"]), ["AAAA-0001", "BBBB-0002"])
+        # Beleg weg: nur diese Quelle geht, die Angabe bleibt mit der anderen
+        self.w.beleg_weg(next(b["id"] for b in d["belege"] if b["kid_id"] == "BBBB-0002"))
+        a = next(x for x in self.w.lade(e)["angaben"] if x["id"] == erste)
+        self.assertEqual([q["kid_id"] for q in a["quellen"]], ["AAAA-0001"])
+        # Entfernen merkt sie je Dokument als abgelehnt
+        self.w.angabe_weg(erste)
+        self.assertEqual(self.w.abgelehnte(["AAAA-0001"]),
+                         {"AAAA-0001": [{"text": "Versicherungsnummer: V-4711", "zitat": "Vers.-Nr. V-4711"}]})
+
+    def test_laenderkennung_und_fachgebiet_sind_gleich(self):
+        # Peters Abnahme W3 (19.11.2026): dieselbe Adresse mit und ohne „D-“, „Spezialgebiet“ neben „Fachgebiet“
+        e = self.w.speichere(self.art("Person"), "Max Mustermann")
+        self.assertIsNotNone(self.w.angabe_hinzu(e, ("Adresse", "Musterstraße 8, D-12345 Musterstadt"), "AAAA-0001"))
+        self.assertIsNone(self.w.angabe_hinzu(e, ("Anschrift", "Musterstr. 8 12345 Musterstadt"), "BBBB-0002"))
+        self.assertIsNotNone(self.w.angabe_hinzu(e, ("Adresse", "Musterstraße 18, 12345 Musterstadt")))   # andere Nummer
+        self.assertIsNotNone(self.w.angabe_hinzu(e, ("Fachgebiet", "Familienrecht"), "AAAA-0001"))
+        self.assertIsNone(self.w.angabe_hinzu(e, ("Spezialgebiet", "Familienrecht"), "BBBB-0002"))
+        self.assertEqual(sorted(len(a["quellen"]) for a in self.w.lade(e)["angaben"]), [0, 2, 2])
+
+    def test_verlauf_juengster_wert_zuerst(self):
+        e = self.w.speichere(self.art("Versicherung"), "Hausrat Musterversicherung")
+        self.w.angabe_hinzu(e, "Schlüssel beim Nachbarn")                                   # freie Zeile
+        b23 = self.w.angabe_hinzu(e, ("Beitrag", "110,86 €"), "AAAA-0001", "Rechnung 2023", "110,86", "2023-01-05")
+        nr = self.w.angabe_hinzu(e, ("Versicherungsnummer", "V-4711"), "AAAA-0001", "Rechnung 2023", "V-4711",
+                                 "2023-01-05")
+        b25 = self.w.angabe_hinzu(e, ("Beitrag", "140,86 €"), "CCCC-0003", "Rechnung 2025", "140,86", "2025-01-05")
+        b24 = self.w.angabe_hinzu(e, ("beitrag", "125,00 €"), "BBBB-0002", "Rechnung 2024", "125,00", "2024-01-05")
+        hand = self.w.angabe_hinzu(e, ("Beitrag", "99 €"))                                  # von Hand, ohne Datum
+        d = self.w.lade(e)
+        self.assertEqual([(a["id"], a["aktuell"]) for a in d["angaben"]],
+                         [(b25, True), (b24, False), (b23, False), (hand, False), (nr, True),
+                          (d["angaben"][-1]["id"], False)])
+        self.assertEqual(d["angaben"][-1]["text"], "Schlüssel beim Nachbarn")
+        self.assertEqual(self.w.merkmale(d["art"]), ["Beitrag", "Versicherungsnummer"])   # häufigste zuerst
+        self.assertEqual(self.w.merkmale(), ["Beitrag", "Versicherungsnummer"])
+        self.assertEqual(wissen.Wissen(os.path.join(self.basis, "leer")).merkmale(), [])
+        # Ändern auf einen Wert, den es schon gibt: eine Angabe mit allen Quellen
+        self.assertEqual(self.w.angabe_aendern(b23, "Beitrag: 125,00 €"), b24)
+        a = next(x for x in self.w.lade(e)["angaben"] if x["id"] == b24)
+        self.assertEqual(sorted(q["kid_id"] for q in a["quellen"]), ["AAAA-0001", "BBBB-0002"])
+        self.assertEqual(self.w.angabe_aendern(hand, ("Beitrag", "98 €")), hand)
+        self.assertIn("Beitrag: 98 €", self.w.suchtexte()[e])
 
     def test_ausgeschlossene_merkmale(self):
         ordner = "S - T\\Stadtwerke Musterstadt"
