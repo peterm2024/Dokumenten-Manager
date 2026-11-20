@@ -25,6 +25,49 @@ def wahl_aenderung(angezeigt, eingabe):
     return None if eingabe == (angezeigt or "").strip() else eingabe
 
 
+_MARKE = "   ← "   # trennt in der Auswahlliste den Modellnamen von „Standard“ / „zuletzt verwendet“
+
+
+def modelle_beschriftet(namen, standard, zuletzt):
+    """Einträge der Modell-Auswahlliste: Standardmodell und zuletzt verwendetes Modell bekommen einen Vermerk
+    (Peter 19.11.2026 bei der Abnahme von Etappe 13 Schritt 1)."""
+    liste = []
+    for name in namen:
+        marken = [text for text, trifft in (("Standard", name == standard), ("zuletzt verwendet", name == zuletzt))
+                  if trifft]
+        liste.append(name + _MARKE + ", ".join(marken) if marken else name)
+    return liste
+
+
+def modell_aus_anzeige(text):
+    """Modellname ohne den Vermerk aus `modelle_beschriftet` - gespeichert wird nur der Name."""
+    return (text or "").split(_MARKE)[0].strip()
+
+
+def zuletzt_verwendet(gespeichert_vorher, eingestellt):
+    """Das zuletzt verwendete Modell: das vor der letzten Änderung - wurde nie geändert, das eingestellte."""
+    return gespeichert_vorher or eingestellt
+
+
+def auswahlfeld(parent, var, uebernehmen, ereignisse=("<<ComboboxSelected>>", "<Return>", "<FocusOut>"),
+                bereinige=None, **optionen):
+    """ttk-Auswahlfeld, das seine Wahl über `uebernehmen()` speichert (Auswahl, Enter, Fokus weg) - ohne Mausrad:
+    Das Rad blättert in Tk 8.6 die Werte durch und meldet <<ComboboxSelected>>, beim Scrollen stellte sich so still
+    eine Einstellung um (FALLSTRICKE #133). `bereinige` macht aus dem gewählten Listeneintrag den zu speichernden
+    Wert (etwa ohne Vermerk), bevor `uebernehmen` ihn liest."""
+    feld = ttk.Combobox(parent, textvariable=var, **optionen)
+
+    def bei_ereignis(_e):
+        if bereinige is not None and bereinige(var.get()) != var.get():
+            var.set(bereinige(var.get()))
+        uebernehmen()
+
+    for ereignis in ereignisse:
+        feld.bind(ereignis, bei_ereignis, add="+")
+    feld.bind("<MouseWheel>", lambda _e: "break")
+    return feld
+
+
 # ==========================================
 # 1. DIE TOOL-SCHNITTSTELLE (Der Wrapper)
 # ==========================================
@@ -109,8 +152,54 @@ class SettingsEditorWindow(tk.Toplevel):
     def _entscheidungsmodell_uebernehmen(self):
         neu = wahl_aenderung(self._wahl_angezeigt, self.var_entscheidungsmodell.get())
         if neu is not None:
+            if self._wahl_angezeigt:
+                self.app.config.set("ki_entscheidungsmodell_zuletzt", self._wahl_angezeigt)
             self.app.config.set("ki_entscheidungsmodell", neu)
             self._wahl_angezeigt = neu
+            self._modelle_zeigen()
+
+    def _modell_uebernehmen(self):
+        alt = self.app.config.get("ollama_model", ollama_client.DEFAULT_MODEL)
+        neu = self.var_ollama_model.get().strip()
+        if neu != alt:
+            if alt:
+                self.app.config.set("ollama_model_zuletzt", alt)
+            self.app.config.set("ollama_model", neu)
+            self._modelle_zeigen()
+
+    def _modelle_holen(self):
+        """Modellliste des Servers im Hintergrund holen und in beide Auswahlfelder eintragen: Lese-Modelle ins Feld
+        Modell, nur Entscheidungsmodelle ins Feld Ordnerwahl (ollama_client.modelle_nach_art)."""
+        url = self.var_ollama_url.get().strip()
+
+        def holen():
+            try:
+                arten = ollama_client.modelle_nach_art(url)
+            except Exception:
+                arten = ([], [])   # Server nicht erreichbar: Felder bleiben ohne Liste, Eintippen geht weiter
+            self.after(0, lambda: self._modelle_zeigen(arten))
+
+        threading.Thread(target=holen, daemon=True).start()
+
+    def _modelle_zeigen(self, arten=None):
+        """Listen (Lese-Modelle, Entscheidungsmodelle) in die beiden Felder eintragen, mit Vermerk „Standard“ /
+        „zuletzt verwendet“ je Feld. Ohne `arten` nur die Vermerke neu setzen (nach einer Änderung)."""
+        if not self.winfo_exists():
+            return
+        if arten is not None:
+            self._modellnamen = arten
+        arten = getattr(self, "_modellnamen", ([], []))
+        cfg = self.app.config
+        je_feld = (
+            (ollama_client.DEFAULT_MODEL,
+             zuletzt_verwendet(cfg.get("ollama_model_zuletzt", ""),
+                               cfg.get("ollama_model", ollama_client.DEFAULT_MODEL))),
+            (auto_pilot.STANDARD_ENTSCHEIDUNGSMODELL,
+             zuletzt_verwendet(cfg.get("ki_entscheidungsmodell_zuletzt", ""), self._wahl_angezeigt)),
+        )
+        for feld, namen, (standard, zuletzt) in zip(getattr(self, "_modell_felder", ()), arten, je_feld):
+            if feld.winfo_exists():
+                feld.configure(values=modelle_beschriftet(namen, standard, zuletzt))
 
     def _hinweis(self, parent, text, einzug=28, pady=(0, 8), breite=580):
         """Graue Erklärungszeile unter einer Option - in Klartext, was die Option bewirkt."""
@@ -417,6 +506,7 @@ class SettingsEditorWindow(tk.Toplevel):
             status = getattr(self.app, "ki_status", None)
             if status is not None:
                 status.pruefe_jetzt()
+            self._modelle_holen()
 
         entry_url.bind("<FocusOut>", url_uebernehmen)
         entry_url.bind("<Return>", url_uebernehmen)
@@ -426,10 +516,11 @@ class SettingsEditorWindow(tk.Toplevel):
         row_model.pack(fill=tk.X, padx=8, pady=(2, 4))
         ttk.Label(row_model, text="Modell:", width=16).pack(side=tk.LEFT)
         self.var_ollama_model = tk.StringVar(value=self.app.config.get("ollama_model", ollama_client.DEFAULT_MODEL))
-        entry_model = ttk.Entry(row_model, textvariable=self.var_ollama_model)
+        # Seit 19.11.2026 Auswahlliste mit den Modellen des Servers (Etappe 13 Schritt 1); bleibt beschreibbar, damit
+        # man auch ohne erreichbaren Server ein Modell eintragen kann.
+        entry_model = auswahlfeld(row_model, self.var_ollama_model, self._modell_uebernehmen,
+                                  bereinige=modell_aus_anzeige)
         entry_model.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        entry_model.bind("<FocusOut>", lambda e: self.app.config.set("ollama_model", self.var_ollama_model.get().strip()))
-        entry_model.bind("<Return>", lambda e: self.app.config.set("ollama_model", self.var_ollama_model.get().strip()))
 
         # Zweitmeinung zur Ordnerwahl (Modell-Prüfstand 27.10.2026): ein Entscheidungsmodell
         # bewertet jeden vorhandenen Ordner - leer = aus (auto_pilot.wende_zweitmeinung_an).
@@ -441,14 +532,21 @@ class SettingsEditorWindow(tk.Toplevel):
         # und das Modell gälte auch auf einem Server, der es nicht hat.
         self._wahl_angezeigt = self.app.config.get("ki_entscheidungsmodell", auto_pilot.STANDARD_ENTSCHEIDUNGSMODELL)
         self.var_entscheidungsmodell = tk.StringVar(value=self._wahl_angezeigt)
-        entry_wahl = ttk.Entry(row_wahl, textvariable=self.var_entscheidungsmodell)
+        entry_wahl = auswahlfeld(row_wahl, self.var_entscheidungsmodell, self._entscheidungsmodell_uebernehmen,
+                                 bereinige=modell_aus_anzeige)
         entry_wahl.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        for ereignis in ("<FocusOut>", "<Return>"):
-            entry_wahl.bind(ereignis, lambda e: self._entscheidungsmodell_uebernehmen())
+        self._modell_felder = (entry_model, entry_wahl)
+        for feld in self._modell_felder:
+            # Beim Aufklappen ohne Liste (Server war beim Öffnen nicht erreichbar) im Hintergrund neu fragen -
+            # nie im Tk-Thread, die Abfrage kann bis zu 3 s dauern
+            feld.configure(postcommand=lambda f=feld: None if f.cget("values") else self._modelle_holen())
+        self._modellnamen = ([], [])
+        self._modelle_holen()
         self._hinweis(tab, "Voreingestellt clef-flash:9b (gilt nur, wenn der KI-Server es hat): ein Entscheidungsmodell "
                            "prüft bei der Vollautomatik den "
                            "Zielordner nach. Widerspricht es deutlich, bleibt das Dokument zur Prüfung liegen; ist es "
-                           "sich sehr sicher, darf es einen unklaren Fall entscheiden. Leer = aus. Kostet je Dokument "
+                           "sich sehr sicher, darf es einen unklaren Fall entscheiden. Die Liste zeigt nur "
+                           "Entscheidungsmodelle; gewöhnliche Modelle können das nicht. Leer = aus. Kostet je Dokument "
                            "einige Sekunden (Modellwechsel auf dem Server).", einzug=8 + 16 * 7, pady=(0, 4), breite=540)
 
         # Wecken per Netzwerk (01.11.2026, ki_status.py / server_wecken.py): Doppelklick auf die rote
@@ -565,10 +663,9 @@ class SettingsEditorWindow(tk.Toplevel):
         ttk.Label(zeile, text=text + ":").pack(side=tk.LEFT, padx=(20, 6))
         texte = [t for t, _ in wahl]
         var = tk.StringVar(value=next((t for t, w in wahl if w == aktuell), texte[0]))
-        feld = ttk.Combobox(zeile, textvariable=var, values=texte, state="readonly", width=18)
+        feld = auswahlfeld(zeile, var, lambda: self.app.config.set(schluessel, dict(wahl).get(var.get())),
+                           ereignisse=("<<ComboboxSelected>>",), values=texte, state="readonly", width=18)
         feld.pack(side=tk.LEFT)
-        feld.bind("<<ComboboxSelected>>",
-                  lambda _e: self.app.config.set(schluessel, dict(wahl).get(var.get())), add="+")
         return feld
 
 

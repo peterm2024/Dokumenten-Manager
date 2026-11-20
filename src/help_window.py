@@ -9,7 +9,7 @@ import menue_hilfe
 
 APP_NAME = "Dokumenten-Manager (KI Edition)"
 # Release-Version (Git-Tag "v<Version>", GitHub-Release mit der gebauten EXE, siehe README "Release bauen")
-APP_VERSION = "0.9.34"
+APP_VERSION = "0.9.35"
 
 
 def build_stempel():
@@ -242,19 +242,47 @@ TAB_FEATURES = [
           "und hört nur auf diesem PC (nichts geht ins Internet).\n"
           "2. In der Eingabeaufforderung das Bild-Modell laden (rund 7 GB Download, einmalig):  "
           "ollama pull qwen3.5:9b\n"
+          "   Empfohlen dazu das Entscheidungsmodell für die Zweitmeinung zur Ordnerwahl (rund 10 GB):  "
+          "ollama pull clef-flash:9b\n"
           "3. Im Programm unter Datei → Einstellungen → KI-Server bleibt die Adresse "
           "http://localhost:11434; \"Verbindung testen\" klicken - der Punkt rechts in der "
           "Suchleiste wird grün."),
-    ("p", "Womit man rechnen muss (Richtwerte für ein Dokument mit einer Seite, Modell qwen3.5:9b):"),
-    ("tabelle", [('Rechner', 'Dauer je Dokument', 'Bemerkung'), ('nur Prozessor (ohne Grafikkarte)', '2 bis 10 Minuten', 'mind. 16 GB Arbeitsspeicher; Häkchen "KI ohne Grafikkarte zulassen" setzen'), ('Grafik im Prozessor (integriert)', 'wie nur Prozessor', 'Ollama nutzt integrierte Grafik unter Windows in der Regel nicht'), ('eigene Grafikkarte mit 8 GB', '20 bis 60 Sekunden', 'Modell passt gerade; bei viel Text teils im Arbeitsspeicher'), ('eigene Grafikkarte mit 16 GB', '5 bis 20 Sekunden', 'alles im Grafikspeicher - der gedachte Normalfall')]),
+    ("p", "Womit man rechnen muss (Richtwerte für ein Dokument mit einer Seite, Modell qwen3.5:9b mit Zweitmeinung):"),
+    ("tabelle", [('Rechner', 'Dauer je Dokument', 'Bemerkung'), ('nur Prozessor (ohne Grafikkarte)', '2 bis 10 Minuten', 'mind. 16 GB Arbeitsspeicher; Häkchen "KI ohne Grafikkarte zulassen" setzen'), ('Grafik im Prozessor (integriert)', 'wie nur Prozessor', 'Ollama nutzt integrierte Grafik unter Windows in der Regel nicht'), ('eigene Grafikkarte mit 8 GB', '10 bis 20 Sekunden', 'beide Modelle teils im Arbeitsspeicher, geht trotzdem gut'), ('eigene Grafikkarte mit 16 GB', '8 bis 15 Sekunden', 'alles im Grafikspeicher - der gedachte Normalfall')]),
     ("p", "Ohne Grafikkarte ist die KI also kein Werkzeug zum Zuschauen, aber die Vollautomatik "
           "arbeitet unbeaufsichtigt im Hintergrund - ein Stapel Scans ist dann eben über Nacht "
           "abgelegt statt in einer Viertelstunde. Dafür in den Einstellungen \"KI ohne Grafikkarte "
           "zulassen\" ankreuzen, sonst pausiert die Vollautomatik (bei einem Server mit Grafikkarte "
-          "ist Prozessor-Betrieb nämlich ein Defekt). Wer es schneller braucht, kann als Modell "
-          "qwen3.5:4b eintragen: halb so groß und schneller; wie gut es Dokumente liest, ist nicht gemessen."),
+          "ist Prozessor-Betrieb nämlich ein Defekt). Ohne Zweitmeinung (Feld Ordnerwahl leer) geht es "
+          "fast doppelt so schnell, es landen dann aber etwas mehr Dokumente im falschen Ordner. Wie "
+          "schnell der eigene Rechner ist, misst Tools → KI-Helfer → Benchmark."),
     ("p", "Für alles außer der KI (Ordner, Tags, Suche, Vorschau, Dubletten, Aufräumen) braucht es "
           "weder Ollama noch eine Grafikkarte."),
+
+    ("h2", "⏱️\tBenchmark: Wie schnell ist die KI?"),
+    ("p", "Tools → KI-Helfer → „Benchmark (KI-Modelle messen)…“ legt 40 erfundene Prüfbriefe (Musterdaten) so ab "
+          "wie die Hintergrund-Automatik, aber in einem Wegwerf-Ordner - die eigene Sammlung bleibt unberührt. Gemessen "
+          "werden die Sekunden je Dokument, das Laden der Modelle und der Modellwechsel, und ob die Modelle ganz auf der "
+          "Grafikkarte liegen. Während der Messung pausiert die Hintergrund-Automatik. „Ergebnis kopieren“ legt die "
+          "Zahlen in die Zwischenablage (nur Zahlen, keine Inhalte) - gut für eine Rückmeldung oder den Vergleich "
+          "zweier Rechner."),
+    ("p", "Vergleichswerte (gemessen am 20.11.2026, Ollama 0.40, Sekunden je Dokument mit der Zweitmeinung "
+          "clef-flash:9b, in Klammern ohne):"),
+    ("tabelle", [('Lese-Modell', '16 GB (5060 Ti)', '8 GB (3060 Ti)'),
+                 ('qwen3.5:9b (Standard)', '8,5 s (5,1 s)', '9,7 bis 11 s (5,8 s)'),
+                 ('qwen3-vl:4b-instruct', '6,4 s (3,1 s)', '6,7 s (3,0 s)')]),
+    ("p", "qwen3-vl:4b-instruct ist schneller und legte die Prüfbriefe gleich gut ab, an 403 echten Dokumenten "
+          "aber öfter still im falschen Ordner - darum bleibt qwen3.5:9b der Standard. Ohne Zweitmeinung geht es "
+          "fast doppelt so schnell, dafür landen etwas mehr Dokumente still im falschen Ordner. Als Zweitmeinung taugen nur "
+          "Entscheidungsmodelle wie clef-flash; die Auswahlliste zeigt darum nur diese."),
+    ("p", "Die Prüfbriefe liegen jedem Release in drei Fassungen bei: „Pruefdokumente_Benchmark.zip“ digital "
+          "(40 PDFs und eine Sammel-PDF zum Drucken) sowie derselbe Satz ausgedruckt und mit einem Dokumentenscanner "
+          "eingescannt, wie echte Post auf Papier - in höchster Auflösung "
+          "(„Pruefdokumente_Benchmark_gescannt_hoch.zip“) und in niedrigster "
+          "(„Pruefdokumente_Benchmark_gescannt_niedrig.zip“). Der Satz ändert sich "
+          "nie; der Benchmark misst mit genau diesen Briefen, Ergebnisse bleiben so über Versionen vergleichbar. "
+          "Selbst ausdrucken muss niemand."),
+    ("link", "https://github.com/peterm2024/Dokumenten-Manager/releases"),
 
     ("h2", "🌐\tKI-Server aus der Ferne (Tailscale)"),
     ("p", "Ob der KI-Server gerade antwortet, zeigt der Farbpunkt rechts in der Suchleiste: "

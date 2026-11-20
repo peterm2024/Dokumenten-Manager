@@ -288,6 +288,105 @@ class PDFHandler:
         return PDFHandler.write_custom_metadata(ziel, {k: v for k, v in felder.items() if v}, still=True)
 
     @staticmethod
+    def schreibe_html_pdf(ziel, abschnitte, css="", fusszeile="", zeichnung=None, rand=(60, 45, -50, -60)):
+        """
+        PDF aus HTML (PyMuPDF Story), etwa die Prüfdokumente des Benchmarks (Etappe 13, `pruefdokumente`). Jeder
+        Abschnitt in `abschnitte` beginnt auf einer neuen A4-Seite (Brief, danach eine Anlage). `fusszeile` steht
+        klein unten auf jeder Seite. `rand` ist der Textbereich als Abstand zum Seitenrand (links, oben, rechts,
+        unten). `zeichnung(seite, seitenzahl, abschnitt)` liefert je Seite eine Liste von Elementen, die über den
+        Text gezeichnet werden (Logo, Unterschrift, Stempel, Falzmarken - siehe `_zeichne`). Keine KID-Felder - das
+        Ergebnis sieht aus wie frisch aus dem Scanner mit Textebene. Schreibt über eine Temp-Datei und überschreibt
+        nie eine vorhandene Datei (FileExistsError).
+        :return: Seitenzahl
+        """
+        if os.path.exists(ziel):
+            raise FileExistsError(ziel)
+        puffer = io.BytesIO()
+        schreiber = fitz.DocumentWriter(puffer)
+        seite = fitz.paper_rect("a4")
+        abschnitt_der_seite = []
+        for nr, html in enumerate(abschnitte):
+            story = fitz.Story(html=html, user_css=css)
+            weiter, seiten = True, 0
+            while weiter:
+                if seiten >= 20:
+                    raise ValueError("HTML passt nicht auf 20 Seiten")
+                geraet = schreiber.begin_page(seite)
+                weiter, _ = story.place(seite + rand)
+                story.draw(geraet)
+                schreiber.end_page()
+                seiten += 1
+                abschnitt_der_seite.append(nr)
+        schreiber.close()
+        with fitz.open("pdf", puffer.getvalue()) as doc:
+            for s in doc:
+                if zeichnung is not None:
+                    PDFHandler._zeichne(s, zeichnung(s.number, doc.page_count, abschnitt_der_seite[s.number]))
+                if fusszeile:
+                    s.insert_text((60, s.rect.height - 30), fusszeile, fontsize=8, fontname="helv")
+            doc.set_metadata({"producer": "PyMuPDF", "creator": "KID"})
+            anzahl = doc.page_count
+            tmp = ziel + ".tmp"
+            try:
+                doc.save(tmp, garbage=3, deflate=True)
+            except Exception:
+                if os.path.exists(tmp):
+                    os.remove(tmp)
+                raise
+        os.replace(tmp, ziel)
+        return anzahl
+
+    @staticmethod
+    def _zeichne(seite, elemente):
+        """
+        Zeichnet einfache Elemente (Dicts) auf eine Seite - so braucht der Aufrufer kein PyMuPDF:
+        {"text", "pos", "groesse", "schrift" (helv/hebo/cobo …), "farbe", "drehung" (Grad im Uhrzeigersinn)},
+        {"linie": [(x, y), …], "breite", "farbe", "fuellung", "geschlossen"}, {"rechteck": (x0, y0, x1, y1), …},
+        {"kreis": (x, y, r), …}. Mit "anker": Text auf der Seite - die Koordinaten gelten dann ab der linken
+        unteren Ecke seines ersten Vorkommens; fehlt der Anker, entfällt das Element.
+        """
+        for el in elemente:
+            dx = dy = 0.0
+            if el.get("anker"):
+                treffer = seite.search_for(el["anker"])
+                if not treffer:
+                    continue
+                dx, dy = treffer[0].x0, treffer[0].y1
+            farbe = el.get("farbe", (0, 0, 0))
+            if "text" in el:
+                punkt = fitz.Point(el["pos"][0] + dx, el["pos"][1] + dy)
+                seite.insert_text(punkt, el["text"], fontsize=el.get("groesse", 8), fontname=el.get("schrift", "helv"),
+                                  color=farbe, morph=(punkt, fitz.Matrix(-el.get("drehung", 0))))
+                continue
+            form = seite.new_shape()
+            if "linie" in el:
+                form.draw_polyline([(x + dx, y + dy) for x, y in el["linie"]])
+            elif "rechteck" in el:
+                x0, y0, x1, y1 = el["rechteck"]
+                form.draw_rect(fitz.Rect(x0 + dx, y0 + dy, x1 + dx, y1 + dy))
+            elif "kreis" in el:
+                x, y, r = el["kreis"]
+                form.draw_circle((x + dx, y + dy), r)
+            else:
+                continue
+            form.finish(color=farbe, fill=el.get("fuellung"), width=el.get("breite", 1),
+                        closePath=el.get("geschlossen", "linie" not in el))
+            form.commit()
+
+    @staticmethod
+    def fuege_pdfs_zusammen(ziel, quellen):
+        """Mehrere PDFs hintereinander in eine neue Datei (Sammel-PDF zum Ausdrucken). Überschreibt nie."""
+        if os.path.exists(ziel):
+            raise FileExistsError(ziel)
+        with fitz.open() as ganz:
+            for pfad in quellen:
+                with fitz.open(pfad) as teil:
+                    ganz.insert_pdf(teil)
+            tmp = ziel + ".tmp"
+            ganz.save(tmp, garbage=3, deflate=True)
+        os.replace(tmp, ziel)
+
+    @staticmethod
     def hole_eml(filepath):
         """Die eingebettete Original-Mail eines Mail-PDFs (Bytes) oder None."""
         try:

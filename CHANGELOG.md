@@ -2,6 +2,13 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.35 — 2026-11-20
+
+- Neu: Werkzeug „Benchmark“ (Tools → KI-Helfer). Es legt 40 erfundene Prüfbriefe so ab wie die Hintergrund-Automatik, aber in einem Wegwerf-Ordner, und misst Sekunden je Dokument, Laden, Modellwechsel und ob die Modelle ganz auf der Grafikkarte liegen. Drei Läufe stehen nebeneinander, „Ergebnis kopieren“ gibt nur Zahlen weiter. Die Hilfe nennt Vergleichswerte für eine Grafikkarte mit 16 und eine mit 8 GB.
+- Die Prüfbriefe liegen jedem Release als feste Downloads bei: digital (mit einer Sammel-PDF zum Drucken) und ausgedruckt und eingescannt in höchster und niedrigster Auflösung. Der Satz ändert sich nicht, Messungen bleiben über Versionen vergleichbar.
+- Einstellungen → KI-Server: „Modell“ und „Ordnerwahl“ sind Auswahllisten mit den Modellen des Servers, Standard und zuletzt verwendetes Modell sind markiert, Eintippen geht weiter. Die Ordnerwahl (Zweitmeinung) bietet nur Entscheidungsmodelle wie clef-flash:9b an, das Feld „Modell“ alle übrigen. Ein gewöhnliches Modell als Zweitmeinung scheiterte bei jedem Dokument, ohne dass es auffiel.
+- Hilfe, README und Leitfaden empfehlen zum Lese-Modell das Entscheidungsmodell clef-flash:9b und nennen gemessene Richtwerte. Geprüft und verworfen: qwen3-vl:4b-instruct ist schneller, legt an echten Dokumenten aber öfter still falsch ab - qwen3.5:9b bleibt Standard.
+
 ## v0.9.34 — 2026-11-19
 
 - Wiki: Angaben als Tabelle Merkmal | Wert | Stand | Belege statt freier Sätze. Dieselbe Angabe aus mehreren Dokumenten steht einmal da (mit allen Quellen), ein geänderter Wert zeigt den jüngsten oben und die älteren grau darunter. Ab 5 Dokumenten „viele (N)“, Rechtsklick → „In der Sammlung suchen“. Bisherige Angaben werden beim ersten Öffnen geleert (Sicherung `wissen_vor_umbau.sqlite`).

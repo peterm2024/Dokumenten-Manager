@@ -119,9 +119,14 @@ class TestMenueUebersicht(unittest.TestCase):
         for zelle in ("nur Prozessor", "integriert", "8 GB", "16 GB", "2 bis 10 Minuten"):
             self.assertIn(zelle, inhalt, zelle)
         tabellen = [inhalt for stil, inhalt in help_window.TAB_FEATURES if stil == "tabelle"]
-        self.assertEqual(len(tabellen), 1)
-        self.assertTrue(all(len(zeile) == 3 for zeile in tabellen[0]))
+        self.assertEqual(len(tabellen), 2)   # KI auf dem eigenen PC, Benchmark (20.11.2026)
+        self.assertTrue(all(len(zeile) == 3 for tabelle in tabellen for zeile in tabelle))
         self.assertEqual(len(tabellen[0]), 5)
+        self.assertIsNotNone(fenster.finde_abschnitt(1, "Benchmark"))
+        self.assertIn("qwen3.5:9b (Standard)", inhalt)
+        self.assertIn("Pruefdokumente_Benchmark.zip", inhalt)
+        self.assertIn("Pruefdokumente_Benchmark_gescannt_hoch.zip", inhalt)
+        self.assertIn("Pruefdokumente_Benchmark_gescannt_niedrig.zip", inhalt)
         fenster.destroy()
 
     def test_hilfetexte_ohne_persoenliche_angaben(self):

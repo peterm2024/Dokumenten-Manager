@@ -221,7 +221,7 @@ class TestMenuesperre(unittest.TestCase):
                          sorted(["Titel-Vorschlag (KI)", "Vollautomatik: Ablage-Vorschau",
                                  "Vollautomatik: Posteingang verarbeiten",
                                  "Absender nachlesen",
-                                 "Vollautomatik: Begleitet erfassen"]))
+                                 "Vollautomatik: Begleitet erfassen", "Benchmark"]))
 
 
 if __name__ == "__main__":

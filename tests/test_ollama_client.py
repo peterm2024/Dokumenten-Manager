@@ -37,6 +37,36 @@ class TestListModels(unittest.TestCase):
         mock_urlopen.return_value = _fake_response(body=json.dumps({"models": []}).encode("utf-8"))
         self.assertEqual(ollama_client.list_models(), [])
 
+    def test_modell_auswahl_sortiert_ohne_leere_und_doppelte(self):
+        # Auswahlliste in den Einstellungen (Etappe 13 Schritt 1)
+        namen = ["qwen3.5:9b", "", "Clef-flash:9b", "qwen3.5:9b", "  ", "gemma4:12b "]
+        self.assertEqual(ollama_client.modell_auswahl(namen), ["Clef-flash:9b", "gemma4:12b", "qwen3.5:9b"])
+
+    def test_modelle_nach_art_trennt_entscheidungsmodelle(self):
+        # Modellvergleich 20.11.2026: Als Zweitmeinung taugen nur Entscheidungsmodelle, ein gewöhnliches Modell
+        # ließ jeden Aufruf scheitern. Nennt der Server keine Fähigkeiten (oder scheitert), gilt es als Lese-Modell.
+        art = {"qwen3-vl:4b-instruct": {"completion", "vision"}, "clef-flash:9b": {"decision", "vision"},
+               "gemma4:12b": set()}
+
+        def faehigkeiten(name):
+            if name == "alt:1":
+                raise OSError("show geht nicht")
+            return art[name]
+        with patch("ollama_client.list_models",
+                   return_value=["qwen3-vl:4b-instruct", "clef-flash:9b", "gemma4:12b", "alt:1"]):
+            lesen, entscheiden = ollama_client.modelle_nach_art("http://server:11434", faehigkeiten=faehigkeiten)
+        self.assertEqual(lesen, ["alt:1", "gemma4:12b", "qwen3-vl:4b-instruct"])
+        self.assertEqual(entscheiden, ["clef-flash:9b"])
+
+    @patch("urllib.request.urlopen")
+    def test_modell_faehigkeiten_aus_api_show(self, mock_urlopen):
+        mock_urlopen.return_value = _fake_response(body=json.dumps({"capabilities": ["decision", "vision"]}).encode())
+        self.assertEqual(ollama_client.modell_faehigkeiten("clef-flash:9b", "http://server:11434"),
+                         {"decision", "vision"})
+        anfrage = mock_urlopen.call_args[0][0]
+        self.assertTrue(anfrage.full_url.endswith("/api/show"))
+        self.assertEqual(json.loads(anfrage.data.decode("utf-8")), {"model": "clef-flash:9b"})
+
 
 class TestSuggestTitle(unittest.TestCase):
     @patch("urllib.request.urlopen")

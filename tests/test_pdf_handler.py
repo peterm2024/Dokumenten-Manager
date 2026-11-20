@@ -992,3 +992,31 @@ class TestKidAbsender(unittest.TestCase):
         self.assertEqual(PDFHandler.get_metadata(pfad)["KID_Absender"], "Gentilia AG")   # leer löscht nicht
         self.assertTrue(PDFHandler.write_custom_metadata(pfad, {"KID_Absender": "Stadtwerke"}, still=True))
         self.assertEqual(PDFHandler.get_document_info(pfad)["KID_Absender"], "Stadtwerke")
+
+
+class TestHtmlPdfZeichnung(unittest.TestCase):
+    """schreibe_html_pdf mit Zeichnung (Prüfdokumente des Benchmarks, Etappe 13)."""
+
+    def test_zeichnung_am_anker_und_ohne_anker_entfaellt(self):
+        import fitz
+        aufrufe = []
+
+        def zeichnung(seite, seitenzahl, abschnitt):
+            aufrufe.append((seite, seitenzahl, abschnitt))
+            return [{"text": "NEBENDRAN", "pos": (100, 0), "anker": "Mit freundlichen Grüßen"},
+                    {"text": "NIEMALS", "pos": (10, 10), "anker": "gibt es nicht"},
+                    {"linie": [(0, 0), (20, 5)], "anker": "Mit freundlichen Grüßen"},
+                    {"rechteck": (10, 10, 20, 20), "fuellung": (0, 0, 0), "farbe": None},
+                    {"kreis": (50, 50, 5)}]
+        with tempfile.TemporaryDirectory() as ordner:
+            pfad = os.path.join(ordner, "brief.pdf")
+            PDFHandler.schreibe_html_pdf(pfad, ["<p>Mit freundlichen Grüßen</p>", "<p>Anlage</p>"],
+                                         zeichnung=zeichnung)
+            with fitz.open(pfad) as doc:
+                anker = doc[0].search_for("Mit freundlichen Grüßen")[0]
+                neben = doc[0].search_for("NEBENDRAN")[0]
+                self.assertAlmostEqual(neben.x0, anker.x0 + 100, delta=1)
+                self.assertLess(abs(neben.y1 - anker.y1), 4)
+                self.assertFalse(doc[0].search_for("NIEMALS"))
+                self.assertGreaterEqual(len(doc[0].get_drawings()), 3)
+        self.assertEqual(aufrufe, [(0, 2, 0), (1, 2, 1)])

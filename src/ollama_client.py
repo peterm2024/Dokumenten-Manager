@@ -18,7 +18,10 @@ DEFAULT_URL = "http://localhost:11434"
 # "ollama_model" in der settings.json fragte nach dem alten Standard "llama3.2-vision", und der
 # Server antwortete mit HTTP 500 "unknown model architecture: mllama" - siehe FALLSTRICKE #35.
 # Seit v0.9.21 qwen3.5:9b (Modell-Prüfstand 27.10.2026, 403 Dokumente: still falsch abgelegt 36 statt
-# 79 bei qwen2.5vl:7b unter Ollama 0.40.11, auf der Grafikkarte gleich schnell). Wer schon eine
+# 79 bei qwen2.5vl:7b unter Ollama 0.40.11, auf der Grafikkarte gleich schnell). Geprüft und
+# bestätigt 20.11.2026 (Modellvergleich): qwen3-vl:4b-instruct ist ein Viertel bis ein Drittel
+# schneller und auf den 40 Prüfbriefen gleich gut, legt aber am 403er-Korpus öfter still falsch ab
+# (Bestand 28 statt 24, frische Sammlung 7 statt 5, Doppelordner 16 statt 10). Wer schon eine
 # settings.json mit "ollama_model" hat, behält sein Modell.
 DEFAULT_MODEL = "qwen3.5:9b"
 DEFAULT_TIMEOUT = 90
@@ -166,6 +169,48 @@ def list_models(base_url=DEFAULT_URL, timeout=3):
     with urllib.request.urlopen(f"{base_url.rstrip('/')}/api/tags", timeout=timeout) as resp:
         data = json.loads(resp.read().decode("utf-8"))
     return [m.get("name", "") for m in data.get("models", [])]
+
+
+def modell_auswahl(namen):
+    """Modellnamen für eine Auswahlliste: ohne Leere und Doppelte, alphabetisch (Groß/klein egal)."""
+    return sorted({n.strip() for n in namen if n and n.strip()}, key=str.lower)
+
+
+def modell_faehigkeiten(name, base_url=DEFAULT_URL, timeout=3):
+    """POST /api/show: Fähigkeiten eines Modells laut Server, z.B. {"completion", "vision"} oder
+    {"decision", "vision"} bei einem Entscheidungsmodell wie clef-flash. Leer, wenn der Server keine nennt."""
+    req = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/show",
+        data=json.dumps({"model": name}).encode("utf-8"),
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    return set(data.get("capabilities") or [])
+
+
+def modelle_nach_art(base_url=DEFAULT_URL, timeout=3, faehigkeiten=None):
+    """
+    Modelle des Servers für die zwei Auswahllisten: (Lese-Modelle, Entscheidungsmodelle), je wie modell_auswahl.
+
+    Die Zweitmeinung (waehle_ordner, /v1/systemone) geht nur mit Entscheidungsmodellen - ein gewöhnliches Modell
+    beantwortet sie mit „is not a llama.cpp decision model“ (Modellvergleich 20.11.2026: jeder Aufruf scheiterte, die
+    Ablage lief still ohne Zweitmeinung). Umgekehrt kann ein Entscheidungsmodell keinen Text erzeugen und gehört
+    nicht in die Liste der Lese-Modelle. Erkannt an der Fähigkeit „decision“ aus /api/show; nennt der Server für
+    ein Modell nichts (ältere Ollama-Version, Fehler), gilt es als Lese-Modell.
+    :param faehigkeiten: (name) -> set, für Tests; Standard fragt den Server je Modell
+    """
+    namen = modell_auswahl(list_models(base_url, timeout))
+    faehigkeiten = faehigkeiten or (lambda n: modell_faehigkeiten(n, base_url, timeout))
+    lesen, entscheiden = [], []
+    for name in namen:
+        try:
+            art = faehigkeiten(name)
+        except Exception:
+            art = set()
+        (entscheiden if "decision" in art else lesen).append(name)
+    return lesen, entscheiden
 
 
 def geladene_modelle(base_url=DEFAULT_URL, timeout=5):

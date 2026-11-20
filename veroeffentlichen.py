@@ -16,7 +16,10 @@ Dieses Skript hält beide zusammen:
    heißt dort ENTWICKLER.md.
 2. committet und pusht dort,
 3. legt das GitHub-Release mit dist/DokumentenManager.exe, ihrer SHA-256-Prüfsumme (DokumentenManager.exe.sha256,
-   zusätzlich als Abschnitt in den Notizen, seit 17.11.2026), dem Lizenztext (LICENSE.txt - die AGPL verlangt ihn
+   zusätzlich als Abschnitt in den Notizen, seit 17.11.2026), den Prüfdokumenten des Benchmarks
+   (seit 20.11.2026: Pruefdokumente_Benchmark.zip digital, …_gescannt_hoch.zip und …_gescannt_niedrig.zip - FESTE Dateien
+   aus KID-Messungen/benchmark/download, einmal gebaut und nie neu erzeugt, damit Messungen vergleichbar bleiben),
+   dem Lizenztext (LICENSE.txt - die AGPL verlangt ihn
    bei jeder Weitergabe, die EXE selbst bringt ihn nicht mit) und den Notizen an. Das „Source code“-Zip,
    das GitHub jedem Release anhängt, enthält damit genau den Quellcode der EXE.
 
@@ -32,6 +35,7 @@ import shutil
 import subprocess
 import sys
 import tarfile
+import zipfile
 
 HIER = os.path.dirname(os.path.abspath(__file__))
 OEFFENTLICH = os.path.join(os.path.dirname(HIER), "Dokumenten-Manager-public")
@@ -221,6 +225,45 @@ def pruefsummen_datei(pfad, ziel):
     return wert
 
 
+# Feste Download-Zips der Prüfdokumente (Peter 20.11.2026): „erstelle die Dokumente nicht neu, da sonst diese nicht
+# zum Vergleich geeignet sind“ - gebaut einmal von KID-Messungen/benchmark/download_zips.py (digital = der Satz, den der
+# Benchmark erzeugt; gescannt = derselbe Satz gedruckt und eingescannt), hier nur unverändert angehängt.
+PRUEFDOKUMENTE_ORDNER = os.path.join(os.path.expanduser("~"), "KID-Messungen", "benchmark", "download")
+PRUEFDOKUMENTE_ZIPS = ("Pruefdokumente_Benchmark.zip", "Pruefdokumente_Benchmark_gescannt_hoch.zip",
+                       "Pruefdokumente_Benchmark_gescannt_niedrig.zip")
+
+
+def pruefe_pruefdokumente(ordner=PRUEFDOKUMENTE_ORDNER, regeln=None, pdf_text=None):
+    """
+    Pfade der festen Prüfdokument-Zips, geprüft wie der Spiegel: Namen und Text jeder Datei im Zip gegen die private
+    Begriffsliste. Fehlt ein Zip oder gibt es eine Fundstelle, wird nichts veröffentlicht.
+    :param pdf_text: (bytes) -> Text eines PDFs, für Tests; Standard PyMuPDF
+    """
+    if regeln is None:
+        regeln = lade_begriffe()
+    if pdf_text is None:
+        import fitz
+
+        def pdf_text(daten):
+            with fitz.open(stream=daten, filetype="pdf") as doc:
+                return "\n".join(s.get_text() for s in doc)
+    pfade = []
+    for name in PRUEFDOKUMENTE_ZIPS:
+        pfad = os.path.join(ordner, name)
+        if not os.path.isfile(pfad):
+            sys.exit(f"Prüfdokumente fehlen: {pfad} (einmalig: KID-Messungen/benchmark/download_zips.py)")
+        with zipfile.ZipFile(pfad) as z:
+            for innen in z.namelist():
+                daten = z.read(innen)
+                text = pdf_text(daten) if innen.lower().endswith(".pdf") else daten.decode("utf-8", "replace")
+                treffer = fundstellen(innen, text, regeln)
+                if treffer:
+                    sys.exit(f"{name}: {len(treffer)} Fundstelle(n) aus der Begriffsliste "
+                             f"(Begriffe {sorted({i for _, i in treffer})}) - nichts veröffentlicht.")
+        pfade.append(pfad)
+    return pfade
+
+
 def notizen_mit_pruefsumme(notizen, wert, name):
     """Release-Notizen mit angehängtem Abschnitt zur Prüfsumme (die Datei des Aufrufers bleibt unverändert)."""
     return (notizen.rstrip() + "\n\n### Prüfsumme (SHA-256)\n\n"
@@ -249,6 +292,7 @@ def main():
     if not os.path.isfile(notizen):
         sys.exit(f"Notizen fehlen: {notizen}")
     pruefe_notizen(notizen, titel)
+    pruef_zips = pruefe_pruefdokumente()
 
     print(f"1. Quellcode-Spiegel (Stand {stand}) nach {OEFFENTLICH}")
     spiegel_fuellen()
@@ -267,7 +311,7 @@ def main():
     notizen_release = os.path.join(os.path.dirname(EXE), "release_notizen.md")
     with open(notizen_release, "w", encoding="utf-8") as f:
         f.write(notizen_text)
-    lauf(["gh", "release", "create", version, EXE, pruefsumme, lizenz, "-R", REPO, "--title", titel,
+    lauf(["gh", "release", "create", version, EXE, pruefsumme, *pruef_zips, lizenz, "-R", REPO, "--title", titel,
           "--notes-file", notizen_release], HIER)
     print("fertig:", f"https://github.com/{REPO}/releases/tag/{version}")
 

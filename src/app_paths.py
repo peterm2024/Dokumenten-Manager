@@ -40,6 +40,7 @@ PROTOKOLL_FILE_NAME = "Vollautomatik-Protokoll.txt"
 ZULETZT_BENUTZT_FILE_NAME = "zuletzt_benutzt.json"
 WISSEN_FILE_NAME = "wissen.sqlite"
 POSTEINGANG_SPERRE_FILE_NAME = "posteingang_sperre.json"
+BENCHMARK_FILE_NAME = "benchmark.json"
 TESSDATA_DIR_NAME = "tessdata"
 
 
@@ -152,6 +153,11 @@ def zuletzt_benutzt_path(master_folder):
 def wissen_path(master_folder):
     """Pfad der Wissensbasis „Wiki von Hand“ (wissen.py, KONZEPT_WIKI_VON_HAND F3) - nicht im alten Wiki-Ordner."""
     return os.path.join(data_dir(master_folder), WISSEN_FILE_NAME)
+
+
+def benchmark_path(master_folder):
+    """Ergebnisse des Werkzeugs „Benchmark“ (benchmark.py, Etappe 13) - nur Zahlen, Modell- und Kartennamen."""
+    return os.path.join(data_dir(master_folder), BENCHMARK_FILE_NAME)
 
 
 def posteingang_sperre_path(master_folder):

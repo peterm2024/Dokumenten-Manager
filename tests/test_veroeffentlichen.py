@@ -130,5 +130,36 @@ class TestPruefsumme(unittest.TestCase):
         self.assertIn("Get-FileHash Muster.exe", text)
 
 
+
+class TestPruefdokumenteZip(unittest.TestCase):
+    """Feste Download-Zips der Prüfdokumente (20.11.2026): werden nie neu erzeugt, aber vor dem Hochladen gegen die
+    Begriffsliste geprüft - Name und Text jeder Datei im Zip."""
+
+    def _zips(self, tmp, pdf_inhalt=b"Musterstadt"):
+        import zipfile
+        for name in v.PRUEFDOKUMENTE_ZIPS:
+            with zipfile.ZipFile(os.path.join(tmp, name), "w") as z:
+                z.writestr("Pruefdokumente/LIESMICH.txt", "Erfundene Briefe")
+                z.writestr("Pruefdokumente/Scan_0001.pdf", pdf_inhalt)
+
+    def test_saubere_zips_werden_angehaengt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._zips(tmp)
+            pfade = v.pruefe_pruefdokumente(tmp, REGELN, pdf_text=bytes.decode)
+        self.assertEqual([os.path.basename(p) for p in pfade], list(v.PRUEFDOKUMENTE_ZIPS))
+
+    def test_fundstelle_im_pdf_bricht_ab(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            self._zips(tmp, pdf_inhalt=b"Gruss aus Musterhausen")
+            with self.assertRaises(SystemExit) as fehler:
+                v.pruefe_pruefdokumente(tmp, REGELN, pdf_text=bytes.decode)
+        self.assertNotIn("Musterhausen", str(fehler.exception))   # nie den Begriff selbst ausgeben
+
+    def test_fehlendes_zip_bricht_ab(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(SystemExit):
+                v.pruefe_pruefdokumente(tmp, REGELN, pdf_text=bytes.decode)
+
+
 if __name__ == "__main__":
     unittest.main()

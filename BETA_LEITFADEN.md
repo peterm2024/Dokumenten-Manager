@@ -21,7 +21,7 @@ Alles außer den KI-Funktionen läuft ohne weitere Software. Für Titelvorschlag
 Einrichtung auf dem eigenen PC:
 
 1. Ollama für Windows installieren (läuft als Hintergrunddienst, hört nur auf diesem PC).
-2. In der Eingabeaufforderung das Modell laden (einmalig, rund 7 GB): `ollama pull qwen3.5:9b`. Wer schon `qwen2.5vl:7b` geladen hat: es läuft weiter; zum Umstieg `qwen3.5:9b` laden und unter Datei → Einstellungen → KI-Server als Modell eintragen (legt deutlich seltener falsch ab).
+2. In der Eingabeaufforderung das Modell laden (einmalig, rund 7 GB): `ollama pull qwen3.5:9b`, empfohlen dazu das Entscheidungsmodell für die Zweitmeinung zur Ordnerwahl (rund 10 GB): `ollama pull clef-flash:9b`. Wer schon `qwen2.5vl:7b` geladen hat: es läuft weiter; zum Umstieg `qwen3.5:9b` laden und unter Datei → Einstellungen → KI-Server als Modell wählen (legt deutlich seltener falsch ab).
 3. Im Programm unter Datei → Einstellungen → KI-Server „Verbindung testen" klicken. Der Punkt rechts in der Suchleiste wird grün.
 
 Wie schnell die KI antwortet, hängt fast nur von der Grafikkarte ab. Richtwerte je Dokument:
@@ -30,10 +30,10 @@ Wie schnell die KI antwortet, hängt fast nur von der Grafikkarte ab. Richtwerte
 |---|---|---|
 | nur Prozessor (ohne Grafikkarte) | 2 bis 10 Minuten | mind. 16 GB Arbeitsspeicher; in den Einstellungen „KI ohne Grafikkarte zulassen" ankreuzen |
 | Grafik im Prozessor (integriert) | wie nur Prozessor | Ollama nutzt integrierte Grafik unter Windows in der Regel nicht |
-| eigene Grafikkarte mit 8 GB | 20 bis 60 Sekunden | Modell passt gerade |
-| eigene Grafikkarte mit 16 GB | 5 bis 20 Sekunden | alles im Grafikspeicher - der gedachte Normalfall |
+| eigene Grafikkarte mit 8 GB | 10 bis 20 Sekunden | beide Modelle teils im Arbeitsspeicher, geht trotzdem gut |
+| eigene Grafikkarte mit 16 GB | 8 bis 15 Sekunden | alles im Grafikspeicher - der gedachte Normalfall |
 
-Ohne Grafikkarte ist die KI nichts zum Zuschauen, aber die Vollautomatik läuft unbeaufsichtigt - ein Stapel Scans ist dann über Nacht abgelegt. Ohne KI ist das Programm trotzdem vollständig nutzbar; die KI-Einträge im Menü sind dann ausgegraut.
+Ohne Grafikkarte ist die KI nichts zum Zuschauen, aber die Vollautomatik läuft unbeaufsichtigt - ein Stapel Scans ist dann über Nacht abgelegt. Wie schnell der eigene Rechner ist, misst Tools → KI-Helfer → Benchmark; das kopierte Ergebnis ist eine willkommene Rückmeldung. Ohne KI ist das Programm trotzdem vollständig nutzbar; die KI-Einträge im Menü sind dann ausgegraut.
 
 ## 3a. Rechner ohne Aufsicht: Dienstmodus
 

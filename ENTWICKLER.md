@@ -107,24 +107,24 @@ Die EXE liegt danach in `dist/` — und das Skript prüft sie anschließend: jed
 
 **Optional — OCR-Titel-Aufräumen** (Tool "Titel-Aufräumen (OCR)"): PyMuPDF bringt die OCR-Engine (Tesseract) bereits mit, es fehlen nur die deutschen Sprachdaten. Einmalig `deu.traineddata` von [tessdata_fast](https://github.com/tesseract-ocr/tessdata_fast) herunterladen und nach `tessdata/deu.traineddata` legen (Ordner neben `main.py`, nicht Teil des Repos). Ohne diese Datei bleibt das Tool inaktiv, der Rest der App ist unberührt. Die Release-EXE bringt die Sprachdaten bereits mit.
 
-**Optional — KI-Funktionen** (Titel vorschlagen, Ablage-Vorschau, Vollautomatik): benötigen einen [Ollama](https://ollama.com)-Server mit einem Bild-Modell — lokal auf demselben Rechner oder auf einem anderen Gerät im Netzwerk. Server-Adresse und Modellname stehen unter Datei → Einstellungen → KI-Server (Standard `http://localhost:11434`, Modell `qwen3.5:9b`), dort gibt es auch „Verbindung testen". Keine zusätzliche Python-Abhängigkeit (reine Standardbibliothek); ist der Server nicht erreichbar, zeigt der Punkt rechts in der Suchleiste Rot, die KI-Einträge im Menü sind ausgegraut — der Rest der App ist unberührt.
+**Optional — KI-Funktionen** (Titel vorschlagen, Ablage-Vorschau, Vollautomatik): benötigen einen [Ollama](https://ollama.com)-Server mit einem Bild-Modell — lokal auf demselben Rechner oder auf einem anderen Gerät im Netzwerk. Server-Adresse und Modellname stehen unter Datei → Einstellungen → KI-Server (Standard `http://localhost:11434`, Modell `qwen3.5:9b`, Zweitmeinung zur Ordnerwahl `clef-flash:9b`), dort gibt es auch „Verbindung testen". Keine zusätzliche Python-Abhängigkeit (reine Standardbibliothek); ist der Server nicht erreichbar, zeigt der Punkt rechts in der Suchleiste Rot, die KI-Einträge im Menü sind ausgegraut — der Rest der App ist unberührt.
 
 **KI auf dem eigenen PC (ohne eigenen Server):**
 
 1. Ollama für Windows von [ollama.com](https://ollama.com/download) installieren (läuft danach als Hintergrunddienst, hört nur auf diesem PC).
-2. In der Eingabeaufforderung das Modell laden (einmalig, rund 7 GB): `ollama pull qwen3.5:9b`
+2. In der Eingabeaufforderung das Modell laden (einmalig, rund 7 GB): `ollama pull qwen3.5:9b`, empfohlen dazu das Entscheidungsmodell für die Zweitmeinung zur Ordnerwahl (rund 10 GB): `ollama pull clef-flash:9b`
 3. Im Programm die Standardadresse `http://localhost:11434` lassen und „Verbindung testen" klicken.
 
-Richtwerte je Dokument (eine Seite, Modell `qwen3.5:9b`) — damit niemand enttäuscht ist:
+Richtwerte je Dokument (eine Seite, Modell `qwen3.5:9b` mit Zweitmeinung) — damit niemand enttäuscht ist:
 
 | Rechner | Dauer je Dokument | Bemerkung |
 |---|---|---|
 | nur Prozessor (ohne Grafikkarte) | 2 bis 10 Minuten | mind. 16 GB Arbeitsspeicher; in den Einstellungen „KI ohne Grafikkarte zulassen" ankreuzen, sonst pausiert die Vollautomatik |
 | Grafik im Prozessor (integriert) | wie nur Prozessor | Ollama nutzt integrierte Grafik unter Windows in der Regel nicht |
-| eigene Grafikkarte mit 8 GB | 20 bis 60 Sekunden | Modell passt gerade; bei viel Text teils im Arbeitsspeicher |
-| eigene Grafikkarte mit 16 GB | 5 bis 20 Sekunden | alles im Grafikspeicher — der gedachte Normalfall |
+| eigene Grafikkarte mit 8 GB | 10 bis 20 Sekunden | beide Modelle teils im Arbeitsspeicher, geht trotzdem gut |
+| eigene Grafikkarte mit 16 GB | 8 bis 15 Sekunden | alles im Grafikspeicher — der gedachte Normalfall |
 
-Ohne Grafikkarte ist die KI kein Werkzeug zum Zuschauen, aber die Vollautomatik arbeitet unbeaufsichtigt — ein Stapel Scans ist dann über Nacht abgelegt. Halb so groß und schneller: Modell `qwen3.5:4b` (wie gut es Dokumente liest, ist nicht gemessen). Ein Server im Heimnetz oder aus der Ferne: Hilfe → „KI-Server aus der Ferne (Tailscale)".
+Ohne Grafikkarte ist die KI kein Werkzeug zum Zuschauen, aber die Vollautomatik arbeitet unbeaufsichtigt — ein Stapel Scans ist dann über Nacht abgelegt. Ohne Zweitmeinung (Feld Ordnerwahl leer) fast doppelt so schnell, dafür landen etwas mehr Dokumente im falschen Ordner. Wie schnell der eigene Rechner ist, misst Tools → KI-Helfer → Benchmark. Ein Server im Heimnetz oder aus der Ferne: Hilfe → „KI-Server aus der Ferne (Tailscale)".
 
 ---
 

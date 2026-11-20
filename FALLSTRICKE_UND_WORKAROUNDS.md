@@ -1171,3 +1171,35 @@ Bei der Nachprüfung zeigte sich derselbe Effekt auch bei echter Suche: Treffer 
 Im selben Zug verworfen (Etappe 11 Schritt 2, Code in `KID-Messungen/verworfen_menueleiste`): eine eigene Menüleiste aus `tk.Menubutton`. (1) Tk postet nur ein Menü, das Kind des Knopfs ist („isn't a descendant“) - lösbar mit `menu clone`, Tk hält Klon und Original synchron. (2) Unter Windows ist ein aufgeklapptes Menü modal (TrackPopupMenu): kein automatisches Umspringen zum Nachbarmenü beim Darüberfahren, und das Aufklappen lässt sich nicht automatisch testen (der Test hängt bis zum Klick). (3) Die echte Windows-Menüleiste lässt sich unter Windows 11 nicht färben - `SetMenuInfo(MIM_BACKGROUND)` wirkt nicht. Das Aufspringen fehlte Peter („fühlt sich komplett ungewohnt an“); nachbauen ginge nur über einen Windows-Nachrichtenhaken.
 
 **Merksatz:** In Tk-Optionsmustern immer Namen (klein) statt Klassen (groß) - eine Klasse trifft mehr Optionen, als ihr Name vermuten lässt. Und die Windows-Menüleiste ist eine Grenze des Designs: weiß, aber mit dem Verhalten, das jeder kennt.
+
+## 133. Mausrad über einer ttk-Combobox stellt still eine Einstellung um
+
+**Problem:** Beim Umbau der Felder „Modell“ und „Ordnerwahl“ in den Einstellungen zu Auswahllisten (Etappe 13 Schritt 1, 19.11.2026) fiel auf: Fährt man beim Scrollen mit der Maus über ein solches Feld, blättert das Rad die Werte durch - und weil Tk dabei `<<ComboboxSelected>>` meldet, wird der neue Wert sofort gespeichert. Aus Versehen wäre so ein anderes KI-Modell eingestellt worden, ohne dass man es merkt.
+
+**Ursache:** Tk 8.6 bindet für die Klasse `TCombobox` das Mausrad an `ttk::combobox::Scroll` (`bind TCombobox <MouseWheel>`), das wie eine Auswahl wirkt - auch bei `state="readonly"`.
+
+**Lösung:** `settings_editor.auswahlfeld` legt jedes Auswahlfeld der Einstellungen an, speichert über einen Rückruf und bindet `<MouseWheel>` auf `"break"`; auch die schon vorhandenen Felder der Vollautomatik (`_auswahl`) gehen darüber. Test `test_mausrad_stellt_nichts_um` (Rotprobe: ohne die Bindung springt der Wert um). Noch offen: die Auswahlfelder in „Mails importieren“ und im Wiki haben dieselbe Eigenheit, dort stellt das Rad aber keine gespeicherte Einstellung um.
+
+**Merksatz:** Eine ttk-Combobox reagiert aufs Mausrad wie auf eine Auswahl. Wo eine Auswahl sofort gespeichert wird, das Rad abfangen.
+
+## 134. PyMuPDF-Story ignoriert Spaltenbreiten in HTML-Tabellen
+
+**Problem:** Beim Umbau der Prüfdokumente nach echter Post (Etappe 13 Schritt 2, 19.11.2026) rutschten Infoblock, Eingangsstempel und Matrixcode übereinander, die zwei Unterschriften standen gequetscht nebeneinander - obwohl die Zellen `width='58%'` bzw. `width='200pt'` hatten. In der ersten Fassung fiel es nicht auf, weil der Inhalt zufällig passte.
+
+**Ursache:** `fitz.Story` bemisst Tabellenspalten allein nach dem Inhalt; `width` als Attribut, als CSS und über `<colgroup>` bleibt wirkungslos (ausprobiert). Wirksam ist nur `padding`.
+
+**Lösung:** `pruefdokumente._mindestbreite(pt)` setzt einen unsichtbaren Absatz mit `padding-left` in die Zelle - das erzwingt die Mindestbreite. Längerer Inhalt verbreitert die Spalte trotzdem, darum bleiben die Zeilen links kürzer als der Platzhalter. Was an fester Stelle stehen muss (Logo, Kleingedrucktes, Stempel, Unterschrift), zeichnet `PDFHandler._zeichne` - Unterschrift und Stempel am Textanker („Mit freundlichen Grüßen“, „Musterstraße 1“), damit sie dem Textfluss folgen.
+
+**Merksatz:** Bei Story-HTML keine Spaltenbreite erwarten. Mindestbreite per Padding-Platzhalter, feste Positionen zeichnen statt setzen.
+
+## 135. Gewöhnliches Modell als Zweitmeinung: jeder Aufruf scheitert, die Ablage läuft still ohne
+
+**Problem:** Beim Modellvergleich mit dem Benchmark (20.11.2026) wurde dasselbe Modell auch als Zweitmeinung eingetragen (z.B. `qwen3-vl:4b-instruct` + `qwen3-vl:4b-instruct`, um auf 8-GB-Karten den Modellwechsel zu sparen). Die Läufe waren schnell und die Qualität sah ordentlich aus - tatsächlich hatten sie 30 bis 34 Fehler auf 40 Dokumente und waren Zahl für Zahl gleich den Läufen ohne Zweitmeinung. Die Auswahlliste „Ordnerwahl“ der Einstellungen bot bis dahin jedes Modell des Servers an.
+
+**Ursache:** Die Zweitmeinung (`ollama_client.waehle_ordner`) geht an `/v1/systemone`, und das können nur Entscheidungsmodelle wie `clef-flash`. Jedes andere Modell antwortet mit „is not a llama.cpp decision model“. Die Vollautomatik nimmt einen gescheiterten Aufruf hin und entscheidet ohne Zweitmeinung - richtig für einen kurzen Serverausfall, aber bei einem falsch gewählten Modell merkt es niemand.
+
+**Lösung:** `ollama_client.modelle_nach_art` fragt je Modell `/api/show` und trennt nach der Fähigkeit „decision“: Die Ordnerwahl (Einstellungen und Benchmark) zeigt nur Entscheidungsmodelle, das Feld „Modell“ alle übrigen. Nennt ein Server keine Fähigkeiten, landet das Modell bei den Lese-Modellen.
+
+**Nebenbefund:** Ollama 0.40.16 meldet gemma4 in `/api/ps` viel zu klein (`gemma4:12b` 1,0 GB, laut nvidia-smi 6,8 GB belegt; qwen-Modelle stimmen). Speicheranzeige im Benchmark und `gpu_status` („teilweise auf der Karte?“) taugen bei gemma4 darum nicht.
+
+**Merksatz:** Ein Messlauf mit vielen Fehlern ist kein Messwert. Was nur bestimmte Modelle können, zeigt die Auswahl auch nur für diese an.

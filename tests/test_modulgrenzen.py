@@ -18,7 +18,8 @@ GUI_FREI = {
     "config", "dateinamen", "dubletten", "dubletten_geprueft", "folder_monitor",
     "index_manager", "mail_import", "mail_lesen", "mail_pst", "mail_quellen", "menue_hilfe", "ollama_client", "ordner_aliase", "papierkorb_herkunft", "scan_date", "server_wecken",
     "spell_correct", "suchsyntax", "tag_ignorierliste", "text_quality",
-    "wissen", "wissen_ki", "zuletzt_benutzt", "ordner_steckbrief", "tag_katalog", "posteingang_sperre",
+    "wissen", "wissen_ki", "zuletzt_benutzt", "ordner_steckbrief", "tag_katalog", "posteingang_sperre", "pruefdokumente",
+    "benchmark",
 }
 
 # PyMuPDF nur über pdf_handler; file_operations prüft nur, ob es installiert ist (CLAUDE.md, ruff-Abschnitt).

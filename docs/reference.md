@@ -62,6 +62,8 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 ::: ollama_client
 ::: ki_status
 ::: server_wecken
+::: pruefdokumente
+::: benchmark
 
 ## Vollautomatik
 
@@ -119,3 +121,4 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 ::: tools.wiki_dinge
 ::: tools.wiki_schubladen
 ::: tools.wiki_ablageordner
+::: tools.modell_benchmark
