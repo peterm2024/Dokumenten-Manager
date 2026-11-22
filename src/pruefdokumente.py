@@ -248,12 +248,14 @@ ABSENDER = {
 
 
 def _brief(nr, wer, datum, betreff, absaetze, art="eindeutig", info=(), gruss="Ihr Kundenservice",
-           tabelle=None, anlage=None, grund="", stempel=None, seite2=None, fussnoten=(), anders=None):
+           tabelle=None, anlage=None, grund="", stempel=None, seite2=None, fussnoten=(), anders=None,
+           auch_neu=()):
     """stempel: Datum des Eingangsstempels; seite2: {titel, absaetze, tabelle?}; anders: Abweichungen vom Absender
-    (z. B. Marke statt Firmenname, Brief über einen Makler)."""
+    (z. B. Marke statt Firmenname, Brief über einen Makler); auch_neu: ebenfalls richtig ist ein NEUER Ordner mit
+    einem dieser Namen (nur Wahrheit, nicht im Brief - der Fingerabdruck bleibt)."""
     return dict(nr=nr, wer=wer, datum=datum, betreff=betreff, absaetze=absaetze, art=art, info=info, gruss=gruss,
                 tabelle=tabelle, anlage=anlage, grund=grund, stempel=stempel, seite2=seite2, fussnoten=fussnoten,
-                anders=anders or {})
+                anders=anders or {}, auch_neu=tuple(auch_neu))
 
 
 # Anlage zu Brief 12: eine Rechnung eines ANDEREN vorhandenen Absenders - abgelegt wird beim Versicherer
@@ -432,7 +434,10 @@ BRIEFE = (
            anders=dict(name="MUSTERFUNK", logo=dict(art="schrift", farbe=(0.85, 0.35, 0.0), slogan="Mobil telefonieren"),
                        zeile="Musterfunk · Postfach 5 00 · 23456 Beispielhausen",
                        kontakt=("Musterfunk Kundenservice", "Hotline 0800 123 457", "www.musterfunk.example")),
-           info=(("Kundennummer", "TM-778899"),), gruss="Ihr Musterfunk-Team"),
+           info=(("Kundennummer", "TM-778899"),), gruss="Ihr Musterfunk-Team",
+           # Peter 21.11.2026: „Ich bin bei Congstar, Congstar ist eine Tochter der Telekom, aber mir würde es nie
+           # einfallen, Congstar unter Telekom einzuordnen“ - die Marke als eigener Ordner ist genauso richtig
+           auch_neu=("Musterfunk",)),
     _brief(19, "auto", "01.04.2026", "Erinnerung: Hauptuntersuchung fällig",
            ("die Hauptuntersuchung Ihres Fahrzeugs mit dem Kennzeichen MU-ST 123 ist im Mai 2026 fällig. Gern "
             "übernehmen wir den Termin für Sie. Rufen Sie uns einfach an.",),
@@ -588,10 +593,19 @@ def ordner_der_sammlung():
 
 
 def wahrheit(nr):
-    """{ordner (None = neuer Ordner oder Rückfrage richtig), datum (TT.MM.JJJJ), kennwort, art}."""
+    """{ordner (None = neuer Ordner oder Rückfrage richtig), auch_neu (Namen, unter denen ein NEUER Ordner ebenso
+    richtig ist - Marke statt Konzern, Brief 18), datum (TT.MM.JJJJ), kennwort, art}."""
     b = BRIEFE[nr - 1]
     a = ABSENDER[b["wer"]]
-    return {"ordner": a["ordner"], "datum": b["datum"], "kennwort": a["kennwort"], "art": b["art"]}
+    return {"ordner": a["ordner"], "auch_neu": b["auch_neu"], "datum": b["datum"], "kennwort": a["kennwort"],
+            "art": b["art"]}
+
+
+def ordner_richtig(nr, ordner_rel):
+    """Liegt Brief `nr` im richtigen Ordner? `ordner_rel` relativ zur Sammlung mit „/“ (z. B. „P - Q - R - S - T/Telemuster“).
+    Richtig ist der Ordner der Wahrheit oder - bei `auch_neu` - ein Ordner mit einem dieser Namen."""
+    w = wahrheit(nr)
+    return ordner_rel == w["ordner"] or ordner_rel.rsplit("/", 1)[-1] in w["auch_neu"]
 
 
 def _absender_des_briefs(b):

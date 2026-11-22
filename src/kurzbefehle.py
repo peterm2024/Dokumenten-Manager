@@ -99,6 +99,8 @@ BEREICHE = {
     "datum": ("Datumsfeld", [
         _e("Return", "Datum speichern, zurück in die Liste", ("date_entry", "<Return>")),
         _e("Esc", "vermutetes Datum zurückholen", ("date_entry", "<Escape>")),
+        _e("Alt + ↓ / Klick auf „Datum ▼“", "Kalender aufklappen, Klick auf einen Tag speichert",
+           ("date_entry", "<Alt-Down>")),
         _e("31.1.25 / 2025-01-31", "beide Schreibweisen gehen"),
         _e("orange hinterlegt", "nur vermutet, noch nicht gespeichert"),
     ]),

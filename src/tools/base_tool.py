@@ -42,8 +42,22 @@ class BaseTool(ABC):
 
     @abstractmethod
     def execute(self, context: ToolContext) -> bool:
-        """Startet das Tool (z.B. öffnet ein Toplevel-Fenster); der ToolManager stellt vorher required_input sicher."""
+        """Startet das Tool (z.B. öffnet ein Toplevel-Fenster über `oeffne_fenster`); der ToolManager stellt vorher
+        required_input sicher."""
         pass
+
+    # Schlüssel für „höchstens ein Fenster“; None = Klassenname. Zwei Tools mit demselben Schlüssel teilen sich ein
+    # Fenster (Ablage-Vorschau und Posteingang verarbeiten).
+    fenster_schluessel = None
+
+    def oeffne_fenster(self, erzeugen, eingabe=None):
+        """Der EINE Weg, auf dem ein Werkzeug sein Fenster öffnet (Fenster-Durchsicht B3, Peter 21.11.2026): höchstens
+        eins je Werkzeug, ein zweiter Aufruf holt das offene samt Änderungen nach vorn, statt es zu verwerfen oder ein
+        zweites zu öffnen. `erzeugen()` baut das Fenster, `eingabe` = Pfad(e), die es zeigt - Einzelheiten in
+        UIUtils.einzelfenster. `tests/test_fenster_ueber_kid.py` prüft, dass jedes Werkzeug diesen Weg nimmt.
+        :return: das (offene oder neue) Fenster"""
+        from ui_utils import UIUtils
+        return UIUtils.einzelfenster(self.fenster_schluessel or type(self).__name__, erzeugen, eingabe)
 
     @property
     def menu_group(self) -> str:

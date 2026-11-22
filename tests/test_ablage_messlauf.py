@@ -43,7 +43,8 @@ class TestLauf(unittest.TestCase):
     def test_neuer_ordner_zaehlt_erst_nach_sicherer_ablage(self):
         # Wie im Dienst (FALLSTRICKE #83): ein sicher angelegter Ordner steht danach in der Liste, das zweite
         # Dokument desselben Absenders landet im selben Ordner
-        neu = "K - L - M - N - O\\Musterwerke Beispiel GmbH"   # die Rechtsform bleibt im Ordnernamen
+        # Der neue Ordner heißt ohne Rechtsform (ordnernamen.ohne_rechtsform, Peter 21.11.2026 zum Frisch-Versuch)
+        neu = "K - L - M - N - O\\Musterwerke Beispiel"
         dokumente = [dok(1, "Musterwerke Beispiel GmbH", neu), dok(2, "Musterwerke Beispiel GmbH", neu)]
         ergebnis = m.lauf(dokumente, ORDNER, self.tags, self.kategorien)
         (_, e1), (_, e2) = ergebnis

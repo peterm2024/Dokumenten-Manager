@@ -19,6 +19,16 @@ class TestSatz(unittest.TestCase):
         # passen Benchmark, Download und Scans nicht mehr zusammen. Gewollte Änderung = neuer Satz mit neuem Namen.
         self.assertEqual(p.fingerabdruck(), p.FINGERABDRUCK)
 
+    def test_marke_als_eigener_ordner_ist_richtig(self):
+        # Peter 21.11.2026: Congstar gehört nicht unter Telekom - Brief 18 (Marke „Musterfunk“ der Telemuster GmbH)
+        # ist im Telemuster-Ordner UND in einem neuen Ordner „Musterfunk“ richtig, sonst nirgends
+        telemuster = p.wahrheit(18)["ordner"]
+        self.assertTrue(p.ordner_richtig(18, telemuster))
+        self.assertTrue(p.ordner_richtig(18, "K - L - M - N - O/Musterfunk"))
+        self.assertFalse(p.ordner_richtig(18, "0_Unsicher"))
+        self.assertFalse(p.ordner_richtig(7, "K - L - M - N - O/Musterfunk"))   # nur der Markenbrief
+        self.assertEqual([n for n in range(1, 41) if p.wahrheit(n)["auch_neu"]], [18])
+
     def test_aufteilung_wie_vereinbart(self):
         # Peter 19.11.2026 (F2): 40 Briefe, 35 für vorhandene Ordner (davon 10 schwer), 5 ohne passenden Ordner
         self.assertEqual([b["nr"] for b in p.BRIEFE], list(range(1, 41)))

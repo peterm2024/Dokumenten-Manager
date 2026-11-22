@@ -1,3 +1,4 @@
+import calendar
 import datetime
 import re
 import sys
@@ -7,6 +8,88 @@ import aktivitaet
 import tkinter.font as tkfont
 from tkinter import ttk
 
+_GWL_STYLE = -16
+_WS_MAXIMIZEBOX = 0x00010000
+_SWP_RAHMEN_NEU = 0x0001 | 0x0002 | 0x0004 | 0x0010 | 0x0020   # NOSIZE|NOMOVE|NOZORDER|NOACTIVATE|FRAMECHANGED
+_GWL_EXSTYLE = -20
+_GWLP_HWNDPARENT = -8
+_WS_EX_NOACTIVATE = 0x08000000
+_WS_EX_TOOLWINDOW = 0x00000080
+_SW_SHOWNOACTIVATE = 4
+_SWP_NUR_ORT = 0x0001 | 0x0004 | 0x0010                         # NOSIZE|NOZORDER|NOACTIVATE
+
+# Erfolgsfeld (aktivitaet.erledigt): Bedeutungsfarben, darum hier und nicht in ui_theme. Peter 21.11.2026 im
+# Probefenster: Lime, blinkend, 2,5 s - der Text in der Menüleiste allein „fällt nicht auf“, und die Windows-
+# Menüleiste lässt sich nicht färben (auch Emoji bleiben dort schwarz-weiß).
+ERFOLG_FARBE = "#00FF00"
+ERFOLG_BLASS = "#CCFFCC"
+ERFOLG_RAND = "#1E7B1E"
+ERFOLG_BLINK_MS = 500
+# B5 (Peter 21.11.2026): Fenster und Dialoge lassen sich nicht kleiner ziehen als ihr Inhalt verlangt - höchstens
+# auf diesen Anteil des Bildschirms gedeckelt, damit große Tabellen-Fenster trotzdem nebeneinander passen
+MINDEST_DECKEL = 0.6
+
+
+def _win_rahmen(fenster):
+    """Fenster-Handle des äußeren Rahmens (den zeichnet Windows, nicht Tk); 0, wenn es noch keinen gibt."""
+    try:
+        return int(fenster.wm_frame(), 16)
+    except (tk.TclError, ValueError):
+        return 0
+
+
+def _win_ist_maximiert(fenster):
+    """Ist das Fenster maximiert? Über Windows gefragt: im Moment des Verbergens meldet Tk nur noch 'withdrawn'."""
+    import ctypes
+    rahmen = _win_rahmen(fenster)
+    return bool(rahmen and ctypes.windll.user32.IsZoomed(rahmen))
+
+
+def _win_maximieren_knopf(fenster):
+    """Setzt die Maximieren-Schaltfläche in den Fensterrahmen, falls sie fehlt (transient entfernt sie)."""
+    import ctypes
+    from ctypes import wintypes
+    rahmen = _win_rahmen(fenster)
+    if not rahmen:
+        return
+    user32 = ctypes.WinDLL("user32")   # eigene Instanz: argtypes gelten nur hier, nicht für ctypes.windll
+    user32.GetWindowLongW.restype = ctypes.c_long
+    user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND] + [ctypes.c_int] * 4 + [ctypes.c_uint]
+    stil = user32.GetWindowLongW(rahmen, _GWL_STYLE)
+    if not stil & _WS_MAXIMIZEBOX:
+        user32.SetWindowLongW(rahmen, _GWL_STYLE, stil | _WS_MAXIMIZEBOX)
+        user32.SetWindowPos(rahmen, None, 0, 0, 0, 0, _SWP_RAHMEN_NEU)   # Titelleiste neu zeichnen lassen
+
+
+def _win_ohne_fokus_zeigen(fenster, besitzer, x, y):
+    """Zeigt ein verborgenes overrideredirect-Fenster bei (x, y), ohne den Fokus zu nehmen: Wer gerade tippt,
+    tippt weiter. Bewusst an Tk vorbei (deiconify würde aktivieren) - darum Besitzer und Ort selbst setzen, Tk
+    wendet geometry() dann nicht an (im Probefenster stand das Feld sonst bei 0,0 hinter allem). Kein
+    transient(): das baut den Rahmen neu und verwirft den Stil (FALLSTRICKE #137). Der Besitzer hält das Feld
+    über dem Hauptfenster und nimmt es mit hinter andere Programme."""
+    import ctypes
+    from ctypes import wintypes
+    rahmen, haupt = _win_rahmen(fenster), _win_rahmen(besitzer)
+    if not rahmen:
+        return False
+    user32 = ctypes.WinDLL("user32")   # eigene Instanz: argtypes gelten nur hier, nicht für ctypes.windll
+    user32.GetWindowLongW.restype = ctypes.c_long
+    user32.GetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.SetWindowLongW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_long]
+    user32.SetWindowLongPtrW.argtypes = [wintypes.HWND, ctypes.c_int, ctypes.c_void_p]
+    user32.SetWindowPos.argtypes = [wintypes.HWND, wintypes.HWND] + [ctypes.c_int] * 4 + [ctypes.c_uint]
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    stil = user32.GetWindowLongW(rahmen, _GWL_EXSTYLE)
+    user32.SetWindowLongW(rahmen, _GWL_EXSTYLE, stil | _WS_EX_NOACTIVATE | _WS_EX_TOOLWINDOW)
+    if haupt:
+        user32.SetWindowLongPtrW(rahmen, _GWLP_HWNDPARENT, haupt)
+    user32.SetWindowPos(rahmen, None, x, y, 0, 0, _SWP_NUR_ORT)
+    user32.ShowWindow(rahmen, _SW_SHOWNOACTIVATE)
+    return True
+
+
 class UIUtils:
     # Suffixe für die Sortier-Anzeige in den Spaltenköpfen
     SORT_ASC_SUFFIX = " ▲"
@@ -14,32 +97,248 @@ class UIUtils:
     _einzelfenster = {}     # Schlüssel -> offenes Werkzeugfenster (einzelfenster)
 
     @staticmethod
-    def werkzeugfenster(fenster, hauptfenster):
+    def tabelle_bearbeitbar(tree, bearbeite, menue=None, f2_spalte=None):
+        """
+        Einheitliche Auslöser für Tabellen mit bearbeitbaren Zellen (Fenster-Durchsicht B4c, 21.11.2026):
+        Einzelklick wählt nur aus, Doppelklick auf eine Zelle ruft `bearbeite(iid, spalte)`, Rechtsklick zeigt
+        `menue(iid)` -> [(spalte, Beschriftung)] als Menü (wählt die Zeile vorher aus; None/leer = kein Menü),
+        F2 bearbeitet `f2_spalte` der ersten markierten Zeile. Spalten immer über ihre ID, nie über „#3“: eine
+        neue Spalte verschob in „Dateinamen aufräumen“ unbemerkt das Ziel des Doppelklicks (FALLSTRICKE #140).
+        """
+        def doppelklick(event):
+            if tree.identify_region(event.x, event.y) != "cell":
+                return None
+            iid = tree.identify_row(event.y)
+            if iid:
+                bearbeite(iid, tree.column(tree.identify_column(event.x), "id"))
+            return "break"
+
+        def rechtsklick(event):
+            iid = tree.identify_row(event.y)
+            eintraege = menue(iid) if (iid and menue is not None) else None
+            if not eintraege:
+                return None
+            if iid not in tree.selection():
+                tree.selection_set(iid)   # <<TreeviewSelect>> folgt von selbst (FALLSTRICKE #8)
+            m = tk.Menu(tree, tearoff=0)
+            for spalte, text in eintraege:
+                m.add_command(label=text, command=lambda s=spalte: bearbeite(iid, s))
+            try:
+                m.tk_popup(event.x_root, event.y_root)
+            finally:
+                m.grab_release()
+            return "break"
+
+        def f2(event):
+            auswahl = tree.selection()
+            if auswahl:
+                bearbeite(auswahl[0], f2_spalte)
+            return "break"
+
+        tree.bind("<Double-1>", doppelklick)
+        if menue is not None:
+            tree.bind("<Button-3>", rechtsklick)
+        if f2_spalte:
+            tree.bind("<F2>", f2)
+
+    @staticmethod
+    def erfolgsfeld(hauptfenster, text, dauer_ms):
+        """Lime-grünes Feld „✓ text“ oben rechts im Hauptfenster, blinkt und verschwindet nach dauer_ms von selbst
+        (aktivitaet.erledigt). Nimmt nie den Fokus. Ein neues ersetzt ein noch stehendes. Ist das Hauptfenster
+        nicht zu sehen (minimiert, Dienstmodus), kein Feld - die Meldung steht dann nur in Leiste und Log.
+        :return: das Feld oder None"""
+        alt = getattr(hauptfenster, "_kid_erfolgsfeld", None)
+        if alt is not None:
+            try:
+                alt.destroy()
+            except tk.TclError:
+                pass
+            hauptfenster._kid_erfolgsfeld = None
+        try:
+            if not hauptfenster.winfo_viewable():
+                return None
+        except tk.TclError:
+            return None
+        feld = tk.Toplevel(hauptfenster)
+        feld.withdraw()
+        feld.overrideredirect(True)
+        rand = tk.Frame(feld, bg=ERFOLG_RAND, padx=2, pady=2)
+        rand.pack()
+        schrift = tkfont.nametofont("TkDefaultFont", root=hauptfenster).actual("family")
+        etikett = tk.Label(rand, text="✓ " + text, bg=ERFOLG_FARBE, fg="black",
+                           font=(schrift, UIUtils.schriftgroesse(hauptfenster, 2), "bold"),
+                           padx=UIUtils.px(hauptfenster, 14), pady=UIUtils.px(hauptfenster, 6))
+        etikett.pack()
+        feld.update_idletasks()
+        x = hauptfenster.winfo_rootx() + hauptfenster.winfo_width() - feld.winfo_reqwidth() - UIUtils.px(hauptfenster, 12)
+        y = hauptfenster.winfo_rooty() + UIUtils.px(hauptfenster, 8)
+        if sys.platform == "win32":
+            if not _win_ohne_fokus_zeigen(feld, hauptfenster, x, y):
+                feld.destroy()
+                return None
+        else:
+            feld.geometry(f"+{x}+{y}")
+            feld.deiconify()
+        hauptfenster._kid_erfolgsfeld = feld
+
+        def blinke(schritt):
+            if etikett.winfo_exists():
+                etikett.config(bg=ERFOLG_FARBE if schritt % 2 == 0 else ERFOLG_BLASS)
+
+        def weg():
+            if feld.winfo_exists():
+                feld.destroy()
+            if getattr(hauptfenster, "_kid_erfolgsfeld", None) is feld:
+                hauptfenster._kid_erfolgsfeld = None
+
+        for schritt in range(1, max(1, dauer_ms // ERFOLG_BLINK_MS)):
+            hauptfenster.after(schritt * ERFOLG_BLINK_MS, blinke, schritt)
+        hauptfenster.after(dauer_ms, weg)
+        return feld
+
+    @staticmethod
+    def werkzeugfenster(fenster, hauptfenster, maximierbar=False):
         """Werkzeugfenster über KID halten, ohne modal zu sein (Peter 04.11.2026: „wieder TopMost, aber nicht modal -
         sonst verschwindet ein Fenster aus Versehen im Hintergrund und wird doppelt geöffnet“): transient zum
         Hauptfenster - bleibt darüber, verschwindet mit ihm, blockiert nichts. Kein -topmost: das läge auch über
-        allen anderen Programmen."""
+        allen anderen Programmen.
+
+        `maximierbar`: transient nimmt dem Fenster unter Windows die Maximieren-Schaltfläche. Für große Tabellen
+        (Ablage-Vorschau, Dubletten-Finder; Peter 01.09. und 21.11.2026) wird sie bei jedem Zeigen neu gesetzt -
+        Tk baut den Fensterrahmen bei manchen Vorgängen neu auf (Hauptfenster minimiert/zurück, resizable, erneutes
+        transient) und verliert dabei Schaltfläche UND Maximierung; beides stellt <Map> wieder her (FALLSTRICKE #137)."""
         try:
             fenster.transient(hauptfenster)
         except tk.TclError:
             pass
+        if maximierbar and sys.platform == "win32":
+            UIUtils._maximierbar_halten(fenster)
 
     @staticmethod
-    def einzelfenster(schluessel, erzeugen):
+    def mindestgroesse(fenster, deckel=None):
+        """Mindestgröße eines Fensters aus seinem Inhalt (B5, Peter 21.11.2026: „sinnvolle (default) Mindestgröße,
+        so dass man das Fenster nicht winzig ziehen kann“). Mindestens so groß, wie der Inhalt verlangt
+        (`winfo_req*`), aber nie größer als das Fenster gerade ist (es soll dabei nicht wachsen) und nie größer als
+        `deckel` (Anteil des Bildschirms, Vorgabe MINDEST_DECKEL). Läuft einmal je Fenster; ein Fenster mit eigener
+        Mindestgröße (Dateinamen, Dubletten, Einstellungen) und randlose Fenster (Tooltip, Vervollständigung,
+        Erfolgsfeld) bleiben, wie sie sind. :return: (Breite, Höhe) oder None, wenn nichts gesetzt wurde"""
+        try:
+            if not fenster.winfo_exists() or getattr(fenster, "_mindestgroesse_gesetzt", False):
+                return None
+            fenster._mindestgroesse_gesetzt = True
+            if fenster.wm_overrideredirect():
+                return None
+            eigene_b, eigene_h = fenster.wm_minsize()
+            # Windows meldet nach dem Zeigen eine Vorgabe wie (120, 1) - eigene Mindestgrößen haben BEIDE Werte > 1
+            if eigene_b > 1 and eigene_h > 1:
+                return None
+            fenster.update_idletasks()
+            anteil = MINDEST_DECKEL if deckel is None else deckel
+            breite = min(fenster.winfo_reqwidth(), fenster.winfo_width(), int(fenster.winfo_screenwidth() * anteil))
+            hoehe = min(fenster.winfo_reqheight(), fenster.winfo_height(),
+                        int(fenster.winfo_screenheight() * anteil))
+            if breite <= 1 or hoehe <= 1:
+                return None
+            fenster.wm_minsize(breite, hoehe)
+            return breite, hoehe
+        except tk.TclError:
+            return None
+
+    @staticmethod
+    def mindestgroesse_ueberall(root):
+        """Jedes Toplevel bekommt beim ersten Erscheinen seine Mindestgröße (`mindestgroesse`) - an EINER Stelle statt
+        in 30 Fensterklassen, und neue Fenster haben sie von selbst. Die Klassenbindung „Toplevel“ trifft nur die
+        Fenster selbst, nicht ihre Kinder und nicht das Hauptfenster (Klasse „Tk“). after_idle: beim ersten <Map>
+        steht die Geometrie mancher Fenster noch aus."""
+        def erschienen(event):
+            fenster = event.widget
+            if isinstance(fenster, tk.Toplevel) and not getattr(fenster, "_mindestgroesse_gesetzt", False):
+                fenster.after_idle(UIUtils.mindestgroesse, fenster)
+
+        root.bind_class("Toplevel", "<Map>", erschienen, add="+")
+
+    @staticmethod
+    def _maximierbar_halten(fenster):
+        """Maximieren-Schaltfläche und Maximierung über jeden Neuaufbau des Fensterrahmens retten (siehe oben)."""
+        zustand = {"maximiert": False}
+
+        def verborgen(event):
+            if event.widget is fenster:   # <Unmap>/<Map> feuern auch für jedes Kind-Widget
+                zustand["maximiert"] = _win_ist_maximiert(fenster)
+
+        def gezeigt(event):
+            if event.widget is not fenster:
+                return
+            _win_maximieren_knopf(fenster)
+            if zustand["maximiert"] and fenster.state() != "zoomed":
+                fenster.state("zoomed")
+            # Nur für EIN Verbergen/Zeigen merken: baut Tk den Rahmen ohne <Unmap> neu (z.B. resizable), nachdem
+            # der Nutzer wiederhergestellt hat, maximierte ein alter Merker das Fenster sonst ungefragt
+            zustand["maximiert"] = False
+
+        fenster.bind("<Unmap>", verborgen, add="+")
+        fenster.bind("<Map>", gezeigt, add="+")
+
+    @staticmethod
+    def einzelfenster(schluessel, erzeugen, eingabe=None):
         """Höchstens EIN offenes Fenster je Schlüssel: ist es schon offen, kommt es nach vorn statt eines zweiten
-        (zwei Fenster auf denselben Daten schreiben sich sonst gegenseitig alte Stände zurück). :return: das Fenster"""
+        (zwei Fenster auf denselben Daten schreiben sich sonst gegenseitig alte Stände zurück). Werkzeuge rufen das
+        über `BaseTool.oeffne_fenster` auf (Fenster-Durchsicht B3, Peter 21.11.2026).
+
+        `eingabe` (Pfad oder Liste von Pfaden, z.B. die markierten Dokumente): Zeigt das offene Fenster andere
+        Dokumente, entscheidet das Fenster selbst - `uebernimm_eingabe(pfade)` wechselt es dorthin (PDF-Inspektor,
+        Erfassungs-Analyse), `ist_verwerfbar()` = True lässt es einem neuen weichen (Ablage-Vorschau nach dem
+        Einsortieren); sonst bleibt es mit seinen Änderungen stehen und ein Hinweis sagt, warum die neue Auswahl nicht
+        erscheint. Früher verwarfen manche Werkzeuge das offene Fenster samt Korrekturen (A3). :return: das Fenster"""
+        pfade = UIUtils._pfadliste(eingabe)
         offen = UIUtils._einzelfenster.get(schluessel)
         try:
             if offen is not None and offen.winfo_exists():
-                offen.deiconify()
-                offen.lift()
-                offen.focus_set()
-                return offen
+                alt = getattr(offen, "_werkzeug_eingabe", [])
+                if not pfade or UIUtils._pfadmenge(alt) == UIUtils._pfadmenge(pfade):
+                    UIUtils._nach_vorn(offen)
+                    return offen
+                if callable(getattr(offen, "uebernimm_eingabe", None)):
+                    offen.uebernimm_eingabe(pfade)
+                    offen._werkzeug_eingabe = pfade
+                    UIUtils._nach_vorn(offen)
+                    return offen
+                if not (callable(getattr(offen, "ist_verwerfbar", None)) and offen.ist_verwerfbar()):
+                    UIUtils._nach_vorn(offen)
+                    from tkinter import messagebox
+                    messagebox.showinfo(
+                        "Fenster ist schon offen",
+                        f"„{offen.title()}“ ist schon offen und zeigt andere Dokumente.\n\n"
+                        "Bitte dort erst fertig werden oder das Fenster schließen, dann die neue Auswahl öffnen - "
+                        "sonst gingen die Änderungen im offenen Fenster verloren.", parent=offen)
+                    return offen
+                offen.destroy()
         except tk.TclError:
             pass
         fenster = erzeugen()
+        try:
+            fenster._werkzeug_eingabe = pfade
+        except AttributeError:
+            pass
         UIUtils._einzelfenster[schluessel] = fenster
         return fenster
+
+    @staticmethod
+    def _nach_vorn(fenster):
+        fenster.deiconify()
+        fenster.lift()
+        fenster.focus_set()
+
+    @staticmethod
+    def _pfadliste(eingabe):
+        if not eingabe:
+            return []
+        return [eingabe] if isinstance(eingabe, str) else list(eingabe)
+
+    @staticmethod
+    def _pfadmenge(pfade):
+        import os
+        return {os.path.normcase(os.path.abspath(p)) for p in pfade}
 
     @staticmethod
     def clear_placeholder(entry, placeholder):
@@ -304,6 +603,84 @@ class UIUtils:
         return width, height
 
     @staticmethod
+    def ausserhalb(fenster, x_root, y_root):
+        """Liegt der Bildschirmpunkt außerhalb des Fensters? (Klick neben eine Aufklapp-Liste klappt sie zu.)"""
+        x, y = fenster.winfo_rootx(), fenster.winfo_rooty()
+        return not (x <= x_root < x + fenster.winfo_width() and y <= y_root < y + fenster.winfo_height())
+
+    @staticmethod
+    def kalender_aufklappen(unter, waehle, iso=None, bis=None):
+        """Monatskalender als Aufklapp-Liste direkt unter einem Datumsfeld (B4e, Peter 21.11.2026: „bau den Kalender
+        auch ins Hauptfenster“). Klick auf einen Tag klappt zu und ruft `waehle(date)`; Esc, ein Klick daneben oder
+        ein Wechsel in ein anderes Programm klappen ohne Wahl zu. Randlos wie die Tag-Vervollständigung; der
+        lokale Grab leitet Klicks neben die Liste an sie weiter (wie bei ttk::combobox).
+        :param iso: Datum im Feld ('JJJJ-MM-TT') - der Kalender zeigt dessen Monat, sonst den aktuellen
+        :return: das Aufklappfenster"""
+        klappe = tk.Toplevel(unter)
+        klappe.withdraw()
+        klappe.overrideredirect(True)
+        rahmen = ttk.Frame(klappe, style="Klappe.TFrame", padding=UIUtils.px(klappe, 4))
+        rahmen.pack(fill=tk.BOTH, expand=True)
+
+        def zu(_event=None):
+            try:
+                klappe.grab_release()
+                klappe.destroy()
+            except tk.TclError:
+                pass
+
+        def gewaehlt(datum):
+            zu()
+            waehle(datum)
+
+        def fokus_weg(_event):
+            # FocusOut kommt auch, wenn der Fokus nur auf einen Tagesknopf wandert - erst danach nachsehen
+            def pruefen():
+                try:
+                    fokus = klappe.focus_get()
+                except (tk.TclError, KeyError):
+                    fokus = None
+                if fokus is None or not str(fokus).startswith(str(klappe)):
+                    zu()
+            klappe.after_idle(pruefen)
+
+        kalender = Monatskalender(rahmen, waehle=gewaehlt, bestaetige=None, bis=bis)
+        kalender.pack()
+        if iso:
+            kalender.markiere(iso)
+        klappe.update_idletasks()
+        breite, hoehe = klappe.winfo_reqwidth(), klappe.winfo_reqheight()
+        x, y = unter.winfo_rootx(), unter.winfo_rooty() + unter.winfo_height()
+        x, y = UIUtils._begrenzt_auf_monitor(klappe, x, y, breite, hoehe, bezug=(x, y))
+        klappe.geometry(f"+{x}+{y}")
+        klappe.deiconify()
+        klappe.lift()
+        klappe.bind("<Escape>", zu)
+        klappe.bind("<Button-1>", lambda e: zu() if UIUtils.ausserhalb(klappe, e.x_root, e.y_root) else None,
+                    add="+")
+        klappe.bind("<FocusOut>", fokus_weg, add="+")
+        try:
+            klappe.focus_force()     # der Nutzer hat geklickt/Alt+↓ gedrückt - Esc soll sofort gehen
+            klappe.grab_set()
+        except tk.TclError:
+            pass
+        klappe.kalender = kalender
+        return klappe
+
+    @staticmethod
+    def ask_datum(title, prompt, initialvalue=None, pruefe=None, parent=None):
+        """
+        Datumsdialog mit eingebauter Prüfung (B4b, 21.11.2026): `pruefe(text)` -> ('JJJJ-MM-TT' oder None,
+        Hinweis) läuft bei jedem Tastendruck, der Hinweis steht unter dem Feld („✓ Montag, 20.07.2026“ oder der
+        Grund), OK/Enter gehen erst mit gültigem Datum. Vorher: Eingabe, Fehlermeldung, nochmal von vorn.
+        :return: das geprüfte Datum ('JJJJ-MM-TT') oder None bei Abbrechen
+        """
+        if parent is None:
+            parent = tk._get_default_root("Dialog anzeigen")
+        with aktivitaet.warte_auf_antwort(title):
+            return DatumEingabeDialog.ask(parent, title, prompt, initialvalue or "", pruefe=pruefe)
+
+    @staticmethod
     def ask_string(title, prompt, initialvalue=None, parent=None):
         """
         Drop-in-Ersatz für tkinter.simpledialog.askstring, aber am Mauszeiger auf dem
@@ -560,16 +937,18 @@ class TextEingabeDialog(tk.Toplevel):
     def __init__(self, parent, title, prompt, initialvalue=""):
         super().__init__(parent)
         self.title(title)
-        self.resizable(False, False)
+        self.resizable(True, False)   # B5: waagrecht ziehbar, das Eingabefeld wächst mit (fill=X)
         self.transient(parent)
         self.ergebnis = None
         ttk.Label(self, text=prompt, anchor="w", justify=tk.LEFT, wraplength=UIUtils.px(self, 420)).pack(padx=15, pady=(12, 4), fill=tk.X)
         self.var = tk.StringVar(value=initialvalue)
         self.entry = ttk.Entry(self, textvariable=self.var, width=48)
         self.entry.pack(padx=15, pady=4, fill=tk.X)
+        self._unter_der_eingabe()
         knoepfe = ttk.Frame(self)
         knoepfe.pack(pady=(6, 12))
-        ttk.Button(knoepfe, text="OK", command=self._ok, width=10).pack(side=tk.LEFT, padx=5)
+        self.btn_ok = ttk.Button(knoepfe, text="OK", command=self._ok, width=10)
+        self.btn_ok.pack(side=tk.LEFT, padx=5)
         ttk.Button(knoepfe, text="Abbrechen", command=self._abbrechen, width=10).pack(side=tk.LEFT, padx=5)
         self.bind("<Return>", lambda e: self._ok())
         self.bind("<Escape>", lambda e: self._abbrechen())
@@ -578,6 +957,13 @@ class TextEingabeDialog(tk.Toplevel):
         self.entry.focus_set()
         self.entry.select_range(0, tk.END)
         self.entry.icursor(tk.END)
+        self._nach_aufbau()
+
+    def _unter_der_eingabe(self):
+        """Platz für Zusatzzeilen zwischen Eingabe und Knöpfen (DatumEingabeDialog)."""
+
+    def _nach_aufbau(self):
+        """Wird am Ende des Aufbaus aufgerufen (DatumEingabeDialog: erste Prüfung)."""
 
     def _ok(self):
         self.ergebnis = self.var.get()
@@ -587,10 +973,10 @@ class TextEingabeDialog(tk.Toplevel):
         self.ergebnis = None
         self.destroy()
 
-    @staticmethod
-    def ask(parent, title, prompt, initialvalue=""):
+    @classmethod
+    def ask(cls, parent, title, prompt, initialvalue="", **extra):
         """Blockiert bis zum Schließen; liefert den Text oder None (Abbrechen/Escape/Schließen)."""
-        dialog = TextEingabeDialog(parent, title, prompt, initialvalue)
+        dialog = cls(parent, title, prompt, initialvalue, **extra)
         try:
             dialog.wait_visibility()
             dialog.grab_set()
@@ -598,3 +984,155 @@ class TextEingabeDialog(tk.Toplevel):
             pass
         dialog.wait_window()
         return dialog.ergebnis
+
+
+MONATE = ("Januar", "Februar", "März", "April", "Mai", "Juni", "Juli", "August", "September", "Oktober",
+          "November", "Dezember")
+WOCHENTAGE_KURZ = ("Mo", "Di", "Mi", "Do", "Fr", "Sa", "So")
+
+
+class Monatskalender(ttk.Frame):
+    """Kleiner Monatskalender zum Anklicken (B4e, Peter 21.11.2026: „einen Datumspicker ohne viel Aufwand“) - selbst
+    gebaut aus `calendar` und ttk statt tkcalendar (GPL, zieht babel nach). Klick auf einen Tag ruft `waehle(date)`,
+    Doppelklick zusätzlich `bestaetige(date)`; Tage nach `bis` (Vorgabe heute) sind gesperrt. «/» blättern ein
+    Jahr, ‹/› einen Monat. Stile (Kalender*.TButton) in ui_theme."""
+
+    def __init__(self, parent, waehle, bestaetige=None, bis=None):
+        super().__init__(parent)
+        self._waehle, self._bestaetige = waehle, bestaetige
+        self._bis = bis or datetime.date.today()
+        self._gewaehlt = None
+        heute = datetime.date.today()
+        self.jahr, self.monat = heute.year, heute.month
+        kopf = ttk.Frame(self)
+        kopf.pack(fill=tk.X)
+        for text, schritt, hinweis in (("«", -12, "Ein Jahr zurück"), ("‹", -1, "Einen Monat zurück")):
+            knopf = ttk.Button(kopf, text=text, width=3, style="Kalender.TButton",
+                               command=lambda s=schritt: self.blaettern(s))
+            knopf.pack(side=tk.LEFT)
+            Tooltip(knopf, hinweis)
+        for text, schritt, hinweis in (("»", 12, "Ein Jahr vor"), ("›", 1, "Einen Monat vor")):
+            knopf = ttk.Button(kopf, text=text, width=3, style="Kalender.TButton",
+                               command=lambda s=schritt: self.blaettern(s))
+            knopf.pack(side=tk.RIGHT)
+            Tooltip(knopf, hinweis)
+        self.lbl_monat = ttk.Label(kopf, anchor="center")
+        self.lbl_monat.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        raster = ttk.Frame(self)
+        raster.pack()
+        for spalte, name in enumerate(WOCHENTAGE_KURZ):
+            ttk.Label(raster, text=name, anchor="center", style="KalenderKopf.TLabel").grid(
+                row=0, column=spalte, sticky="ew")
+        self._tage = []          # 6 Wochen x 7 Tage, Knopf -> Tag über self._tag_von
+        self._tag_von = {}
+        for zeile in range(6):
+            for spalte in range(7):
+                knopf = ttk.Button(raster, width=3, style="Kalender.TButton")
+                knopf.grid(row=zeile + 1, column=spalte, padx=1, pady=1)
+                knopf.bind("<Double-1>", lambda e, k=knopf: self._doppelklick(k))
+                self._tage.append(knopf)
+        self.zeige(self.jahr, self.monat)
+
+    @staticmethod
+    def wochen(jahr, monat):
+        """Tage des Monats als Wochen Mo-So, 0 = Tag eines Nachbarmonats (leer)."""
+        return calendar.Calendar(firstweekday=0).monthdayscalendar(jahr, monat)
+
+    @staticmethod
+    def verschiebe(jahr, monat, schritt):
+        """(jahr, monat) um `schritt` Monate verschoben, über Jahresgrenzen hinweg."""
+        index = jahr * 12 + (monat - 1) + schritt
+        return index // 12, index % 12 + 1
+
+    @staticmethod
+    def darstellung(tag, gewaehlt, heute, bis):
+        """(Stil, gesperrt) eines Tages: gewählt gefüllt, heute hervorgehoben, nach `bis` gesperrt."""
+        if tag == gewaehlt:
+            stil = "KalenderGewaehlt.TButton"
+        elif tag == heute:
+            stil = "KalenderHeute.TButton"
+        else:
+            stil = "Kalender.TButton"
+        return stil, tag > bis
+
+    def blaettern(self, schritt):
+        self.zeige(*self.verschiebe(self.jahr, self.monat, schritt))
+
+    def zeige(self, jahr, monat):
+        self.jahr, self.monat = jahr, monat
+        self.lbl_monat.config(text=f"{MONATE[monat - 1]} {jahr}")
+        tage = [t for woche in self.wochen(jahr, monat) for t in woche]
+        tage += [0] * (len(self._tage) - len(tage))
+        heute = datetime.date.today()
+        self._tag_von = {}
+        for knopf, tag in zip(self._tage, tage):
+            if not tag:
+                knopf.config(text="", style="Kalender.TButton", command="")
+                knopf.state(["disabled"])
+                continue
+            datum = datetime.date(jahr, monat, tag)
+            stil, gesperrt = self.darstellung(datum, self._gewaehlt, heute, self._bis)
+            knopf.config(text=str(tag), style=stil, command=lambda d=datum: self._klick(d))
+            knopf.state(["disabled"] if gesperrt else ["!disabled"])
+            if not gesperrt:
+                self._tag_von[str(knopf)] = datum
+
+    def markiere(self, iso):
+        """Getipptes Datum ('JJJJ-MM-TT') im Kalender zeigen: blättert in seinen Monat und hebt den Tag hervor."""
+        try:
+            datum = datetime.date.fromisoformat(iso)
+        except (TypeError, ValueError):
+            return
+        if datum != self._gewaehlt or (datum.year, datum.month) != (self.jahr, self.monat):
+            self._gewaehlt = datum
+            self.zeige(datum.year, datum.month)
+
+    def _klick(self, datum):
+        self._gewaehlt = datum
+        self.zeige(datum.year, datum.month)
+        self._waehle(datum)
+
+    def _doppelklick(self, knopf):
+        datum = self._tag_von.get(str(knopf))
+        if datum is not None and self._bestaetige:
+            self._bestaetige(datum)
+
+
+class DatumEingabeDialog(TextEingabeDialog):
+    """Texteingabe mit Datumsprüfung beim Tippen (UIUtils.ask_datum). Ergebnis ist das geprüfte 'JJJJ-MM-TT'."""
+
+    HINWEIS_OK = "#1E7B1E"       # Bedeutungsfarben: grün = gültig, rot = Grund steht daneben
+    HINWEIS_FEHLER = "#B00020"
+
+    def __init__(self, parent, title, prompt, initialvalue="", pruefe=None):
+        self._pruefe = pruefe
+        self._datum = None
+        super().__init__(parent, title, prompt, initialvalue)
+
+    def _unter_der_eingabe(self):
+        self.lbl_hinweis = ttk.Label(self, text="", anchor="w")
+        self.lbl_hinweis.pack(padx=15, pady=(0, 2), fill=tk.X)
+        # B4e: Kalender zum Anklicken - Klick füllt das Feld (die Prüfung läuft wie beim Tippen), Doppelklick = OK
+        self.kalender = Monatskalender(self, waehle=self._aus_kalender, bestaetige=lambda _d: self._ok())
+        self.kalender.pack(padx=15, pady=(2, 4))
+
+    def _aus_kalender(self, datum):
+        self.var.set(datum.strftime("%d.%m.%Y"))
+
+    def _nach_aufbau(self):
+        self.var.trace_add("write", lambda *_: self._pruefen())
+        self._pruefen()
+
+    def _pruefen(self):
+        self._datum, hinweis = self._pruefe(self.var.get()) if self._pruefe else (self.var.get().strip() or None, "")
+        self.lbl_hinweis.config(text=hinweis, foreground=self.HINWEIS_OK if self._datum else self.HINWEIS_FEHLER)
+        self.btn_ok.state(["!disabled"] if self._datum else ["disabled"])
+        if self._datum:
+            self.kalender.markiere(self._datum)   # getipptes Datum im Kalender zeigen
+
+    def _ok(self):
+        if not self._datum:          # Enter bei ungültiger Eingabe: der Hinweis sagt schon, warum
+            self.bell()
+            return
+        self.ergebnis = self._datum
+        self.destroy()

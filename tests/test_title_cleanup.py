@@ -181,5 +181,39 @@ class TestSubjectLineHeuristic(unittest.TestCase):
         self.assertLess(rect.y1, 309)
 
 
+
+class TestBisherigerTitelWaehlbar(unittest.TestCase):
+    """Peter 21.11.2026: der KI-Vorschlag war schlechter als der alte Titel, der alte ließ sich im
+    Auswahldialog aber nicht mehr wählen - jetzt hat er einen eigenen Knopf."""
+
+    def test_eigener_knopf_nur_wenn_nicht_schon_kandidat(self):
+        from tools.title_cleanup import bisheriger_titel_knopf
+        self.assertEqual(bisheriger_titel_knopf(["Rechnung Heizung"], "Jahresabrechnung Strom"),
+                         "Jahresabrechnung Strom")
+        self.assertIsNone(bisheriger_titel_knopf(["Jahresabrechnung Strom"], " jahresabrechnung strom "))
+        self.assertIsNone(bisheriger_titel_knopf(["Rechnung"], ""))
+        self.assertIsNone(bisheriger_titel_knopf([], None))
+
+    def test_titel_vorschlagen_reicht_alten_titel_durch(self):
+        from unittest.mock import MagicMock, patch
+        from tools.ai_title_suggest import AiTitleSuggestWindow
+        fenster = MagicMock()
+        fenster.tree.item.return_value = ("☑", "Jahresabrechnung Strom", "Rechnung", "")
+        fenster.rows = {"z1": {}}
+        with patch("tools.ai_title_suggest.CandidatePickerDialog.ask", return_value=None) as ask:
+            AiTitleSuggestWindow._edit_title(fenster, "z1")
+        self.assertEqual(ask.call_args.kwargs.get("bisher"), "Jahresabrechnung Strom")
+
+    def test_titel_aufraeumen_reicht_alten_titel_durch(self):
+        from unittest.mock import MagicMock, patch
+        from tools.title_cleanup import TitleCleanupWindow
+        fenster = MagicMock()
+        fenster.rows = {"z1": {"old_title": "Jahresabrechnung Strom", "candidates": ["Rechnung"],
+                               "suggestion": "Rechnung"}}
+        with patch("tools.title_cleanup.CandidatePickerDialog.ask", return_value=None) as ask:
+            TitleCleanupWindow._bearbeite(fenster, "z1", "suggestion")
+        self.assertEqual(ask.call_args.kwargs.get("bisher"), "Jahresabrechnung Strom")
+
+
 if __name__ == "__main__":
     unittest.main()

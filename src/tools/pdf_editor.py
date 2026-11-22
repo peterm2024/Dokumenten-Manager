@@ -58,14 +58,9 @@ class PDFEditorTool(BaseTool):
 
         # Nur EINE Editor-Instanz zulassen: bei ungespeicherten Änderungen wäre ein
         # stiller Dokumentwechsel gefährlich, daher wird das offene Fenster nur fokussiert.
-        if self.editor_window and self.editor_window.winfo_exists():
-            self.editor_window.lift()
-            self.editor_window.focus()
-            if self.editor_window.pdf_path != pdf_path:
-                messagebox.showinfo("Hinweis", "Der Editor ist bereits geöffnet.\nBitte erst schließen, um eine andere Datei zu bearbeiten.",
-                                    parent=self.editor_window)
-        else:
-            self.editor_window = PDFEditorWindow(context.app.root, context.app, pdf_path)
+        # ein offener Editor mit einer anderen Datei bleibt stehen (ungespeicherte Änderungen), mit Hinweis
+        self.editor_window = self.oeffne_fenster(lambda: PDFEditorWindow(context.app.root, context.app, pdf_path),
+                                                 pdf_path)
         return True
 
     # Bewusst KEIN on_selection_changed-Live-Update wie beim Inspektor:

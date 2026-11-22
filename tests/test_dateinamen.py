@@ -1,8 +1,10 @@
 """Tests für dateinamen.py (Tool 'Dateinamen aufräumen'): Vorschlag, Umbenennen mit Originalname, Wiederherstellen."""
+import inspect
 import os
 import shutil
 import tempfile
 import unittest
+from unittest.mock import MagicMock, patch
 
 import dateinamen
 from pdf_handler import PDFHandler
@@ -195,6 +197,123 @@ class TestEchtePdfs(unittest.TestCase):
         ohne = dateinamen.sammle_pdfs(self.ordner, rekursiv=True, ist_papierkorb=lambda p: p.endswith("Unter"))
         self.assertEqual([os.path.basename(p) for p in ohne], ["scan_001.pdf"])
         self.assertEqual(dateinamen.sammle_pdfs(os.path.join(self.ordner, "gibtsnicht")), [])
+
+
+
+class TestDoppelklickTrifftDenVorschlag(unittest.TestCase):
+    """B4c (21.11.2026, FALLSTRICKE #140): Der Doppelklick fragte Spalte „#3“ ab - seit der Spalte „Titel (PDF)“ ist
+    das nicht mehr der Vorschlag; ein Doppelklick auf „Vorschlag (Doppelklick bearbeitet)“ hakte nur an."""
+
+    def _bearbeite(self, spalte):
+        from unittest.mock import MagicMock
+        from tools.dateinamen_aufraeumen import DateinamenFenster
+        fenster = MagicMock(zeilen={"z1": {}})
+        DateinamenFenster._bearbeite(fenster, "z1", spalte)
+        return fenster
+
+    def test_vorschlag_wird_bearbeitet(self):
+        fenster = self._bearbeite("vorschlag")
+        fenster._bearbeite_vorschlag.assert_called_once_with("z1")
+        fenster._umschalten.assert_not_called()
+
+    def test_haken_spalte_schaltet_andere_zellen_nicht(self):
+        # B6 (Peter 21.11.2026): Doppelklick auf Name/Titel hakte an - „ungewöhnlich“; angehakt wird per Klick
+        fenster = self._bearbeite("check")
+        fenster._umschalten.assert_called_once_with("z1")
+        for spalte in ("titel", "name", "ordner"):
+            fenster = self._bearbeite(spalte)
+            fenster._umschalten.assert_not_called()
+            fenster._bearbeite_vorschlag.assert_not_called()
+
+    def test_einzelklick_auf_den_haken(self):
+        from tools.dateinamen_aufraeumen import DateinamenFenster
+        for region, spalte, erwartet in (("cell", "check", True), ("cell", "name", False),
+                                         ("heading", "check", False)):
+            f = MagicMock(zeilen={"z1": {}})
+            f.tree.identify_region.return_value = region
+            f.tree.column.return_value = spalte
+            f.tree.identify_row.return_value = "z1"
+            DateinamenFenster._klick(f, MagicMock(x=5, y=5))
+            self.assertEqual(f._umschalten.called, erwartet, (region, spalte))
+        self.assertIn('self.tree.bind("<Button-1>", self._klick', inspect.getsource(DateinamenFenster._setup_ui))
+
+    def test_spalten_ueber_ihre_id_mit_f2_auf_dem_vorschlag(self):
+        import inspect
+        from tools.dateinamen_aufraeumen import DateinamenFenster
+        quelle = inspect.getsource(DateinamenFenster._setup_ui)
+        self.assertIn('UIUtils.tabelle_bearbeitbar(self.tree, self._bearbeite', quelle)
+        self.assertIn('f2_spalte="vorschlag"', quelle)
+        self.assertNotIn('"#', inspect.getsource(DateinamenFenster._bearbeite).split('"""')[2])   # keine Nummern
+
+
+def _zeile(name="Scan_0001.pdf", vorschlag="20260720_Rechnung.pdf", original="", muell=False, markiert=False, **extra):
+    return dict(name=name, vorschlag=vorschlag, originalname=original, verdaechtig=muell, markiert=markiert, **extra)
+
+
+class TestSchlankeBedienung(unittest.TestCase):
+    """B6 (Peter 21.11.2026: „fühlt sich zu komplex und umständlich an“): Haken sind die einzige Auswahl, Knöpfe
+    zeigen ihre Zahl und sind sonst ausgegraut, Seltenes steht im Rechtsklick-Menü."""
+
+    def test_umbenannt_wird_nur_angehakt_und_anders(self):
+        from tools.dateinamen_aufraeumen import umbenenn_kandidaten
+        zeilen = {"a": _zeile(markiert=True), "b": _zeile(),
+                  "c": _zeile(name="x.pdf", vorschlag="x.pdf", markiert=True), "d": _zeile(vorschlag="", markiert=True)}
+        self.assertEqual(umbenenn_kandidaten(zeilen), ["a"])
+
+    def test_ki_nimmt_die_haken_sonst_die_muell_titel(self):
+        from tools.dateinamen_aufraeumen import ki_ziele
+        zeilen = {"a": _zeile(muell=True), "b": _zeile(), "c": _zeile(muell=True, ki_titel="Rechnung")}
+        self.assertEqual(ki_ziele(zeilen), (["a"], "⚠"))
+        zeilen["b"]["markiert"] = True
+        self.assertEqual(ki_ziele(zeilen), (["b"], "angehakte"))
+        zeilen["b"]["ki_laeuft"] = True
+        self.assertEqual(ki_ziele(zeilen), (["a"], "⚠"))
+
+    def test_klick_auf_den_haken_kopf_hakt_an_und_wieder_ab(self):
+        from tools.dateinamen_aufraeumen import alle_umschalten
+        zeilen = {"a": _zeile(), "b": _zeile(name="x.pdf", vorschlag="x.pdf"), "c": _zeile(markiert=True)}
+        alle_umschalten(zeilen)
+        self.assertEqual({k: z["markiert"] for k, z in zeilen.items()}, {"a": True, "b": False, "c": True})
+        alle_umschalten(zeilen)
+        self.assertEqual({k: z["markiert"] for k, z in zeilen.items()}, {"a": False, "b": False, "c": False})
+
+    def test_original_nur_im_menue_und_nur_wenn_es_einen_gibt(self):
+        from tools.dateinamen_aufraeumen import menue_eintraege
+        zeilen = {"a": _zeile(), "b": _zeile(original="Scan_0007.pdf", markiert=True)}
+        self.assertEqual([a for a, _ in menue_eintraege(zeilen, "a")], ["vorschlag", "check", "ki"])
+        eintraege = dict(menue_eintraege(zeilen, "b"))
+        self.assertEqual(eintraege["check"], "Haken entfernen")
+        self.assertIn("Scan_0007.pdf", eintraege["original"])
+
+    def test_menue_wirkt_auf_alle_angehakten_oder_die_zeile(self):
+        from tools.dateinamen_aufraeumen import DateinamenFenster
+        f = MagicMock(zeilen={"a": _zeile(markiert=True), "b": _zeile(markiert=True), "c": _zeile()})
+        f._betroffene = lambda iid: DateinamenFenster._betroffene(f, iid)
+        DateinamenFenster._bearbeite(f, "a", "ki")
+        f._ki_titel.assert_called_once_with(["a", "b"])
+        DateinamenFenster._bearbeite(f, "c", "original")
+        f._wiederherstellen.assert_called_once_with(["c"])
+
+    def test_knoepfe_grau_statt_meldung(self):
+        from tools.dateinamen_aufraeumen import DateinamenFenster
+        f = MagicMock(zeilen={"a": _zeile()}, _ki_laeuft=False)
+        DateinamenFenster._knoepfe(f)
+        f.btn_umbenennen.state.assert_called_with(["disabled"])
+        f.btn_ki.state.assert_called_with(["disabled"])
+        f.zeilen["a"]["markiert"] = True
+        DateinamenFenster._knoepfe(f)
+        f.btn_umbenennen.config.assert_called_with(text="Umbenennen (1)")
+        f.btn_umbenennen.state.assert_called_with(["!disabled"])
+        f.btn_ki.config.assert_called_with(text="KI-Titel für angehakte (1)")
+
+    def test_umbenennen_ohne_haken_fragt_nichts(self):
+        from tools.dateinamen_aufraeumen import DateinamenFenster
+        f = MagicMock(zeilen={"a": _zeile()})
+        with patch("tools.dateinamen_aufraeumen.bestaetigung.frage") as frage, \
+                patch("tools.dateinamen_aufraeumen.mb.showinfo") as info:
+            DateinamenFenster._umbenennen(f)
+        frage.assert_not_called()
+        info.assert_not_called()
 
 
 if __name__ == "__main__":

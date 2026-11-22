@@ -26,6 +26,8 @@ SEKUNDEN_JE_DOKUMENT = 10   # grobe Schätzung für den Hinweis vor dem Start (5
 
 
 class BenchmarkTool(BaseTool):
+    fenster_schluessel = "benchmark"
+
     def __init__(self):
         self.window = None
 
@@ -64,7 +66,7 @@ class BenchmarkTool(BaseTool):
         return "none"
 
     def execute(self, context: ToolContext) -> bool:
-        self.window = UIUtils.einzelfenster("benchmark", lambda: BenchmarkFenster(context.app))
+        self.window = self.oeffne_fenster(lambda: BenchmarkFenster(context.app))
         return True
 
 

@@ -64,5 +64,58 @@ class TestDatumsfeld(unittest.TestCase):
         self.assertEqual(self.f.date_entry.cget("foreground"), "red")
 
 
+class TestKalenderAmDatumsfeld(unittest.TestCase):
+    """B4e (Peter 21.11.2026): „▼“/Alt+↓ klappt unter dem Datumsfeld einen Kalender auf, ein Tag wird gespeichert wie
+    mit Return. Ohne echtes Fenster."""
+
+    def test_tag_aus_dem_kalender_wird_gespeichert(self):
+        from datetime import date
+        from unittest.mock import MagicMock
+        f = MagicMock()
+        DokumentenVerwaltung.datum_aus_kalender(f, date(2026, 7, 20))
+        f.date_entry.delete.assert_called_once_with(0, tk.END)
+        f.date_entry.insert.assert_called_once_with(0, "2026-07-20")
+        f.save_manual_date.assert_called_once_with()
+
+    def test_kalender_zeigt_den_monat_des_feldes(self):
+        from unittest.mock import MagicMock, patch
+        f = MagicMock()
+        f.date_entry.get.return_value = "15.4.60"
+        with patch("gui.UIUtils.kalender_aufklappen") as aufklappen:
+            self.assertEqual(DokumentenVerwaltung.datum_kalender(f), "break")   # Alt+↓ bewegt sonst den Cursor
+        unter, waehle, iso = aufklappen.call_args.args
+        self.assertIs(unter, f.datum_zelle)
+        self.assertEqual((waehle, iso), (f.datum_aus_kalender, "1960-04-15"))
+
+    def test_knopf_und_kurzbefehl_im_layout(self):
+        import inspect
+        import layout_builder
+        quelle = inspect.getsource(layout_builder)
+        self.assertIn('self.app.date_entry.bind("<Alt-Down>", self.app.datum_kalender)', quelle)
+        self.assertIn('beschriftung_klickbar(\n            "datum", self.app.datum_kalender', quelle)
+        # T0.16 (22.11.2026): kein Knopf mehr im Feld - er nahm bei 125 % ein Drittel der Breite
+        self.assertNotIn('ttk.Button(self.app.datum_zelle', quelle)
+        self.assertIn('fluss={"datum": self.app.datum_zelle}', quelle)
+
+
+class TestBeschriftungKlickbar(unittest.TestCase):
+    """T0.16 (22.11.2026): bei 125 % nahm der „▼“-Knopf im Feld ein Drittel der Breite - der Auslöser sitzt jetzt in
+    der Beschriftung „Datum ▼“, das Feld behält seine Breite."""
+
+    def test_beschriftung_bekommt_pfeil_und_klick(self):
+        from unittest.mock import MagicMock, patch
+        from dokument_eigenschaften import EigenschaftenPanel
+        panel, lbl, befehl = MagicMock(), MagicMock(), MagicMock()
+        panel._label.return_value = lbl
+        with patch("dokument_eigenschaften.Tooltip"):
+            self.assertIs(EigenschaftenPanel.beschriftung_klickbar(panel, "datum", befehl, "Kalender"), lbl)
+        panel._label.assert_called_once_with("Datum")
+        self.assertEqual(lbl.config.call_args.kwargs["text"], "Datum  ▼")
+        ereignis, rueckruf = lbl.bind.call_args.args
+        self.assertEqual(ereignis, "<Button-1>")
+        rueckruf(None)
+        befehl.assert_called_once_with()
+
+
 if __name__ == "__main__":
     unittest.main()

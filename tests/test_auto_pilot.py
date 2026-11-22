@@ -1089,6 +1089,27 @@ class TestOrdnerlisteUndPosteingang(unittest.TestCase):
         self.assertEqual(auto_pilot.sammle_posteingang_dokumente(self.master), [])
 
 
+
+class TestDatumAusEingabe(unittest.TestCase):
+    """B4b (21.11.2026): Prüfung für den Datumsdialog - Formen wie bisher plus reine Ziffern, Grund im Hinweis."""
+
+    def test_formen(self):
+        for eingabe in ("20.07.2026", "2026-07-20", "20.7.26", "200726", "20072026", " 20/07/2026. "):
+            self.assertEqual(auto_pilot.datum_aus_eingabe(eingabe)[0], "2026-07-20", eingabe)
+
+    def test_hinweis_nennt_den_wochentag(self):
+        self.assertEqual(auto_pilot.datum_aus_eingabe("20.07.2026"), ("2026-07-20", "✓ Montag, 20.07.2026"))
+
+    def test_gruende(self):
+        self.assertIn("Zukunft", auto_pilot.datum_aus_eingabe("01.01.2999")[1])
+        self.assertIn("vor 1950", auto_pilot.datum_aus_eingabe("01.01.1900")[1])
+        self.assertIn("Kein gültiges Datum", auto_pilot.datum_aus_eingabe("31.02.2020")[1])
+        self.assertIn("Kein gültiges Datum", auto_pilot.datum_aus_eingabe("morgen")[1])
+        self.assertIn("Bitte ein Datum", auto_pilot.datum_aus_eingabe("  ")[1])
+        for eingabe in ("01.01.2999", "01.01.1900", "31.02.2020", "morgen", ""):
+            self.assertIsNone(auto_pilot.datum_aus_eingabe(eingabe)[0], eingabe)
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -1260,6 +1281,18 @@ class TestOhneZielordnerTags(unittest.TestCase):
         self.assertEqual(entscheidung["zielordner"], r"A - B - C - D - E - F\Finanzamt Musterstadt")
         self.assertEqual(entscheidung["tags"], [])           # Etappe 6: die KI vergibt keine Tags mehr
         self.assertTrue(entscheidung["sicher"])
+
+    def test_katalog_tags_der_ki_bleiben_als_vorschlag(self):
+        """B4a (21.11.2026): vergeben werden sie nicht, aber der Tag-Dialog der Ablage-Vorschau bietet die Tags der
+        KI, die schon im Katalog stehen, als Knöpfe an - wie der Titelvorschlag."""
+        entscheidung = auto_pilot.baue_entscheidung(
+            "scan.pdf",
+            {"title": "Grundsteuerbescheid", "tags": ["Grundsteuer", "Erfundenes Tag"],
+             "datum": "2023-07-18", "absender": "Finanzamt Musterstadt", "ordnername": "Finanzamt Musterstadt"},
+            ["A - B - C - D - E - F", r"A - B - C - D - E - F\Finanzamt Musterstadt"],
+            known_tags=["Grundsteuer", "Strom"])
+        self.assertEqual(entscheidung["tags"], [])
+        self.assertEqual(entscheidung["tag_vorschlaege"], ["Grundsteuer"])
 
     def test_ohne_tags_bleibt_die_ablage_sicher(self):
         entscheidung = auto_pilot.baue_entscheidung(

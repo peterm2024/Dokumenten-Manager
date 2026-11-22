@@ -515,8 +515,6 @@ class BegleitetErfassenTool(BaseTool):
         if not pfade:
             mb.showinfo("Posteingang ist leer", "Im Posteingang liegen keine Dokumente.", parent=app.root)
             return False
-        if self.fenster is not None and self.fenster.winfo_exists():
-            self.fenster.lift()
-            return True
-        self.fenster = BegleitetFenster(app, pfade)
+        # ohne eingabe: ein offenes Fenster kommt nach vorn, auch wenn inzwischen neue Scans im Posteingang liegen
+        self.fenster = self.oeffne_fenster(lambda: BegleitetFenster(app, pfade))
         return True

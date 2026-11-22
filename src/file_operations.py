@@ -736,7 +736,8 @@ class FileOperations:
                 self.app.folder_manager._select_and_open_path(current_folder_path)
             else:
                 self.app.folder_manager.on_folder_select(None)
-            messagebox.showinfo("Erfolg", "Datei(en) wiederhergestellt nach: " + ", ".join(zielordner or ["Hauptordner"]))
+            # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+            aktivitaet.erledigt("Wiederhergestellt nach: " + ", ".join(zielordner or ["Hauptordner"]))
         except Exception as e:
             messagebox.showerror(
                 "Fehler",

@@ -1,23 +1,23 @@
 {
   "bestand": {
-    "richtig": 238,
+    "richtig": 243,
     "still falsch (neuer Ordner)": 14,
-    "still falsch (vorhandener Ordner)": 31,
-    "unsicher, Vorwahl anders": 87,
-    "unsicher, Vorwahl richtig": 33
+    "still falsch (vorhandener Ordner)": 32,
+    "unsicher, Vorwahl anders": 86,
+    "unsicher, Vorwahl richtig": 28
   },
   "frisch": {
     "Doppelordner": 8,
-    "sicher ok": 239,
+    "sicher ok": 251,
     "still falsch": 8,
-    "unsicher": 140,
+    "unsicher": 128,
     "unsicher, Vorwahl falsch": 8
   },
   "gefüllt": {
-    "richtig": 127,
+    "richtig": 130,
     "still falsch (neuer Ordner)": 6,
-    "still falsch (vorhandener Ordner)": 13,
-    "unsicher, Vorwahl anders": 41,
-    "unsicher, Vorwahl richtig": 15
+    "still falsch (vorhandener Ordner)": 14,
+    "unsicher, Vorwahl anders": 39,
+    "unsicher, Vorwahl richtig": 13
   }
 }

@@ -1,4 +1,6 @@
 import os
+
+import aktivitaet
 import re
 import threading
 import tkinter as tk
@@ -276,10 +278,7 @@ class TitleCleanupTool(BaseTool):
         return "none"
 
     def execute(self, context: ToolContext) -> bool:
-        if self.window and self.window.winfo_exists():
-            self.window.lift()
-        else:
-            self.window = TitleCleanupWindow(context.app.root, context.app)
+        self.window = self.oeffne_fenster(lambda: TitleCleanupWindow(context.app.root, context.app))
         return True
 
 
@@ -316,7 +315,7 @@ class TitleCleanupWindow(tk.Toplevel):
         # Knopfzeile ZUERST und unten packen, damit sie bei kleinem Fenster sichtbar bleibt
         bottom = tk.Frame(self)
         bottom.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
-        tk.Label(bottom, text="Klick auf eine Zeile zeigt das Dokument im Hauptfenster. Doppelklick auf Vorschlag = "
+        tk.Label(bottom, text="Klick auf eine Zeile zeigt das Dokument im Hauptfenster. Doppelklick, Rechtsklick oder F2 auf Vorschlag = "
                               "bearbeiten, Leertaste = an/abwählen.", fg="#666").pack(side=tk.LEFT)
         ttk.Button(bottom, text="Markierte übernehmen", command=self._apply_checked, style="Accent.TButton").pack(side=tk.RIGHT)
 
@@ -336,7 +335,7 @@ class TitleCleanupWindow(tk.Toplevel):
         self.tree.configure(yscrollcommand=rollen.set)
         rollen.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.tree.bind("<Double-1>", self._edit_suggestion)
+        UIUtils.tabelle_bearbeitbar(self.tree, self._bearbeite, menue=lambda iid: self.MENUE, f2_spalte="suggestion")
         self.tree.bind("<space>", self._toggle_check)
         self.tree.bind("<<TreeviewSelect>>", self._sync_hauptfenster)
 
@@ -489,13 +488,18 @@ class TitleCleanupWindow(tk.Toplevel):
                 continue
             self._zeichne_zeile(iid, "☐" if self.tree.set(iid, "check") == "☑" else "☑")
 
-    def _edit_suggestion(self, event):
-        iid = self.tree.identify_row(event.y)
-        col = self.tree.identify_column(event.x)
-        if not iid or col != "#4":
+    MENUE = [("suggestion", "Titel wählen…"), ("check", "Haken setzen/entfernen")]
+
+    def _bearbeite(self, iid, spalte):
+        """Doppelklick, Rechtsklick-Menü oder F2 (UIUtils.tabelle_bearbeitbar)."""
+        if spalte == "check":
+            self._toggle_check()
+            return
+        if spalte != "suggestion" or iid not in self.rows:
             return
         candidates = self.rows[iid].get("candidates", [])
-        new_value = CandidatePickerDialog.ask(self, "Titel wählen", candidates, self.rows[iid].get("suggestion", ""))
+        new_value = CandidatePickerDialog.ask(self, "Titel wählen", candidates, self.rows[iid].get("suggestion", ""),
+                                              bisher=self.rows[iid].get("old_title", ""))
         if new_value and new_value.strip():
             self.rows[iid]["suggestion"] = new_value.strip()
             self._zeichne_zeile(iid, "☑")
@@ -530,7 +534,18 @@ class TitleCleanupWindow(tk.Toplevel):
         if errors:
             messagebox.showerror("Teilweise fehlgeschlagen", "\n".join(errors))
         else:
-            messagebox.showinfo("Erledigt", "Alle markierten Titel wurden aktualisiert.")
+            # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+            aktivitaet.erledigt(f"{len(to_apply)} Titel geschrieben")
+
+
+def bisheriger_titel_knopf(candidates, bisher):
+    """Bisheriger Titel für den eigenen Knopf im CandidatePickerDialog - None, wenn es keinen gibt oder er schon
+    unter den Kandidaten steht. Peter 21.11.2026: der KI-Vorschlag war schlechter als der alte Titel, der
+    alte ließ sich im Dialog aber nicht mehr wählen."""
+    bisher = (bisher or "").strip()
+    if not bisher or bisher.casefold() in {(c or "").strip().casefold() for c in candidates}:
+        return None
+    return bisher
 
 
 class CandidatePickerDialog(tk.Toplevel):
@@ -539,9 +554,10 @@ class CandidatePickerDialog(tk.Toplevel):
     zur Auswahl (Klick übernimmt sofort in das Textfeld) plus ein frei editierbares
     Textfeld darunter für Handkorrekturen. Eine einzelne Positions-Heuristik trifft
     nicht immer die richtige Zeile (siehe FALLSTRICKE #21) - hier entscheidet der
-    Nutzer bei Unklarheit selbst, ohne alles neu tippen zu müssen.
+    Nutzer bei Unklarheit selbst, ohne alles neu tippen zu müssen. Der bisherige Titel des Dokuments
+    (bisher) bekommt einen eigenen Knopf, damit ein schlechterer Vorschlag ihn nicht verdrängt.
     """
-    def __init__(self, parent, title, candidates, initial_value):
+    def __init__(self, parent, title, candidates, initial_value, bisher=None):
         super().__init__(parent)
         self.title(title)
         self.transient(parent)
@@ -552,6 +568,10 @@ class CandidatePickerDialog(tk.Toplevel):
             tk.Label(self, text="Gefundene Kandidaten (Klick übernimmt):", anchor="w").pack(fill=tk.X, padx=10, pady=(10, 2))
             for cand in candidates:
                 ttk.Button(self, text=cand, command=lambda c=cand: self._use(c)).pack(fill=tk.X, padx=10, pady=2)
+        bisher = bisheriger_titel_knopf(candidates, bisher)
+        if bisher:
+            tk.Label(self, text="Bisheriger Titel (Klick übernimmt):", anchor="w").pack(fill=tk.X, padx=10, pady=(10, 2))
+            ttk.Button(self, text=bisher, command=lambda: self._use(bisher)).pack(fill=tk.X, padx=10, pady=2)
 
         tk.Label(self, text="Titel (frei editierbar):", anchor="w").pack(fill=tk.X, padx=10, pady=(10, 2))
         self.entry = ttk.Entry(self, width=60)
@@ -577,7 +597,7 @@ class CandidatePickerDialog(tk.Toplevel):
         self.destroy()
 
     @staticmethod
-    def ask(parent, title, candidates, initial_value):
-        dialog = CandidatePickerDialog(parent, title, candidates, initial_value)
+    def ask(parent, title, candidates, initial_value, bisher=None):
+        dialog = CandidatePickerDialog(parent, title, candidates, initial_value, bisher=bisher)
         parent.wait_window(dialog)
         return dialog.result

@@ -644,7 +644,8 @@ class TagHygieneFenster(tk.Toplevel):
         if plane_synonym_ersetzungen(vorkommen, tm.get_synonyme()):
             self._synonyme_ersetzen(vorkommen, f"{len(plan)} Synonym(e) eingetragen.\n\n")
         else:
-            mb.showinfo("Standard-Synonyme", f"{len(plan)} Synonym(e) eingetragen.", parent=self)
+            # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+            aktivitaet.erledigt(f"{len(plan)} Synonym(e) eingetragen")
 
     def _sammel_tags_zerlegen(self):
         """Altbestand an die Regel „ein Objekt je Tag“ anpassen (ToDo 27.10.2026, Betatest: 22 Dokumente
@@ -743,6 +744,7 @@ class TagHygieneFenster(tk.Toplevel):
 
 class TagHygieneTool(BaseTool):
     """Menü-Einstieg: öffnet das Tag-Hygiene-Fenster."""
+    fenster_schluessel = "tag_hygiene"
 
     @property
     def name(self) -> str:
@@ -778,5 +780,5 @@ class TagHygieneTool(BaseTool):
             fenster.after(100, fenster._pruefen)  # direkt mit der Standard-Schwelle füllen
             return fenster
         # höchstens ein Fenster (Peter 04.11.2026: doppelt geöffnet = falsche Daten) - ein offenes kommt nach vorn
-        UIUtils.einzelfenster("tag_hygiene", neu)
+        self.oeffne_fenster(neu)
         return True

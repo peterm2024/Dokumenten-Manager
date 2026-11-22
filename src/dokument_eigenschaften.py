@@ -529,6 +529,17 @@ class EigenschaftenPanel:
         self._link_schrift = tkfont.Font(font=self.schrift, underline=True)
 
     # ---------- Aufbau ----------
+    def beschriftung_klickbar(self, schluessel, befehl, hinweis):
+        """Beschriftung eines Feldes mit „▼“ als Auslöser, z.B. „Datum ▼“ für den Kalender (B4e): Klick ruft
+        `befehl()`. Die Beschriftung hat Platz, das Feld daneben behält seine volle Breite (Peter 22.11.2026).
+        :return: die Beschriftung (tk.Label)"""
+        name = FELDER[schluessel][0]
+        lbl = self._label(name)
+        lbl.config(text=f"{name}  ▼", cursor="hand2")
+        lbl.bind("<Button-1>", lambda _e: befehl())
+        Tooltip(lbl, hinweis)
+        return lbl
+
     def setze_eingabefelder(self, feste, fluss):
         """feste: [(Bezeichner, Widget)] als volle Zeilen oben; fluss: {Schlüssel: Widget} im Raster."""
         self._feste = list(feste)

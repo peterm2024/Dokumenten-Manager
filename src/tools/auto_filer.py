@@ -45,11 +45,18 @@ import ordner_steckbrief
 import tag_ignorierliste
 import wissen
 from auto_pilot_service import STAPEL_GROESSE
+from pdf_handler import PDFHandler
+from tools.ai_title_suggest import TagSuggestionDialog
+from tools.title_cleanup import CandidatePickerDialog
 from tools.base_tool import BaseTool, ToolContext
 from ui_utils import UIUtils, ProgressDialog
 
 
 class AutoFilerTool(BaseTool):
+    # Höchstens EINE Ablage-Vorschau für beide Tools zusammen: beide halten den Dienst an und bearbeiten dieselben
+    # Posteingang-Dateien (Peter 21.11.2026, Fenster-Durchsicht A3/A6, T4.19)
+    fenster_schluessel = "ablage_vorschau"
+
     def __init__(self):
         self.window = None
 
@@ -67,7 +74,7 @@ class AutoFilerTool(BaseTool):
 
     @property
     def absicht(self) -> str:
-        return ("Vertrauen in die Vollautomatik aufbauen: zeigt Zielordner, Titel und Datum, die die Automatik vergeben würde, BEVOR etwas passiert; Tags setzt sie keine, sie lassen sich hier von Hand eintragen. Ein Klick auf den richtigen Zielordner lehrt sie einen Alias.")
+        return ("Vertrauen in die Vollautomatik aufbauen: zeigt Zielordner, Titel und Datum, die die Automatik vergeben würde, BEVOR etwas passiert; Tags setzt sie keine, sie lassen sich hier von Hand eintragen. Ein Doppelklick auf den Zielordner korrigiert ihn und lehrt sie auf Wunsch einen Alias.")
 
     @property
     def description(self) -> str:
@@ -90,10 +97,52 @@ class AutoFilerTool(BaseTool):
         if not pdf_paths:
             mb.showinfo("Hinweis", "Bitte mindestens ein PDF auswählen.")
             return False
-        if self.window and self.window.winfo_exists():
-            self.window.destroy()
-        self.window = AutoFilerPreviewWindow(context.app, pdf_paths)
+        self.window = self.oeffne_fenster(lambda: AutoFilerPreviewWindow(context.app, pdf_paths), pdf_paths)
         return True
+
+
+def tags_zelle(tags, neue_tags, vorschlaege, kategorie_neu):
+    """Text der Tags-Zelle: gesetzte Tags (neue mit „(neu→Kategorie)“), sonst „+ n Vorschläge“ - A5 (Peter
+    21.11.2026): seit Etappe 6 vergibt die KI keine Tags, die Spalte war fast immer leer; ihre Katalog-Tags warten
+    aber im Knopf-Dialog (B4a), das soll man sehen."""
+    if tags:
+        neu = {t.lower(): k for t, k in neue_tags}
+        return ", ".join(f"{t} (neu→{neu[t.lower()] or kategorie_neu})" if t.lower() in neu else t for t in tags)
+    n = len(vorschlaege)
+    if not n:
+        return ""
+    return "+ 1 Vorschlag" if n == 1 else f"+ {n} Vorschläge"
+
+
+def zielordner_text(entscheidung, neue_ordner=()):
+    """Inhalt der Zielordner-Zelle: Ordner, „(neu)“ und woher er kommt. Ein von Hand gewählter Ordner zeigt
+    [von Hand] - auto_pilot.wende_zielordner_an setzt dafür zwar ordner_per_alias (damit Gedächtnis und
+    Rangliste ihn nicht überstimmen), gespeichert ist aber kein Alias (Peter 21.11.2026: „[Alias]“ nach einer
+    Korrektur ohne „für alle des Absenders“ sah wie ein Fehler aus)."""
+    ist_neu = entscheidung["ordner_neu"] or entscheidung["zielordner"] in neue_ordner
+    ziel = entscheidung["zielordner"] + (" (neu)" if ist_neu else "")
+    if entscheidung.get("ordner_von_hand"):
+        ziel += " [von Hand]"
+    elif entscheidung.get("ordner_per_alias"):
+        ziel += " [Objekt-Alias]" if entscheidung.get("ordner_hinweis") == "Objekt" else " [Alias]"
+    elif entscheidung.get("ordner_hinweis"):
+        ziel += f" [aus {entscheidung['ordner_hinweis']}]"
+    return ziel
+
+
+def korrektur_menue(entscheidung):
+    """Einträge des Rechtsklick-Menüs der Ablage-Vorschau: [(spalte, Beschriftung)]. Der letzte sagt, was ein
+    Doppelklick auf „Ergebnis“ bei dieser Zeile täte (siehe AutoFilerPreviewWindow._frage_freigabe)."""
+    if entscheidung.get("manuell_freigegeben"):
+        ergebnis = "Freigabe zurücknehmen (wieder gelb)"
+    elif auto_pilot.PROBLEM_ZURUECKGESTELLT in entscheidung.get("probleme", []):
+        ergebnis = "Wieder grün (Zurückstellung aufheben)"
+    elif entscheidung.get("sicher"):
+        ergebnis = "Auf gelb setzen (nicht automatisch ablegen)…"
+    else:
+        ergebnis = "Auf grün setzen (trotzdem automatisch ablegen)…"
+    return [("ziel", "Zielordner ändern…"), ("titel", "Titel ändern…"), ("tags", "Tags ändern…"),
+            ("datum", "Datum ändern…"), ("status", ergebnis)]
 
 
 class ZielordnerDialog(tk.Toplevel):
@@ -291,6 +340,8 @@ class AutoFilerPreviewWindow(tk.Toplevel):
         self.app = app
         self.pdf_paths = pdf_paths
         self.ergebnisse = {}  # iid -> entscheidung-Dict (auto_pilot.baue_entscheidung), None bei KI-Fehler
+        self.ki_tags = {}     # iid -> Tags der Analyse: bleiben im Tag-Dialog als Knöpfe, auch wenn abgewählt
+        self.ki_titel = {}    # iid -> Titel der Analyse: bleibt im Titel-Dialog wählbar, auch nach einer Korrektur
         self.ordnerliste = []  # Abgleichliste des laufenden/letzten Analyse-Laufs (wächst um neue Ordner)
         self.neue_ordner = set()
         self.aliase = {}       # Absender-Aliase der Sammlung (ordner_aliase), von der Analyse geladen
@@ -298,9 +349,10 @@ class AutoFilerPreviewWindow(tk.Toplevel):
         self.title(fenstertitel)
         # Feste Maße mitskalieren: bei 125 % Schrift passte sonst nichts mehr ins Fenster
         UIUtils.position_near_mouse(self, UIUtils.px(self, 1200), UIUtils.px(self, 460))
-        # Bewusst KEIN transient(app.root): das nimmt dem Fenster unter Windows die
-        # Maximieren-Schaltfläche (Nutzerwunsch 01.09.2026 - bei einem großen Stapel will
-        # man die Tabelle aufziehen). Gleiche Lösung wie im Dubletten-Finder.
+        # Über KID (rutscht nicht mehr dahinter, Peter 21.11.2026) und trotzdem maximierbar - bei einem großen
+        # Stapel will man die Tabelle aufziehen (Peter 01.09.2026). Bis 21.11.2026 ohne transient, weil das die
+        # Maximieren-Schaltfläche nahm; jetzt setzt werkzeugfenster sie wieder (FALLSTRICKE #137).
+        UIUtils.werkzeugfenster(self, app.root, maximierbar=True)
         self._setup_ui()
         # Watchdog-Vollautomatik (Schritt 4) anhalten, solange dieses Fenster lebt - sonst
         # würden Mensch und Hintergrund-Dienst dieselben Posteingang-Dateien bearbeiten.
@@ -318,6 +370,11 @@ class AutoFilerPreviewWindow(tk.Toplevel):
             # (Netzwerk-Timeout) und öffnet einen ProgressDialog - direkt im Konstruktor
             # aufgerufen würde beides das Zeichnen des noch leeren Fensters blockieren.
             self.after(100, self._starte_analyse)
+
+    def ist_verwerfbar(self):
+        """Für BaseTool.oeffne_fenster: nach „Jetzt einsortieren“ ist die Tabelle nur noch Protokoll, sie weicht
+        still einer neuen Auswahl - vorher gingen Korrekturen verloren, dann bleibt sie mit Hinweis stehen."""
+        return self.einsortiert
 
     def _bei_zerstoerung(self, event):
         # <Destroy> feuert auch für jedes Kind-Widget - nur das Fenster selbst zählt.
@@ -355,7 +412,10 @@ class AutoFilerPreviewWindow(tk.Toplevel):
         self.tree.grid(row=0, column=0, sticky="nsew")
         scroll.grid(row=0, column=1, sticky="ns")
         scroll_x.grid(row=1, column=0, sticky="ew")
-        self.tree.bind("<Button-1>", self._on_klick)
+        # Einzelklick wählt nur aus (Dokument erscheint im Hauptfenster), korrigiert wird per Doppelklick oder
+        # Rechtsklick - wie in allen anderen Tabellen von KID (Fenster-Durchsicht A4, 21.11.2026: vorher öffnete
+        # schon der Klick zum Auswählen einen Dialog, Mehrfachauswahl auf einer Zelle war unmöglich)
+        UIUtils.tabelle_bearbeitbar(self.tree, self._bearbeite, menue=self._menue_eintraege, f2_spalte="titel")
         self.tree.bind("<<TreeviewSelect>>", self._sync_hauptfenster)
         self.tree.bind("<<TreeviewSelect>>", self._zeige_ergebnis_volltext, add="+")
 
@@ -380,10 +440,11 @@ class AutoFilerPreviewWindow(tk.Toplevel):
                   "im Hauptfenster angezeigt, ihr vollständiges Ergebnis steht direkt über diesem Text. "
                   "Grün = würde vollautomatisch abgelegt, "
                   "Gelb = würde in den Unsicher-Ordner wandern (Begründung in 'Ergebnis'). "
-                  "Klick auf Zielordner, Titel, Tags oder Datum korrigiert die Zeile - beim Zielordner "
+                  "Doppelklick (oder Rechtsklick) auf Zielordner, Titel, Tags oder Datum korrigiert die Zeile - "
+                  "beim Zielordner "
                   "wahlweise für alle Dokumente des Absenders (wird dann als Zuordnung gemerkt, "
                   "einsehbar unter 'Gemerkte Zuordnungen…'). "
-                  "Klick auf 'Ergebnis' einer gelben Zeile: nach eigener Prüfung trotzdem "
+                  "Doppelklick auf 'Ergebnis' einer gelben Zeile: nach eigener Prüfung trotzdem "
                   "automatisch ablegen (manuelle Freigabe); bei einer grünen Zeile: doch nicht automatisch "
                   "ablegen, sondern in den Unsicher-Ordner (wird gelb). "
                   "Tags mit '(neu→Kategorie)' kommen beim Einsortieren in den Tag-Katalog. "
@@ -463,6 +524,8 @@ class AutoFilerPreviewWindow(tk.Toplevel):
         ignorierte = tag_ignorierliste.lade(self.app.master_folder)
 
         self.ergebnisse = {}
+        self.ki_tags = {}
+        self.ki_titel = {}
         self.neue_ordner = set()  # in DIESEM Lauf vorgeschlagene, noch nicht existierende Ordner
         self.btn_analyse.config(state=tk.DISABLED)
         self.btn_einsortieren.config(state=tk.DISABLED)
@@ -573,18 +636,18 @@ class AutoFilerPreviewWindow(tk.Toplevel):
 
     def _zeige_entscheidung(self, iid, entscheidung):
         self.ergebnisse[iid] = entscheidung
+        if entscheidung is not None:
+            # erste Anzeige = Ergebnis der Analyse: vergebene Tags + Katalog-Tags der KI (nur zum Anklicken)
+            self.ki_tags.setdefault(iid, list(dict.fromkeys(
+                list(entscheidung["tags"]) + list(entscheidung.get("tag_vorschlaege") or []))))
+            self.ki_titel.setdefault(iid, entscheidung.get("titel") or "")
         if not (self.winfo_exists() and self.tree.exists(iid)):
             return
         if entscheidung is None:
             self.tree.item(iid, tags=("fehler",))
             self.tree.set(iid, "status", "FEHLER: KI-Aufruf fehlgeschlagen (siehe Log)")
             return
-        ist_neu = entscheidung["ordner_neu"] or entscheidung["zielordner"] in getattr(self, "neue_ordner", ())
-        ziel = entscheidung["zielordner"] + (" (neu)" if ist_neu else "")
-        if entscheidung.get("ordner_per_alias"):
-            ziel += " [Objekt-Alias]" if entscheidung.get("ordner_hinweis") == "Objekt" else " [Alias]"
-        elif entscheidung.get("ordner_hinweis"):
-            ziel += f" [aus {entscheidung['ordner_hinweis']}]"
+        ziel = zielordner_text(entscheidung, getattr(self, "neue_ordner", ()))
         if entscheidung["sicher"]:
             if self._umbenennen():
                 status = f"wird automatisch abgelegt als: {entscheidung['neuer_dateiname']}"
@@ -607,22 +670,30 @@ class AutoFilerPreviewWindow(tk.Toplevel):
             ersetzt = ", ".join(f"{alt}→{neu}" for alt, neu in entscheidung["tag_ersetzungen"])
             status = f"[Synonym: {ersetzt}] " + status
         self.tree.item(iid, tags=(markierung,))
-        neu = {t.lower(): k for t, k in entscheidung.get("neue_tags", [])}
-        tags_text = ", ".join(
-            f"{t} (neu→{neu[t.lower()] or self.app.tag_manager.KATEGORIE_NEU})" if t.lower() in neu else t
-            for t in entscheidung["tags"])
+        tags_text = tags_zelle(entscheidung["tags"], entscheidung.get("neue_tags", []), self.ki_tags.get(iid, []),
+                               self.app.tag_manager.KATEGORIE_NEU)
         for col, wert in (("titel", entscheidung["titel"]), ("tags", tags_text),
                            ("datum", entscheidung["datum"]), ("ziel", ziel), ("status", status)):
             self.tree.set(iid, col, wert)
         if iid in self.tree.selection():
             self._zeige_ergebnis_volltext()
 
-    def _on_klick(self, event):
-        """Klick in die Zielordner-, Titel-, Tags- oder Datum-Zelle einer analysierten Zeile öffnet die Korrektur."""
-        if self.tree.identify_region(event.x, event.y) != "cell":
-            return
-        spalte = self.tree.column(self.tree.identify_column(event.x), "id")
-        iid = self.tree.identify_row(event.y)
+    def _bisheriger_titel(self, iid):
+        """Titel, der schon im PDF steht (Ablage-Vorschau für markierte Dokumente); '' bei Scans ohne Titel."""
+        try:
+            return (PDFHandler.get_metadata(self.rows.get(iid, "")).get("title") or "").strip()
+        except Exception:
+            return ""
+
+    def _menue_eintraege(self, iid):
+        """Rechtsklick-Menü einer analysierten Zeile (UIUtils.tabelle_bearbeitbar); vor der Analyse und nach dem
+        Einsortieren keins."""
+        if self.einsortiert or not self.ergebnisse.get(iid):
+            return None
+        return korrektur_menue(self.ergebnisse[iid])
+
+    def _bearbeite(self, iid, spalte):
+        """Korrektur einer Zelle (Zielordner, Titel, Tags, Datum, Ergebnis) einer analysierten Zeile."""
         if not iid or self.einsortiert or not self.ergebnisse.get(iid):
             return
         entscheidung = self.ergebnisse[iid]
@@ -634,19 +705,24 @@ class AutoFilerPreviewWindow(tk.Toplevel):
             if dialog.ergebnis:
                 self._setze_zielordner(iid, dialog.ergebnis, fuer_alle=dialog.fuer_alle)
         elif spalte == "titel":
-            titel = UIUtils.ask_string(
-                "Titel korrigieren", "Titel für dieses Dokument (wird Teil des Dateinamens):",
-                initialvalue=entscheidung["titel"], parent=self)
+            # B4d (21.11.2026): derselbe Titel-Dialog wie in „Titel vorschlagen“ - KI-Titel der Analyse als Knopf
+            # (auch nach einer Korrektur) und der bisherige Titel im PDF, damit ein schlechterer Vorschlag einen
+            # gepflegten Titel nicht verdrängt (Peter 21.11.2026 beim Titelvorschlag)
+            kandidaten = [t for t in dict.fromkeys((self.ki_titel.get(iid, ""), entscheidung["titel"])) if t]
+            titel = CandidatePickerDialog.ask(self, "Titel korrigieren", kandidaten, entscheidung["titel"],
+                                              bisher=self._bisheriger_titel(iid))
             if titel is not None and titel.strip():
                 self._zeige_entscheidung(iid, auto_pilot.wende_korrektur_an(entscheidung, titel=titel))
         elif spalte == "tags":
             # Nutzerwunsch 01./03.09.2026: Tags direkt in der Vorschau korrigierbar -
             # "hab da gerade ein Tag gefunden, das nicht passt". Komma trennt (FALLSTRICKE #38).
-            text = UIUtils.ask_string(
-                "Tags korrigieren", "Tags für dieses Dokument, durch Komma getrennt:",
-                initialvalue=", ".join(entscheidung["tags"]), parent=self)
+            # B4a (21.11.2026): derselbe Dialog wie beim Titelvorschlag - Tags als Knöpfe zum An-/Abwählen
+            # (auch abgewählte KI-Tags bleiben da) und Vervollständigung aus dem Katalog statt freiem Text.
+            tm = getattr(self.app, "tag_manager", None)
+            bekannt = {t.lower() for t in tm.get_known_tags()} if tm else set()
+            text = TagSuggestionDialog.ask(self, "Tags korrigieren", ", ".join(entscheidung["tags"]),
+                                           self.ki_tags.get(iid, []), bekannt, app=self.app)
             if text is not None:
-                tm = getattr(self.app, "tag_manager", None)
                 self._zeige_entscheidung(iid, auto_pilot.wende_korrektur_an(
                     entscheidung, tags=text,
                     known_tags=tm.get_known_tags() if tm else None,
@@ -685,7 +761,7 @@ class AutoFilerPreviewWindow(tk.Toplevel):
             mb.showinfo(
                 "Erst korrigieren",
                 "Diese Punkte lassen sich direkt beheben - bitte auf die jeweilige Zelle "
-                "(Titel, Tags, Datum bzw. Zielordner) klicken:\n\n- " + "\n- ".join(korrigierbar),
+                "(Titel, Tags, Datum bzw. Zielordner) doppelklicken:\n\n- " + "\n- ".join(korrigierbar),
                 parent=self)
             return
         if bestaetigung.frage(
@@ -712,24 +788,15 @@ class AutoFilerPreviewWindow(tk.Toplevel):
             folder_manager.zeige_dokument(self.rows.get(auswahl[0]))
 
     def _frage_datum(self, iid, entscheidung):
-        """Datum-Eingabe (JJJJ-MM-TT oder TT.MM.JJJJ), vorbelegt mit KI-Datum oder Dateinamen-Präfix; fragt bei Tippfehlern erneut."""
+        """Datum-Eingabe, vorbelegt mit KI-Datum oder Dateinamen-Präfix. Der Datumsdialog prüft beim Tippen und
+        nennt den Wochentag bzw. den Grund (B4b, 21.11.2026 - vorher Fehlermeldung und neuer Anlauf)."""
         vorgabe = entscheidung["datum"] or auto_pilot.datum_aus_dateiname(entscheidung["pdf_path"])
-        while True:
-            datum = UIUtils.ask_string(
-                "Dokumentdatum korrigieren",
-                "Dokumentdatum (das Datum auf dem Brief, nicht das Scan-Datum),\nz.B. 20.07.2026 oder 2026-07-20:",
-                initialvalue=vorgabe, parent=self)
-            if datum is None:
-                return
-            neu = auto_pilot.wende_korrektur_an(entscheidung, datum=datum)
-            if auto_pilot._datum_ist_plausibel(neu["datum"]):
-                self._zeige_entscheidung(iid, neu)
-                return
-            mb.showwarning("Ungültiges Datum",
-                           f"'{datum}' ist kein plausibles Datum (echtes Kalenderdatum, nicht in der Zukunft). "
-                           "Bitte als TT.MM.JJJJ oder JJJJ-MM-TT eingeben, z.B. 27.09.2020.",
-                           parent=self)
-            vorgabe = datum
+        datum = UIUtils.ask_datum(
+            "Dokumentdatum korrigieren",
+            "Dokumentdatum (das Datum auf dem Brief, nicht das Scan-Datum),\nz.B. 20.07.2026, 2026-07-20 oder 200726:",
+            initialvalue=vorgabe, pruefe=auto_pilot.datum_aus_eingabe, parent=self)
+        if datum:
+            self._zeige_entscheidung(iid, auto_pilot.wende_korrektur_an(entscheidung, datum=datum))
 
     def _setze_zielordner(self, iid, zielordner, fuer_alle=False):
         """
@@ -760,8 +827,10 @@ class AutoFilerPreviewWindow(tk.Toplevel):
             passt = andere_iid == iid or (
                 fuer_alle and absender and auto_pilot.alias_trifft(andere, absender, zielordner))
             if passt:
-                self._zeige_entscheidung(
-                    andere_iid, auto_pilot.wende_zielordner_an(andere, zielordner, self.ordnerliste))
+                neu = auto_pilot.wende_zielordner_an(andere, zielordner, self.ordnerliste)
+                # [von Hand] statt [Alias], solange kein Alias gespeichert wurde (zielordner_text)
+                neu["ordner_von_hand"] = not (fuer_alle and absender)
+                self._zeige_entscheidung(andere_iid, neu)
 
     def _ordnerliste_auffrischen(self):
         """Ordner, die seit der Analyse angelegt wurden (z.B. im Hauptfenster), in die Zielordner-Auswahl aufnehmen
@@ -870,6 +939,10 @@ class AutoFilerPreviewWindow(tk.Toplevel):
 
     def _zeige_zusammenfassung(self, abgelegt, unsicher_verschoben, fehlgeschlagen):
         """Abschlussmeldung nach dem Einsortieren - beim Posteingang-Stapel oft die einzige Rückmeldung, die der Nutzer wirklich liest."""
+        if not unsicher_verschoben and not fehlgeschlagen:
+            # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+            aktivitaet.erledigt(f"{abgelegt} Dokument(e) automatisch abgelegt")
+            return
         zeilen = [f"{abgelegt} Dokument(e) automatisch abgelegt."]
         if unsicher_verschoben:
             zeilen.append(f"{unsicher_verschoben} Dokument(e) nach '{auto_pilot.UNSICHER_ORDNER}' verschoben — "
@@ -913,6 +986,7 @@ class AutoFilerInboxTool(BaseTool):
     (Schritt 5) soll genau diesen Weg benutzen können, ohne dass jemand vorher
     Dokumente in einer Liste markiert.
     """
+    fenster_schluessel = "ablage_vorschau"   # teilt sich das Fenster mit AutoFilerTool
 
     def __init__(self):
         self.window = None
@@ -971,12 +1045,10 @@ class AutoFilerInboxTool(BaseTool):
                         "Im Posteingang liegen keine Dokumente — es gibt nichts zu tun.")
             return False
 
-        if self.window and self.window.winfo_exists():
-            self.window.destroy()
-        self.window = AutoFilerPreviewWindow(
+        self.window = self.oeffne_fenster(lambda: AutoFilerPreviewWindow(
             context.app, pdf_paths,
             fenstertitel=f"Vollautomatik — Posteingang ({len(pdf_paths)} Dokumente)",
-            auto_start=True)
+            auto_start=True), pdf_paths)
         return True
 
 

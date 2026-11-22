@@ -465,6 +465,8 @@ class AutoPilotService:
                 vermerk += "  (Synonym: " + ", ".join(f"{a} -> {n}" for a, n in entscheidung["tag_ersetzungen"]) + ")"
             if entscheidung.get("ordner_gedaechtnis"):
                 vermerk += f"  (Ordner aus dem Gedächtnis: {entscheidung['ordner_gedaechtnis']} Dokumente dieses Absenders)"
+            if entscheidung.get("datum_stempel"):
+                vermerk += f"  (Datum {entscheidung['datum']} statt Eingangsstempel {entscheidung['datum_stempel']})"
             if entscheidung.get("ordner_hinweis") == auto_pilot.STECKBRIEF_HINWEIS:
                 vermerk += "  (Ordner aus dem Steckbrief)"     # nie die Nummern selbst - das Protokoll lesen Angehörige
             self._log("info", f"Vollautomatik: {pfad} -> {ergebnis['neuer_pfad']}{vermerk}")

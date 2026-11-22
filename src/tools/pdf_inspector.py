@@ -45,11 +45,7 @@ class PDFInspectorTool(BaseTool):
     def execute(self, context: ToolContext) -> bool:
         pdf_path = context.selected_files[0] if context.selected_files else ""
         
-        if self.inspector_window and self.inspector_window.winfo_exists():
-            self.inspector_window.lift()
-            if pdf_path: self.inspector_window.update_data(pdf_path)
-        else:
-            self.inspector_window = PDFInspectorWindow(context.app.root, pdf_path)
+        self.inspector_window = self.oeffne_fenster(lambda: PDFInspectorWindow(context.app.root, pdf_path), pdf_path)
         return True
 
     # --- NEU: Das Live-Update-Radio ---
@@ -102,6 +98,10 @@ class PDFInspectorWindow(tk.Toplevel):
         text_widget.configure(yscrollcommand=scroll.set)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         text_widget.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+
+    def uebernimm_eingabe(self, pfade):
+        """Für BaseTool.oeffne_fenster: ein erneuter Aufruf mit einer anderen Datei zeigt diese (nur Anzeige)."""
+        self.update_data(pfade[0])
 
     def update_data(self, new_pdf_path):
         self.pdf_path = new_pdf_path

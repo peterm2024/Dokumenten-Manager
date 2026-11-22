@@ -916,6 +916,8 @@ class WikiFenster(tk.Toplevel):
 
 
 class WikiTool(BaseTool):
+    fenster_schluessel = "wiki_von_hand"   # auch Wiki-Unterfenster öffnen das Wiki unter diesem Schlüssel
+
     @property
     def name(self) -> str:
         return "Wiki"
@@ -954,7 +956,7 @@ class WikiTool(BaseTool):
 
     def execute(self, context: ToolContext) -> bool:
         app = context.app
-        UIUtils.einzelfenster("wiki_von_hand", lambda: WikiFenster(app))
+        self.oeffne_fenster(lambda: WikiFenster(app))
         return True
 
     def fuelle_kontextmenue(self, menu, context):

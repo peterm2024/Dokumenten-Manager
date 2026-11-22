@@ -93,11 +93,7 @@ class SettingsEditorTool(BaseTool):
         return "none"
 
     def execute(self, context: ToolContext) -> bool:
-        if self.editor_window and self.editor_window.winfo_exists():
-            self.editor_window.lift()
-            self.editor_window.focus()
-        else:
-            self.editor_window = SettingsEditorWindow(context.app.root, context.app)
+        self.editor_window = self.oeffne_fenster(lambda: SettingsEditorWindow(context.app.root, context.app))
         return True
 
 
@@ -135,9 +131,15 @@ class SettingsEditorWindow(tk.Toplevel):
         self.protocol("WM_DELETE_WINDOW", self.destroy)
 
         self._setup_ui()
-        # Mindestgröße = was der größte Reiter braucht (gemessen, passt sich 125 % Textgröße an; 100 %: 710 × 619),
-        # höchstens die Startgröße - die ist schon auf den Bildschirm begrenzt (Peter 02.11.2026)
+        # Startgröße nie kleiner als der größte Reiter (Peter 21.11.2026 bei T9c.7: im Reiter „KI-Server“ war
+        # „Verbindung testen“ abgeschnitten - der Reiter war mit Wecken und „KI ohne Grafikkarte“ auf 630 px
+        # gewachsen, das Fenster blieb bei festen 620); position_near_mouse begrenzt weiter auf den Bildschirm
         self.update_idletasks()
+        if self.winfo_reqwidth() > breite or self.winfo_reqheight() > hoehe:
+            breite, hoehe = UIUtils.position_near_mouse(self, max(breite, self.winfo_reqwidth()),
+                                                        max(hoehe, self.winfo_reqheight()))
+        # Mindestgröße = was der größte Reiter braucht (gemessen, passt sich 125 % Textgröße an), höchstens die
+        # Startgröße - die ist schon auf den Bildschirm begrenzt (Peter 02.11.2026)
         self.minsize(min(self.winfo_reqwidth(), breite), min(self.winfo_reqheight(), hoehe))
 
     # ==========================================
@@ -830,7 +832,8 @@ class SettingsEditorWindow(tk.Toplevel):
 
     def _on_erweitert_upgrade_done(self, dialog, done):
         dialog.destroy()
-        messagebox.showinfo("Fertig", f"{done} Dokument(e) aus dem Altbestand auf 'Erweitert' hochgestuft.", parent=self)
+        # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+        aktivitaet.erledigt(f"{done} Dokument(e) aus dem Altbestand auf 'Erweitert' hochgestuft")
 
     def _on_erweitert_upgrade_failed(self, dialog, msg):
         dialog.destroy()
@@ -879,7 +882,8 @@ class SettingsEditorWindow(tk.Toplevel):
 
     def _on_ocr_upgrade_done(self, dialog, done):
         dialog.destroy()
-        messagebox.showinfo("Fertig", f"{done} Dokument(e) auf 'Fortgeschritten' hochgestuft.", parent=self)
+        # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+        aktivitaet.erledigt(f"{done} Dokument(e) auf 'Fortgeschritten' hochgestuft")
 
     def _on_ocr_upgrade_failed(self, dialog, msg):
         dialog.destroy()
@@ -932,10 +936,14 @@ class SettingsEditorWindow(tk.Toplevel):
 
     def _on_meister_upgrade_done(self, dialog, done, skipped):
         dialog.destroy()
-        msg = f"{done} Dokument(e) auf 'Meister' hochgestuft."
-        if skipped:
-            msg += f"\n{skipped} Dokument(e) übersprungen (noch nicht auf 'Fortgeschritten')."
-        messagebox.showinfo("Fertig", msg, parent=self)
+        msg = f"{done} Dokument(e) auf 'Meister' hochgestuft"
+        if not skipped:
+            # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+            aktivitaet.erledigt(msg)
+            return
+        # übersprungene Dokumente muss der Nutzer erst auf 'Fortgeschritten' bringen - das bleibt ein Fenster
+        msg += f".\n{skipped} Dokument(e) übersprungen (noch nicht auf 'Fortgeschritten')."
+        messagebox.showinfo("Teilweise hochgestuft", msg, parent=self)
 
     def _on_meister_upgrade_failed(self, dialog, msg):
         dialog.destroy()
@@ -1035,4 +1043,5 @@ class SettingsEditorWindow(tk.Toplevel):
         if "sash_positions" in data:
             self.app.apply_saved_layout()
 
-        messagebox.showinfo("Übernommen", "Die Experten-Einstellungen wurden gespeichert.", parent=self)
+        # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+        aktivitaet.erledigt("Experten-Einstellungen gespeichert")

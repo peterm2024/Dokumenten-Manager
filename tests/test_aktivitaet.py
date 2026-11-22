@@ -60,6 +60,9 @@ class TestOhneAnzeige(unittest.TestCase):
             p.melde("q")
         with aktivitaet.warte_auf_antwort("Titel"):
             pass
+        with self.assertLogs("DocManager", "INFO") as log:
+            aktivitaet.erledigt("Ordnerstruktur angelegt")
+        self.assertIn("Ordnerstruktur angelegt", log.output[0])
 
 
 class TestAnzeige(unittest.TestCase):
@@ -173,6 +176,85 @@ class TestAnzeige(unittest.TestCase):
             fn(*args)
         self.assertIn("aus Thread", self.anzeige.aktueller_text())
         aktivitaet.beende(ergebnis["token"])
+
+
+class TestErledigt(unittest.TestCase):
+    """A2 (Peter 21.11.2026): reine Erfolgsmeldungen ohne Fenster - kurz in der Leiste, dazu im Log."""
+
+    def setUp(self):
+        self.root = FakeRoot()
+        self.anzeige = aktivitaet.Anzeige(self.root, FakeMenubar(), 3)
+        aktivitaet.registriere(self.anzeige)
+        self.addCleanup(aktivitaet.registriere, None)
+
+    def _ablaufen(self):
+        """Führt die geplanten Abräum-Aufträge aus (FakeRoot plant nur)."""
+        auftraege, self.root.auftraege = self.root.auftraege, []
+        for _ms, fn, args in auftraege:
+            if fn is not None and getattr(fn, "__name__", "") == "_erledigt_weg":
+                fn(*args)
+
+    def test_zeigt_haken_ohne_spinner_und_verschwindet(self):
+        with self.assertLogs("DocManager", "INFO") as log:
+            aktivitaet.erledigt("3 Titel geschrieben")
+        self.assertEqual(self.anzeige.aktueller_text(), "✓ 3 Titel geschrieben")
+        self.assertIn("3 Titel geschrieben", log.output[0])
+        self.assertFalse(self.anzeige.laeuft())
+        self._ablaufen()
+        self.assertEqual(self.anzeige.aktueller_text(), "Bereit")
+
+    def test_laufende_phase_hat_vorrang(self):
+        aktivitaet.erledigt("gespeichert")
+        with aktivitaet.phase("Lese Ordner…"):
+            self.assertIn("Lese Ordner…", self.anzeige.aktueller_text())
+        self.assertEqual(self.anzeige.aktueller_text(), "✓ gespeichert")
+
+    def test_auffaelliges_feld_bekommt_text_und_dauer(self):
+        gezeigt = []
+        self.anzeige.erfolg_feld = lambda text, ms: gezeigt.append((text, ms))
+        aktivitaet.erledigt("Ordnerstruktur angelegt")
+        self.assertEqual(gezeigt, [("Ordnerstruktur angelegt", aktivitaet.ERLEDIGT_MS)])
+
+    def test_fehler_im_feld_stoert_nicht(self):
+        def kaputt(text, ms):
+            raise RuntimeError("Fenster schon weg")
+        self.anzeige.erfolg_feld = kaputt
+        aktivitaet.erledigt("gespeichert")
+        self.assertEqual(self.anzeige.aktueller_text(), "✓ gespeichert")
+
+    def test_neuere_meldung_behaelt_ihre_zeit(self):
+        aktivitaet.erledigt("erste")
+        erster = list(self.root.auftraege)
+        aktivitaet.erledigt("zweite")
+        for _ms, fn, args in erster:
+            fn(*args)                 # die Zeit der ersten läuft ab ...
+        self.assertEqual(self.anzeige.aktueller_text(), "✓ zweite")   # ... die zweite bleibt stehen
+
+
+class TestKeineErfolgsfenster(unittest.TestCase):
+    """Wächter zu A2: kein Meldungsfenster, das nur Erfolg bestätigt - dafür gibt es aktivitaet.erledigt."""
+
+    ERFOLGSTITEL = {"Erfolg", "Erledigt", "Fertig", "Übernommen", "Zurückgesetzt", "Gespeichert"}
+
+    def test_kein_showinfo_mit_erfolgstitel(self):
+        import ast
+        import os
+        src = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src")
+        funde = []
+        for ordner, _unter, dateien in os.walk(src):
+            for name in dateien:
+                if not name.endswith(".py"):
+                    continue
+                pfad = os.path.join(ordner, name)
+                with open(pfad, encoding="utf-8") as f:
+                    baum = ast.parse(f.read())
+                for knoten in ast.walk(baum):
+                    if (isinstance(knoten, ast.Call) and isinstance(knoten.func, ast.Attribute)
+                            and knoten.func.attr == "showinfo" and knoten.args
+                            and isinstance(knoten.args[0], ast.Constant)
+                            and knoten.args[0].value in self.ERFOLGSTITEL):
+                        funde.append(f"{os.path.relpath(pfad, src)}:{knoten.lineno} „{knoten.args[0].value}“")
+        self.assertEqual(funde, [], "Erfolg ohne Fenster melden: aktivitaet.erledigt(text)")
 
 
 if __name__ == "__main__":

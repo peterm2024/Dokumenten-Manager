@@ -1,4 +1,6 @@
 import os
+
+import aktivitaet
 import threading
 import tkinter as tk
 import tkinter.font as tkfont
@@ -9,6 +11,7 @@ import ollama_client
 from pdf_handler import PDFHandler
 from tag_manager import TagManager
 from tools.base_tool import BaseTool, ToolContext
+from tag_autocomplete import TagAutocomplete
 from tools.title_cleanup import CandidatePickerDialog
 from ui_utils import UIUtils
 import ui_theme
@@ -172,10 +175,8 @@ class AiTitleSuggestTool(BaseTool):
         return "multiple_files"
 
     def execute(self, context: ToolContext) -> bool:
-        if self.window and self.window.winfo_exists():
-            self.window.lift()
-        else:
-            self.window = AiTitleSuggestWindow(context.app.root, context.app, context.selected_files)
+        self.window = self.oeffne_fenster(
+            lambda: AiTitleSuggestWindow(context.app.root, context.app, context.selected_files), context.selected_files)
         return True
 
 
@@ -217,7 +218,7 @@ class AiTitleSuggestWindow(tk.Toplevel):
         self.tree.column("suggestion", width=UIUtils.px(self, 280), stretch=False)
         self.tree.column("tags", width=UIUtils.px(self, 280), stretch=True)
         self.tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        self.tree.bind("<Double-1>", self._edit_suggestion)
+        UIUtils.tabelle_bearbeitbar(self.tree, self._bearbeite, menue=lambda iid: self.MENUE, f2_spalte="suggestion")
         self.tree.bind("<space>", self._toggle_check)
         self.tree.bind("<<TreeviewSelect>>", self._sync_main_selection)
 
@@ -226,7 +227,7 @@ class AiTitleSuggestWindow(tk.Toplevel):
         # Knopf zuerst: pack verteilt den Platz in Aufrufreihenfolge - mit der breiteren Windows-11-Schrift nahm
         # der lange Hinweis dem Knopf sonst ein Drittel weg (Etappe 11 Schritt 3)
         ttk.Button(bottom, text="Markierte übernehmen", command=self._apply_checked, style="Accent.TButton").pack(side=tk.RIGHT)
-        ttk.Label(bottom, text="Doppelklick auf Titel/Tags = bearbeiten, Leertaste = an/abwählen. Tag-Vorschläge kommen nur aus dem Katalog und erst per Klick ins Dokument.", foreground="gray40", justify=tk.LEFT,
+        ttk.Label(bottom, text="Doppelklick, Rechtsklick oder F2 auf Titel/Tags = bearbeiten, Leertaste = an/abwählen. Tag-Vorschläge kommen nur aus dem Katalog und erst per Klick ins Dokument.", foreground="gray40", justify=tk.LEFT,
                   wraplength=UIUtils.px(self, 680)).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def _populate(self, paths):
@@ -373,20 +374,22 @@ class AiTitleSuggestWindow(tk.Toplevel):
             new_check = "☐" if check == "☑" else "☑"
             self.tree.item(iid, values=(new_check, old_title, suggestion, tags))
 
-    def _edit_suggestion(self, event):
-        iid = self.tree.identify_row(event.y)
-        col = self.tree.identify_column(event.x)
-        if not iid:
-            return
-        if col == "#3":
+    MENUE = [("suggestion", "Titel bearbeiten…"), ("tags", "Tags bearbeiten…"), ("check", "Haken setzen/entfernen")]
+
+    def _bearbeite(self, iid, spalte):
+        """Doppelklick, Rechtsklick-Menü oder F2 (UIUtils.tabelle_bearbeitbar)."""
+        if spalte == "suggestion":
             self._edit_title(iid)
-        elif col == "#4":
+        elif spalte == "tags":
             self._edit_tags(iid)
+        elif spalte == "check":
+            self._toggle_check()
 
     def _edit_title(self, iid):
         check, old_title, suggestion, tags = self.tree.item(iid, "values")
         current = suggestion if suggestion != "(kein Vorschlag)" else ""
-        new_value = CandidatePickerDialog.ask(self, "Titel bearbeiten", [current] if current else [], current)
+        new_value = CandidatePickerDialog.ask(self, "Titel bearbeiten", [current] if current else [], current,
+                                              bisher=old_title)
         if new_value and new_value.strip():
             self.rows[iid]["suggestion"] = new_value.strip()
             self.tree.item(iid, values=("☑", old_title, new_value.strip(), tags))
@@ -397,7 +400,8 @@ class AiTitleSuggestWindow(tk.Toplevel):
         row = self.rows[iid]
         current_csv = row.get("tags_csv", row["keywords"])
         suggested = row.get("suggested_tags", [])
-        new_value = TagSuggestionDialog.ask(self, "Tags bearbeiten", current_csv, suggested, known_tags_lower)
+        new_value = TagSuggestionDialog.ask(self, "Tags bearbeiten", current_csv, suggested, known_tags_lower,
+                                            app=self.app)
         if new_value is not None:
             tags_list = [t.strip() for t in new_value.split(",") if t.strip()]
             row["tags_csv"] = ", ".join(tags_list)
@@ -451,7 +455,8 @@ class AiTitleSuggestWindow(tk.Toplevel):
         if errors:
             messagebox.showerror("Teilweise fehlgeschlagen", "\n".join(errors))
         else:
-            messagebox.showinfo("Erledigt", "Alle markierten Titel wurden aktualisiert.")
+            # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+            aktivitaet.erledigt(f"{len(to_apply)} Titel geschrieben")
 
 
 class TagSuggestionDialog(tk.Toplevel):
@@ -465,13 +470,17 @@ class TagSuggestionDialog(tk.Toplevel):
     dasselbe Rendering-Problem). Noch nicht im Tag-Katalog vorhandene Vorschläge tragen den
     Text-Marker "(neu)" auf dem Button - im Textfeld selbst steht immer der reine,
     speicherbare Tag-Text ohne Marker.
+
+    Seit B4a (Peter 21.11.2026: „ein Fenster, welches die Tags als Buttons zur Auswahl stellt ... sollten wir auf
+    alle Fälle noch zusätzlich integrieren“) auch der Tag-Dialog der Ablage-Vorschau, und mit `app` bekommt das
+    Textfeld die Vervollständigung aus dem Hauptfenster (TagAutocomplete) - kein Tippfehler-Tag mehr.
     """
     CHECKED_BG = ui_theme.FARBEN["akzent"]      # helles Design (Etappe 11): Akzent statt steelblue,
     CHECKED_FG = "white"
     UNCHECKED_BG = ui_theme.FARBEN["knopf"]     # Knopffarbe statt Windows-Grau
     UNCHECKED_FG = ui_theme.FARBEN["text"]
 
-    def __init__(self, parent, title, current_tags_csv, suggested_tags, known_tags_lower):
+    def __init__(self, parent, title, current_tags_csv, suggested_tags, known_tags_lower, app=None):
         super().__init__(parent)
         self.title(title)
         self.transient(parent)
@@ -505,8 +514,13 @@ class TagSuggestionDialog(tk.Toplevel):
         self.text.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         # Return bestätigt wie vorher beim Entry (Zeilenumbrüche ergeben in einer
         # Komma-Liste keinen Sinn); "break" verhindert das Einfügen des Umbruchs.
-        self.text.bind("<Return>", lambda e: self._confirm() or "break")
         self.text.bind("<KeyRelease>", self._sync_checks_from_text)
+        if app is not None and hasattr(app, "tag_manager"):
+            # Vervollständigung VOR dem Return-Handler binden: übernimmt Return einen angewählten Vorschlag,
+            # stoppt sie per "break", sonst bestätigt Return den Dialog (wie im Tags-Feld, layout_builder)
+            self.autocomplete = TagAutocomplete(app, text=self.text, ausschluss_fn=self._current_list,
+                                                nach_uebernahme=self._sync_checks_from_text, popup_parent=self)
+        self.text.bind("<Return>", lambda e: self._confirm() or "break", add="+")
 
         btns = tk.Frame(self)
         btns.pack(fill=tk.X, padx=10, pady=(0, 10))
@@ -555,7 +569,7 @@ class TagSuggestionDialog(tk.Toplevel):
         self.destroy()
 
     @staticmethod
-    def ask(parent, title, current_tags_csv, suggested_tags, known_tags_lower):
-        dialog = TagSuggestionDialog(parent, title, current_tags_csv, suggested_tags, known_tags_lower)
+    def ask(parent, title, current_tags_csv, suggested_tags, known_tags_lower, app=None):
+        dialog = TagSuggestionDialog(parent, title, current_tags_csv, suggested_tags, known_tags_lower, app=app)
         parent.wait_window(dialog)
         return dialog.result

@@ -113,9 +113,7 @@ class DocumentRecaptureTool(BaseTool):
         if not pdf_path.lower().endswith(".pdf"):
             mb.showinfo("Hinweis", "Bitte ein PDF auswählen.")
             return False
-        if self.window and self.window.winfo_exists():
-            self.window.destroy()
-        self.window = RecaptureAnalysisWindow(context.app, pdf_path)
+        self.window = self.oeffne_fenster(lambda: RecaptureAnalysisWindow(context.app, pdf_path), pdf_path)
         return True
 
     def on_selection_changed(self, context: ToolContext) -> None:
@@ -194,6 +192,11 @@ class RecaptureAnalysisWindow(tk.Toplevel):
         """Wird von on_file_moved gerufen - Pfad und Titel nachziehen, Analyse bleibt gültig (Inhalt unverändert)."""
         self.pdf_path = new_path
         self.title(f"Dokument neu erfassen — {os.path.basename(new_path)}")
+
+    def uebernimm_eingabe(self, pfade):
+        """Für BaseTool.oeffne_fenster: ein erneuter Aufruf mit einer anderen Datei wechselt dorthin, wie die
+        Auswahl in der Liste (on_selection_changed)."""
+        self.wechsle_dokument(pfade[0])
 
     def wechsle_dokument(self, new_path):
         """
@@ -319,7 +322,8 @@ class RecaptureAnalysisWindow(tk.Toplevel):
             # 11.09.2026) - VOR der Messagebox, damit der neue Wert schon dasteht
             if hasattr(self.app, 'folder_manager') and hasattr(self.app.folder_manager, 'aktualisiere_textqualitaet'):
                 self.app.folder_manager.aktualisiere_textqualitaet(zielpfad)
-            mb.showinfo("Fertig", meldung, parent=self)
+            # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+            aktivitaet.erledigt(meldung)
             if getattr(self.app, 'current_preview_path', None) == zielpfad and hasattr(self.app, 'preview_manager'):
                 self.app.preview_manager.verwerfe_cache()
                 self.app.preview_manager.update_preview()

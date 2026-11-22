@@ -69,6 +69,8 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 
 ::: auto_pilot
 ::: personen_namen
+::: eingangsstempel
+::: ordnernamen
 ::: auto_pilot_service
 ::: dienstmodus
 ::: posteingang_sperre

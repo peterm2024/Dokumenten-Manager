@@ -814,15 +814,16 @@ class PDFHandler:
 
     @classmethod
     def normalize_date_input(cls, raw_input):
-        """Wandelt Tastatureingaben (z.B. '150426' oder '15.4.26') und ISO-Daten in das Format YYYY-MM-DD um; gibt None bei ungültiger Eingabe zurück."""
+        """Wandelt Tastatureingaben (z.B. '150426' oder '15.4.26') und ISO-Daten in das Format YYYY-MM-DD um; gibt None
+        bei ungültiger Eingabe zurück - auch bei einem Datum in der Zukunft (Peter 21.11.2026: dieselbe Regel wie in
+        der Ablage-Vorschau; vorher nahm das Hauptfenster Zukunftsdaten an). Zweistellige Jahre: jahr_vierstellig."""
         raw = raw_input.strip()
         if not raw:
             return None
 
         if raw.isdigit():
             if len(raw) == 6:
-                day, month, year = int(raw[0:2]), int(raw[2:4]), int(raw[4:6])
-                year += 2000 if year < 80 else 1900
+                day, month, year = int(raw[0:2]), int(raw[2:4]), cls.jahr_vierstellig(int(raw[4:6]))
             elif len(raw) == 8:
                 day, month, year = int(raw[0:2]), int(raw[2:4]), int(raw[4:8])
             else:
@@ -835,15 +836,27 @@ class PDFHandler:
                     year, month, day = int(parts[0]), int(parts[1]), int(parts[2])
                 else:
                     day, month, year = int(parts[0]), int(parts[1]), int(parts[2])
-                    if year < 100:
-                        year += 2000 if year < 80 else 1900
+                    year = cls.jahr_vierstellig(year)
             else:
                 return None
 
         try:
-            return datetime(year, month, day).strftime("%Y-%m-%d")
+            wert = datetime(year, month, day)
         except ValueError:
             return None
+        if wert.date() > datetime.now().date():
+            return None
+        return wert.strftime("%Y-%m-%d")
+
+    @staticmethod
+    def jahr_vierstellig(jahr, heute=None):
+        """Zweistelliges Jahr vierstellig machen - EINE Regel für Hauptfenster und Ablage-Vorschau (Peter 21.11.2026;
+        vorher < 80 bzw. < 50 -> 20xx, „15.4.60“ war hier 2060, dort 1960): bis zum laufenden Jahr 20xx, sonst 19xx.
+        Vierstellige Jahre bleiben."""
+        if jahr >= 100:
+            return jahr
+        heute = heute or datetime.now()
+        return 2000 + jahr if jahr <= heute.year % 100 else 1900 + jahr
 
     @staticmethod
     def get_page_count(pdf_path):

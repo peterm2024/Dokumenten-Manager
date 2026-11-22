@@ -75,5 +75,18 @@ class TestAuswahlfeld(unittest.TestCase):
         feld.destroy()
 
 
+class TestStartgroesseNachInhalt(unittest.TestCase):
+    """Peter 21.11.2026 bei T9c.7: im Reiter „KI-Server“ war „Verbindung testen“ abgeschnitten - der Reiter brauchte
+    630 px, das Fenster öffnete fest mit 620. Die Startgröße wächst jetzt auf den größten Reiter (bildschirmbegrenzt)."""
+
+    def test_startgroesse_waechst_auf_den_inhalt(self):
+        import inspect
+        from tools.settings_editor import SettingsEditorWindow
+        quelle = inspect.getsource(SettingsEditorWindow.__init__)
+        self.assertIn("max(hoehe, self.winfo_reqheight())", quelle)
+        self.assertIn("max(breite, self.winfo_reqwidth())", quelle)
+        self.assertLess(quelle.index("self._setup_ui()"), quelle.index("max(hoehe, self.winfo_reqheight())"))
+
+
 if __name__ == "__main__":
     unittest.main()

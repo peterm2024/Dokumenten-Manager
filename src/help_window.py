@@ -9,7 +9,7 @@ import menue_hilfe
 
 APP_NAME = "Dokumenten-Manager (KI Edition)"
 # Release-Version (Git-Tag "v<Version>", GitHub-Release mit der gebauten EXE, siehe README "Release bauen")
-APP_VERSION = "0.9.35"
+APP_VERSION = "0.9.36"
 
 
 def build_stempel():
@@ -54,12 +54,13 @@ TAB_QUICKSTART = [
     ("h1", "🚀	In fünf Schritten startklar"),
 
     ("h2", "1. Ablageort festlegen"),
-    ("p", "Beim allerersten Start bietet das Programm an, den Ordner \"Dokumente\\KID\" "
-          "anzulegen und fertig einzurichten — ein Klick auf Ja genügt. Alternativ wähle "
+    ("p", "Beim allerersten Start fragt das Programm nach dem Schließen dieses Fensters, ob es den "
+          "Ordner \"Dokumente\\KID\" anlegen und fertig einrichten soll — ein Klick auf Ja genügt. Alternativ wähle "
           "unter Datei → \"Sammlung öffnen...\" einen eigenen Ordner; Datei → "
           "\"Standard-Ordnerstruktur in der Sammlung anlegen...\" legt darin die fertige Registerstruktur an. "
           "Der Knopf \"🚀 Vollautomatik einschalten\" unten in diesem Fenster startet die "
-          "automatische Ablage neuer Scans — sie bleibt auch nach einem Neustart an."),
+          "automatische Ablage neuer Scans — sie bleibt auch nach einem Neustart an. Solange noch kein "
+          "Dokumentenordner eingerichtet ist, ist er ausgegraut."),
 
     ("h2", "2. Dokumente hineinlegen"),
     ("p", "Lege deine PDF-Dateien einfach im Windows-Explorer in diese Ordner — das "
@@ -509,6 +510,10 @@ class HelpWindow(tk.Toplevel):
         an = bool(self.app.config.get("auto_pilot_enabled", False))
         self.btn_vollautomatik.config(
             text="Vollautomatik ausschalten" if an else "🚀 Vollautomatik einschalten")
+        # Erststart (Peter 22.11.2026): der Schnellstart kommt jetzt VOR der Ordnerwahl - ohne Sammlung griffe der
+        # Knopf ins Leere, darum ausgegraut, bis ein Dokumentenordner eingerichtet ist
+        ordner = getattr(self.app, "master_folder", "")
+        self.btn_vollautomatik.state(["!disabled"] if ordner and os.path.isdir(ordner) else ["disabled"])
 
     def _center_on_parent(self, parent, width, height):
         """Zentriert das Fenster über dem Hauptfenster (für den modalen Start-Aufruf)."""

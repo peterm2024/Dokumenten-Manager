@@ -1,4 +1,6 @@
 import os
+
+import aktivitaet
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -73,6 +75,17 @@ def vorschau_zu_schmal(breite, zweite):
     """Bleiben der Vorschau rechts der zweiten Trennlinie weniger als 10 % der Fensterbreite? Bei großer Schrift ergab
     sich beim Erststart sonst eine fast unsichtbare Vorschau (FALLSTRICKE #109)."""
     return breite > 200 and breite - zweite < breite // 10
+
+
+def start_dialoge(ohne_sammlung, hilfe_beim_start):
+    """Welche Start-Dialoge in welcher Reihenfolge: ['hilfe', 'einrichtung'] usw. Beim allerersten Start
+    (ohne Sammlung) ZUERST der Schnellstart, dann die Frage nach dem Dokumentenordner (Peter 22.11.2026: „Wäre
+    es nicht besser, den Schnellstart vor der Ordnerauswahl anzuzeigen?“ - sein Schritt 1 erklärt genau diese
+    Frage, kam aber erst danach). Nie beide gleichzeitig (FALLSTRICKE #51)."""
+    schritte = ["hilfe"] if hilfe_beim_start else []
+    if ohne_sammlung:
+        schritte.append("einrichtung")
+    return schritte
 
 
 class DokumentenVerwaltung:
@@ -195,6 +208,7 @@ class DokumentenVerwaltung:
         # aller Tabellen/Bäume aus dem Zeilenabstand der Schrift (Tk nimmt sonst fest 20 px, bei 125 % Textgröße
         # wurden Unterlängen abgeschnitten, FALLSTRICKE #69).
         ui_theme.wende_an(self.root)
+        UIUtils.mindestgroesse_ueberall(self.root)   # B5: kein Fenster lässt sich winzig ziehen
 
         # Kurzbefehl-Fenster (F1, Ansicht-Menü) - VOR dem Layout, das Menü-Häkchen braucht seine Variable
         self.kurzbefehle = Kurzbefehle(self)
@@ -254,17 +268,28 @@ class DokumentenVerwaltung:
         # Hilfe-Fenster legte sich mitten über die Ersteinrichtungs-Frage
         # (Nutzerfund 04.09.2026, FALLSTRICKE #51). Leicht verzögert, damit das
         # Hauptfenster fertig aufgebaut ist und das Zentrieren funktioniert.
-        def _start_dialoge():
-            self.melde_beschaedigte()
-            if not (self.master_folder and os.path.isdir(self.master_folder)):
-                self.folder_manager.ersteinrichtung_anbieten()  # modal, blockiert hier
-            if self.config.get("show_help_on_start", True):
-                open_help(self, 0, modal=True)
-        self.root.after(300, _start_dialoge)
+        self.root.after(300, self.start_dialoge_zeigen)
         # Stille Versionsprüfung (versionspruefung.py): meldet sich nur, wenn auf GitHub ein
         # neueres Release liegt; abschaltbar unter Einstellungen → Allgemein.
         if self.config.get(versionspruefung.EINSTELLUNG, True):
             self.root.after(5000, lambda: versionspruefung.pruefe(self, still=True))
+
+    def start_dialoge_zeigen(self):
+        """Start-Dialoge nacheinander (`start_dialoge`): beim allerersten Start erst der Schnellstart, dann die
+        Einrichtung. Das Hilfe-Fenster blockiert nicht von selbst (`modal` setzt nur einen Grab) - folgt noch ein
+        Schritt, wird hier gewartet, bis es zu ist; sonst stand die Willkommens-Frage gleich daneben (Live-Fund
+        22.11.2026 beim Erststart-Check, FALLSTRICKE #51/#143)."""
+        self.melde_beschaedigte()
+        ohne_sammlung = not (self.master_folder and os.path.isdir(self.master_folder))
+        schritte = start_dialoge(ohne_sammlung, self.config.get("show_help_on_start", True))
+        for nr, schritt in enumerate(schritte):
+            if schritt == "hilfe":
+                open_help(self, 0, modal=True)
+                fenster = getattr(self, "help_window", None)
+                if nr < len(schritte) - 1 and fenster is not None and fenster.winfo_exists():
+                    fenster.wait_window()                       # erst lesen, dann einrichten
+            else:
+                self.folder_manager.ersteinrichtung_anbieten()  # Meldungsfenster, blockiert selbst
 
     def melde_beschaedigte(self):
         """Zeigt, welche beschädigten Dateien beiseitegelegt wurden (sicher_speichern.py). Nichts davon wurde überschrieben."""
@@ -408,7 +433,8 @@ class DokumentenVerwaltung:
                     var.set(col in STANDARD_SPALTEN)
             
             # Alles oben wirkt sofort - der frühere Satz „bitte die App neu starten“ war veraltet (T0.10)
-            messagebox.showinfo("Zurückgesetzt", "Standard-Werte wurden wiederhergestellt.")
+            # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+            aktivitaet.erledigt("Fensteraufteilung zurückgesetzt")
             self.preview_manager.update_preview()
 
     def on_file_select(self, event):
@@ -601,6 +627,20 @@ class DokumentenVerwaltung:
         if self.search_manager.is_search_active() and self.search_manager.is_local_result(rel_path):
             new_tags.append("search_local")
         self.tree_files.item(item_id, values=vals, tags=tuple(new_tags))
+
+    def datum_kalender(self, event=None):
+        """Kalender unter dem Datumsfeld aufklappen (B4e, Peter 21.11.2026; Knopf „▼“ oder Alt+↓) - zeigt den Monat des
+        Datums im Feld, ein angeklickter Tag wird gespeichert wie mit Return."""
+        if hasattr(self, "date_entry"):
+            UIUtils.kalender_aufklappen(getattr(self, "datum_zelle", self.date_entry), self.datum_aus_kalender,
+                                        PDFHandler.normalize_date_input(self.date_entry.get()))
+        return "break"
+
+    def datum_aus_kalender(self, datum):
+        """Tag aus dem Kalender ins Datumsfeld und speichern (derselbe Weg wie Return)."""
+        self.date_entry.delete(0, tk.END)
+        self.date_entry.insert(0, datum.strftime("%Y-%m-%d"))
+        self.save_manual_date()
 
     def save_manual_date(self, event=None):
         """Validiert das Datum, schreibt es ins PDF und aktualisiert die TreeView."""

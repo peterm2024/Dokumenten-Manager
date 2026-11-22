@@ -312,5 +312,404 @@ class TestBaumSpringen(unittest.TestCase):
         self.assertIsNone(UIUtils.letzter_sichtbarer(self.baum))
 
 
+
+class _FensterAttrappe:
+    """Nur was _maximierbar_halten braucht: bind, state und der Zustand, den Windows meldet."""
+    def __init__(self):
+        self.bindungen = {}
+        self.zustand = "normal"
+
+    def bind(self, folge, funktion, add=None):
+        self.bindungen.setdefault(folge, []).append(funktion)
+
+    def state(self, neu=None):
+        if neu is None:
+            return self.zustand
+        self.zustand = neu
+
+    def feuere(self, folge, widget=None):
+        for f in self.bindungen.get(folge, []):
+            f(MagicMock(widget=self if widget is None else widget))
+
+
+class TestMaximierbarHalten(unittest.TestCase):
+    """Peter 21.11.2026 (Probefenster, Punkt 5): transient + Maximieren-Schaltfläche - nach Hauptfenster minimiert und
+    zurück baut Tk den Rahmen neu, Schaltfläche UND Maximierung waren weg (FALLSTRICKE #137)."""
+
+    def setUp(self):
+        self.fenster = _FensterAttrappe()
+        knopf = patch("ui_utils._win_maximieren_knopf")
+        self.knopf = knopf.start()
+        self.addCleanup(knopf.stop)
+        self.maximiert = patch("ui_utils._win_ist_maximiert", side_effect=lambda f: f.zustand == "zoomed").start()
+        self.addCleanup(patch.stopall)
+        UIUtils._maximierbar_halten(self.fenster)
+
+    def test_jedes_zeigen_setzt_die_schaltflaeche(self):
+        self.fenster.feuere("<Map>")
+        self.fenster.feuere("<Map>")
+        self.assertEqual(self.knopf.call_count, 2)
+
+    def test_maximierung_ueberlebt_den_neuaufbau(self):
+        self.fenster.zustand = "zoomed"
+        self.fenster.feuere("<Unmap>")
+        self.fenster.zustand = "normal"          # so steht das Fenster nach dem Neuaufbau durch Tk da
+        self.fenster.feuere("<Map>")
+        self.assertEqual(self.fenster.zustand, "zoomed")
+
+    def test_merker_gilt_nur_fuer_ein_verbergen(self):
+        """Live gefunden 21.11.2026: wiederhergestellt, dann baut Tk den Rahmen ohne <Unmap> neu (resizable) - das
+        Fenster maximierte sich ungefragt wieder."""
+        self.fenster.zustand = "zoomed"
+        self.fenster.feuere("<Unmap>")
+        self.fenster.feuere("<Map>")
+        self.fenster.zustand = "normal"          # Nutzer stellt wieder her
+        self.fenster.feuere("<Map>")
+        self.assertEqual(self.fenster.zustand, "normal")
+
+    def test_nicht_maximiertes_bleibt_normal(self):
+        self.fenster.feuere("<Unmap>")
+        self.fenster.feuere("<Map>")
+        self.assertEqual(self.fenster.zustand, "normal")
+
+    def test_kind_widgets_zaehlen_nicht(self):
+        self.fenster.zustand = "zoomed"
+        self.fenster.feuere("<Unmap>")
+        self.fenster.zustand = "normal"          # Nutzer hat wiederhergestellt ...
+        self.fenster.feuere("<Unmap>", widget=object())   # ... dann verschwindet nur eine Tabelle im Fenster
+        self.fenster.feuere("<Map>", widget=object())
+        self.assertEqual(self.knopf.call_count, 0)
+        self.assertEqual(self.fenster.zustand, "normal")
+
+    def test_ohne_maximierbar_keine_bindung(self):
+        f = _FensterAttrappe()
+        f.transient = MagicMock()
+        UIUtils.werkzeugfenster(f, object())
+        f.transient.assert_called_once()
+        self.assertEqual(f.bindungen, {})
+
+
+class _Fenster:
+    def __init__(self, eingabe=None):
+        self.zerstoert, self.vorn, self.gezeigt = False, 0, None
+
+    def winfo_exists(self):
+        return not self.zerstoert
+
+    def destroy(self):
+        self.zerstoert = True
+
+    def deiconify(self):
+        pass
+
+    def lift(self):
+        self.vorn += 1
+
+    def focus_set(self):
+        pass
+
+    def title(self):
+        return "Probe"
+
+
+class TestEinzelfensterMitEingabe(unittest.TestCase):
+    """Fenster-Durchsicht B3 (Peter 21.11.2026): alle Werkzeuge öffnen ihr Fenster über BaseTool.oeffne_fenster ->
+    UIUtils.einzelfenster; vorher verwarfen vier Werkzeuge das offene Fenster bei jedem Aufruf (Dateinamen
+    aufräumen, Erfassungs-Analyse, Dubletten finden, Gedächtnis) und eins öffnete beliebig viele (Begleitet)."""
+
+    def setUp(self):
+        UIUtils._einzelfenster.clear()
+        self.addCleanup(UIUtils._einzelfenster.clear)
+        hinweis = patch("tkinter.messagebox.showinfo")
+        self.hinweis = hinweis.start()
+        self.addCleanup(hinweis.stop)
+
+    def test_ohne_eingabe_kommt_das_offene_nach_vorn(self):
+        erstes = UIUtils.einzelfenster("x", _Fenster)
+        self.assertIs(UIUtils.einzelfenster("x", _Fenster), erstes)
+        self.assertEqual(erstes.vorn, 1)
+        self.hinweis.assert_not_called()
+
+    def test_einzelner_pfad_wie_liste(self):
+        erstes = UIUtils.einzelfenster("x", _Fenster, "C:/a.pdf")
+        self.assertIs(UIUtils.einzelfenster("x", _Fenster, ["c:\A.pdf"]), erstes)
+        self.hinweis.assert_not_called()
+
+    def test_leere_eingabe_laesst_das_offene_stehen(self):
+        erstes = UIUtils.einzelfenster("x", _Fenster, ["a.pdf"])
+        self.assertIs(UIUtils.einzelfenster("x", _Fenster, []), erstes)
+        self.hinweis.assert_not_called()
+
+    def test_fenster_mit_uebernimm_eingabe_wechselt(self):
+        class Wechselnd(_Fenster):
+            def uebernimm_eingabe(self, pfade):
+                self.gezeigt = pfade
+        erstes = UIUtils.einzelfenster("x", Wechselnd, ["a.pdf"])
+        self.assertIs(UIUtils.einzelfenster("x", Wechselnd, ["b.pdf"]), erstes)
+        self.assertEqual(erstes.gezeigt, ["b.pdf"])
+        self.assertIs(UIUtils.einzelfenster("x", Wechselnd, ["b.pdf"]), erstes)   # jetzt gleich: kein Wechsel
+        self.hinweis.assert_not_called()
+
+    def test_andere_auswahl_ohne_wechsel_gibt_hinweis(self):
+        erstes = UIUtils.einzelfenster("x", _Fenster, ["a.pdf"])
+        self.assertIs(UIUtils.einzelfenster("x", _Fenster, ["b.pdf"]), erstes)
+        self.assertFalse(erstes.zerstoert)
+        self.hinweis.assert_called_once()
+
+    def test_geschlossenes_fenster_wird_neu_gebaut(self):
+        erstes = UIUtils.einzelfenster("x", _Fenster)
+        erstes.destroy()
+        self.assertIsNot(UIUtils.einzelfenster("x", _Fenster), erstes)
+
+
+class TestTabelleBearbeitbar(unittest.TestCase):
+    """B4c (21.11.2026): Doppelklick, Rechtsklick-Menü und F2 rufen in allen Tabellen dieselbe Bearbeiten-Funktion,
+    Spalten über ihre ID. Über eine Attrappe statt echtem Treeview."""
+
+    def setUp(self):
+        from unittest.mock import MagicMock
+        self.tree = MagicMock()
+        self.tree.identify_region.return_value = "cell"
+        self.tree.identify_row.return_value = "i1"
+        self.tree.identify_column.return_value = "#4"
+        self.tree.column.side_effect = lambda c, opt: {"#4": "vorschlag"}[c]
+        self.tree.selection.return_value = ("i2", "i3")
+        self.bearbeitet = []
+
+    def _binde(self, **kw):
+        UIUtils.tabelle_bearbeitbar(self.tree, lambda iid, s: self.bearbeitet.append((iid, s)), **kw)
+        return {c.args[0]: c.args[1] for c in self.tree.bind.call_args_list}
+
+    def _ereignis(self):
+        import types
+        return types.SimpleNamespace(x=5, y=5, x_root=50, y_root=50)
+
+    def test_doppelklick_bearbeitet_die_zelle_ueber_ihre_id(self):
+        self._binde()["<Double-1>"](self._ereignis())
+        self.assertEqual(self.bearbeitet, [("i1", "vorschlag")])
+
+    def test_doppelklick_auf_den_spaltenkopf_bearbeitet_nichts(self):
+        self.tree.identify_region.return_value = "heading"
+        self._binde()["<Double-1>"](self._ereignis())
+        self.assertEqual(self.bearbeitet, [])
+
+    def test_f2_bearbeitet_die_erste_markierte_zeile(self):
+        self._binde(f2_spalte="titel")["<F2>"](self._ereignis())
+        self.assertEqual(self.bearbeitet, [("i2", "titel")])
+
+    def test_ohne_menue_und_f2_keine_bindung(self):
+        self.assertEqual(set(self._binde()), {"<Double-1>"})
+
+    def test_rechtsklick_waehlt_aus_und_zeigt_die_eintraege(self):
+        from unittest.mock import patch
+        bindungen = self._binde(menue=lambda iid: [("vorschlag", "Bearbeiten…"), ("check", "Haken")])
+        with patch("ui_utils.tk.Menu") as menue:
+            bindungen["<Button-3>"](self._ereignis())
+        self.tree.selection_set.assert_called_once_with("i1")
+        eintraege = [c.kwargs for c in menue.return_value.add_command.call_args_list]
+        self.assertEqual([e["label"] for e in eintraege], ["Bearbeiten…", "Haken"])
+        eintraege[1]["command"]()
+        self.assertEqual(self.bearbeitet, [("i1", "check")])
+
+    def test_rechtsklick_ohne_eintraege_zeigt_nichts(self):
+        from unittest.mock import patch
+        bindungen = self._binde(menue=lambda iid: None)
+        with patch("ui_utils.tk.Menu") as menue:
+            bindungen["<Button-3>"](self._ereignis())
+        menue.assert_not_called()
+
+
+class TestDatumEingabeDialog(unittest.TestCase):
+    """B4b (21.11.2026): der Datumsdialog prüft beim Tippen - OK erst mit gültigem Datum, Ergebnis ist das
+    geprüfte JJJJ-MM-TT. Über Attrappen statt echtem Fenster."""
+
+    def _dialog(self, text):
+        from unittest.mock import MagicMock
+        from ui_utils import DatumEingabeDialog
+        d = MagicMock()
+        d.var.get.return_value = text
+        d._pruefe = lambda t: ("2026-07-20", "✓ Montag, 20.07.2026") if t == "200726" else (None, "Kein gültiges Datum")
+        DatumEingabeDialog._pruefen(d)
+        return d, DatumEingabeDialog
+
+    def test_gueltig_gibt_ok_frei_und_liefert_iso(self):
+        d, klasse = self._dialog("200726")
+        d.btn_ok.state.assert_called_with(["!disabled"])
+        self.assertEqual(d.lbl_hinweis.config.call_args.kwargs["text"], "✓ Montag, 20.07.2026")
+        klasse._ok(d)
+        self.assertEqual(d.ergebnis, "2026-07-20")
+        d.destroy.assert_called_once()
+
+    def test_ungueltig_sperrt_ok_und_enter_schliesst_nicht(self):
+        d, klasse = self._dialog("32.13.2026")
+        d.btn_ok.state.assert_called_with(["disabled"])
+        klasse._ok(d)
+        d.destroy.assert_not_called()
+
+
+class _MindestFenster:
+    """Attrappe eines Toplevels für UIUtils.mindestgroesse - Inhalt verlangt req_*, Fenster ist gerade b x h."""
+
+    def __init__(self, req=(500, 300), groesse=(900, 700), bildschirm=(1920, 1080), minsize=(1, 1), randlos=False):
+        self.req, self.groesse, self.bildschirm = req, groesse, bildschirm
+        self.minsize, self.randlos, self.gesetzt = minsize, randlos, []
+
+    def winfo_exists(self):
+        return True
+
+    def wm_overrideredirect(self):
+        return self.randlos
+
+    def wm_minsize(self, *werte):
+        if not werte:
+            return self.minsize
+        self.gesetzt.append(werte)
+        self.minsize = werte
+
+    def update_idletasks(self):
+        pass
+
+    def winfo_reqwidth(self):
+        return self.req[0]
+
+    def winfo_reqheight(self):
+        return self.req[1]
+
+    def winfo_width(self):
+        return self.groesse[0]
+
+    def winfo_height(self):
+        return self.groesse[1]
+
+    def winfo_screenwidth(self):
+        return self.bildschirm[0]
+
+    def winfo_screenheight(self):
+        return self.bildschirm[1]
+
+
+class TestMindestgroesse(unittest.TestCase):
+    """B5 (Peter 21.11.2026): kein Fenster lässt sich winzig ziehen - Mindestgröße aus dem Inhalt, gedeckelt."""
+
+    def test_mindestens_so_gross_wie_der_inhalt(self):
+        f = _MindestFenster(req=(500, 300))
+        self.assertEqual(UIUtils.mindestgroesse(f), (500, 300))
+        self.assertEqual(f.gesetzt, [(500, 300)])
+
+    def test_grosse_tabelle_auf_den_bildschirmanteil_gedeckelt(self):
+        f = _MindestFenster(req=(1800, 1000), groesse=(1900, 1050))
+        self.assertEqual(UIUtils.mindestgroesse(f, deckel=0.6), (1152, 648))
+
+    def test_fenster_waechst_dabei_nicht(self):
+        # position_near_mouse kann ein Fenster kleiner setzen, als der Inhalt verlangt (kleiner Bildschirm)
+        f = _MindestFenster(req=(800, 600), groesse=(700, 500))
+        self.assertEqual(UIUtils.mindestgroesse(f), (700, 500))
+
+    def test_eigene_mindestgroesse_bleibt(self):
+        f = _MindestFenster(minsize=(900, 600))
+        self.assertIsNone(UIUtils.mindestgroesse(f))
+        self.assertEqual(f.gesetzt, [])
+
+    def test_windows_vorgabe_zaehlt_nicht_als_eigene(self):
+        # Live gefunden: nach dem Zeigen meldet Tk unter Windows (120, 1) - das ist keine eigene Mindestgröße
+        f = _MindestFenster(req=(500, 300), minsize=(120, 1))
+        self.assertEqual(UIUtils.mindestgroesse(f), (500, 300))
+
+    def test_randlose_fenster_bleiben(self):
+        f = _MindestFenster(randlos=True)    # Tooltip, Vervollständigung, Erfolgsfeld
+        self.assertIsNone(UIUtils.mindestgroesse(f))
+        self.assertEqual(f.gesetzt, [])
+
+    def test_nur_einmal_je_fenster(self):
+        # Minimieren/Wiederherstellen feuert <Map> erneut - die Mindestgröße darf dann nicht neu wachsen
+        f = _MindestFenster(req=(500, 300))
+        UIUtils.mindestgroesse(f)
+        f.minsize, f.req = (1, 1), (800, 600)
+        self.assertIsNone(UIUtils.mindestgroesse(f))
+        self.assertEqual(f.gesetzt, [(500, 300)])
+
+    def test_gilt_fuer_alle_toplevel_ueber_die_klassenbindung(self):
+        import tkinter as tk
+        root = MagicMock()
+        UIUtils.mindestgroesse_ueberall(root)
+        klasse, ereignis, rueckruf = root.bind_class.call_args.args
+        self.assertEqual((klasse, ereignis, root.bind_class.call_args.kwargs.get("add")), ("Toplevel", "<Map>", "+"))
+        fenster = MagicMock(spec=tk.Toplevel)
+        rueckruf(MagicMock(widget=fenster))
+        fenster.after_idle.assert_called_once_with(UIUtils.mindestgroesse, fenster)
+
+    def test_hauptfenster_und_dienst_richten_es_ein(self):
+        import os
+        for datei in ("gui.py", "dienstmodus.py"):
+            with open(os.path.join(os.path.dirname(__file__), "..", "src", datei), encoding="utf-8") as f:
+                self.assertIn("UIUtils.mindestgroesse_ueberall(", f.read(), datei)
+
+    def test_texteingabe_waagrecht_ziehbar(self):
+        import inspect
+        from ui_utils import TextEingabeDialog
+        self.assertIn("self.resizable(True, False)", inspect.getsource(TextEingabeDialog.__init__))
+
+
+class TestMonatskalender(unittest.TestCase):
+    """B4e (Peter 21.11.2026): Datumspicker im Datumsdialog - Logik ohne echtes Fenster."""
+
+    def test_wochen_beginnen_am_montag(self):
+        from ui_utils import Monatskalender
+        wochen = Monatskalender.wochen(2026, 7)       # 1. Juli 2026 ist ein Mittwoch
+        self.assertEqual(wochen[0], [0, 0, 1, 2, 3, 4, 5])
+        self.assertIn(31, wochen[-1])
+
+    def test_blaettern_ueber_jahresgrenzen(self):
+        from ui_utils import Monatskalender
+        self.assertEqual(Monatskalender.verschiebe(2026, 1, -1), (2025, 12))
+        self.assertEqual(Monatskalender.verschiebe(2026, 12, 1), (2027, 1))
+        self.assertEqual(Monatskalender.verschiebe(2026, 7, -12), (2025, 7))
+        self.assertEqual(Monatskalender.verschiebe(2026, 3, -27), (2023, 12))
+
+    def test_darstellung_gewaehlt_heute_zukunft(self):
+        from datetime import date
+        from ui_utils import Monatskalender
+        heute, gewaehlt = date(2026, 11, 21), date(2026, 11, 3)
+        self.assertEqual(Monatskalender.darstellung(gewaehlt, gewaehlt, heute, heute), ("KalenderGewaehlt.TButton", False))
+        self.assertEqual(Monatskalender.darstellung(heute, gewaehlt, heute, heute), ("KalenderHeute.TButton", False))
+        self.assertEqual(Monatskalender.darstellung(date(2026, 11, 5), gewaehlt, heute, heute), ("Kalender.TButton", False))
+        self.assertTrue(Monatskalender.darstellung(date(2026, 11, 22), gewaehlt, heute, heute)[1])
+
+    def test_klick_waehlt_doppelklick_bestaetigt(self):
+        from datetime import date
+        from ui_utils import Monatskalender
+        k = MagicMock()
+        Monatskalender._klick(k, date(2026, 7, 20))
+        k._waehle.assert_called_once_with(date(2026, 7, 20))
+        k.zeige.assert_called_once_with(2026, 7)
+        k._tag_von = {"knopf": date(2026, 7, 20)}
+        Monatskalender._doppelklick(k, "knopf")
+        k._bestaetige.assert_called_once_with(date(2026, 7, 20))
+
+    def test_dialog_kalender_fuellt_feld_und_folgt_der_eingabe(self):
+        from datetime import date
+        from ui_utils import DatumEingabeDialog
+        d = MagicMock()
+        DatumEingabeDialog._aus_kalender(d, date(2026, 7, 20))
+        d.var.set.assert_called_once_with("20.07.2026")
+        d.var.get.return_value = "200726"
+        d._pruefe = lambda t: ("2026-07-20", "✓ Montag, 20.07.2026")
+        DatumEingabeDialog._pruefen(d)
+        d.kalender.markiere.assert_called_once_with("2026-07-20")
+
+
+class TestAusserhalb(unittest.TestCase):
+    """Klick neben den aufgeklappten Kalender klappt ihn zu, Klick hinein nicht (B4e)."""
+
+    def test_rand_und_daneben(self):
+        f = MagicMock()
+        f.winfo_rootx.return_value, f.winfo_rooty.return_value = 100, 200
+        f.winfo_width.return_value, f.winfo_height.return_value = 50, 40
+        self.assertFalse(UIUtils.ausserhalb(f, 100, 200))
+        self.assertFalse(UIUtils.ausserhalb(f, 149, 239))
+        self.assertTrue(UIUtils.ausserhalb(f, 150, 220))
+        self.assertTrue(UIUtils.ausserhalb(f, 120, 199))
+
+
 if __name__ == "__main__":
     unittest.main()

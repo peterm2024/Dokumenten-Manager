@@ -1583,6 +1583,7 @@ class MailImportFenster(tk.Toplevel):
 
 class MailsImportierenTool(BaseTool):
     """Menü-Einstieg: Mails aus .pst, mbox oder .eml suchen und gezielt als PDFs in den Posteingang übernehmen."""
+    fenster_schluessel = "mails_importieren"
 
     @property
     def name(self) -> str:
@@ -1621,7 +1622,7 @@ class MailsImportierenTool(BaseTool):
     def execute(self, context: ToolContext) -> bool:
         app = context.app
         try:
-            UIUtils.einzelfenster("mails_importieren", lambda: MailImportFenster(app))
+            self.oeffne_fenster(lambda: MailImportFenster(app))
         except OSError as e:                   # kaputtes Journal: nie still überschreiben
             mb.showerror("Mails importieren", str(e), parent=app.root)
             return False

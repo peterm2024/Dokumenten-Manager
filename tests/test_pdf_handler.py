@@ -1020,3 +1020,30 @@ class TestHtmlPdfZeichnung(unittest.TestCase):
                 self.assertFalse(doc[0].search_for("NIEMALS"))
                 self.assertGreaterEqual(len(doc[0].get_drawings()), 3)
         self.assertEqual(aufrufe, [(0, 2, 0), (1, 2, 1)])
+
+
+class TestEineDatumsregel(unittest.TestCase):
+    """B4e (Peter 21.11.2026): Hauptfenster und Ablage-Vorschau lesen ein Datum gleich - zweistellige Jahre bis zum
+    laufenden Jahr 20xx, sonst 19xx; ein Datum in der Zukunft gilt nicht (vorher < 80 -> 20xx, Zukunft erlaubt)."""
+
+    def test_zweistelliges_jahr_um_das_laufende_jahr(self):
+        from datetime import datetime
+        heute = datetime(2026, 11, 21)
+        self.assertEqual(PDFHandler.jahr_vierstellig(26, heute), 2026)
+        self.assertEqual(PDFHandler.jahr_vierstellig(27, heute), 1927)
+        self.assertEqual(PDFHandler.jahr_vierstellig(0, heute), 2000)
+        self.assertEqual(PDFHandler.jahr_vierstellig(1987, heute), 1987)
+
+    def test_sechziger_jahre_sind_neunzehnhundert(self):
+        self.assertEqual(PDFHandler.normalize_date_input("15.4.60"), "1960-04-15")
+        self.assertEqual(PDFHandler.normalize_date_input("150460"), "1960-04-15")
+
+    def test_zukunft_gilt_nicht(self):
+        self.assertIsNone(PDFHandler.normalize_date_input("01.01.2999"))
+        self.assertIsNone(PDFHandler.normalize_date_input("2999-01-01"))
+
+    def test_hauptfenster_und_vorschau_gleich(self):
+        import auto_pilot
+        for eingabe in ("15.4.60", "15.04.1960", "20.7.26", "200726", "2026-07-20", "01.01.2999", "31.02.2026"):
+            vorschau = auto_pilot.datum_aus_eingabe(eingabe)[0]
+            self.assertEqual(PDFHandler.normalize_date_input(eingabe), vorschau, eingabe)

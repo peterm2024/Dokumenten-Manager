@@ -22,6 +22,9 @@ nur Zahlen. `--details` schreibt jede Entscheidung in eine Datei neben den Korpu
     python ablage_messlauf.py --zweitmeinung=zweitmeinung_clef-flash_9b.json   # zusätzlich mit Ordnerwahl-Modell
     python ablage_messlauf.py --volltext=volltext.json   # zusätzlich mit Ordner-Steckbrief (beides kombinierbar)
 
+Wie im Dienst bekommt jede Entscheidung die Wörter der Textebene (ordnernamen.textwoerter aus volltext.json neben
+dem Korpus, seit 21.11.2026) - Lesefehler der KI im Ordnernamen werden so berichtigt wie in der Vollautomatik.
+
 Rückschritt (Code 1): bestand - weniger richtig oder mehr still falsch; frisch - mehr still falsch,
 Doppelordner, Phantom-Ordner oder falsche Vorauswahl. Die Entscheidung ist deterministisch, jede Abweichung
 ist also eine echte Änderung.
@@ -38,6 +41,7 @@ sys.path.insert(0, os.path.join(HIER, "src"))
 import ablage_gedaechtnis  # noqa: E402
 import auto_pilot  # noqa: E402
 import ordner_steckbrief  # noqa: E402
+import ordnernamen  # noqa: E402
 
 KORPUS = os.path.join(os.path.expanduser("~"), "KID-Messungen", "betatest")
 KORPUS_DATEI = "korpus_20261114.json"   # die Aufnahme, gegen die ablage_vergleich.json gilt (Prompt und Modell vom 14.11.2026)
@@ -99,9 +103,19 @@ def bestand_ordner(roh):
 
 
 def lade_korpus(ordner=KORPUS, datei=KORPUS_DATEI):
-    """Dokumente in Scan-Reihenfolge: [{"nr", "name", "original", "ki"}]."""
+    """Dokumente in Scan-Reihenfolge: [{"nr", "name", "original", "ki", "woerter"}]. "woerter" = Schreibweisen der
+    Textebene (ordnernamen.textwoerter) aus volltext.json neben dem Korpus - wie im Dienst, der sie aus der Textebene
+    hat (21.11.2026); ohne volltext.json leer."""
     with open(os.path.join(ordner, datei), encoding="utf-8") as f:
-        return sorted(json.load(f).values(), key=lambda d: d["nr"])
+        dokumente = sorted(json.load(f).values(), key=lambda d: d["nr"])
+    volltext = os.path.join(ordner, "volltext.json")
+    texte = {}
+    if os.path.isfile(volltext):
+        with open(volltext, encoding="utf-8") as f:
+            texte = json.load(f)
+    for d in dokumente:
+        d["woerter"] = ordnernamen.textwoerter(texte.get(str(d["nr"]), ""))
+    return dokumente
 
 
 def lauf(dokumente, start_ordner, tags, kategorien, ranglisten=None, texte=None, vorbelegt=()):
@@ -134,7 +148,7 @@ def lauf(dokumente, start_ordner, tags, kategorien, ranglisten=None, texte=None,
             continue
         auto_pilot.merke_orte(orte, {"ki_antwort": ki})
         e = auto_pilot.baue_entscheidung(d["name"], dict(ki), liste, known_tags=tags, kategorien=kategorien,
-                                         gedaechtnis=gedaechtnis, orte=orte)
+                                         gedaechtnis=gedaechtnis, orte=orte, textwoerter=d.get("woerter"))
         rang = (ranglisten or {}).get(str(d["nr"]))
         if isinstance(rang, list) and auto_pilot.braucht_zweitmeinung(e):
             e = auto_pilot.wende_zweitmeinung_an(e, [(o, p) for o, p in rang if o in liste], liste)

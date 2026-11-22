@@ -132,6 +132,22 @@ def _ttk_stile(root):
           bordercolor=[("active", f["rand"])], lightcolor=[("active", f["knopf_hover"])],
           darkcolor=[("active", f["knopf_hover"])], foreground=[("active", f["gefahr_hover"])])
 
+    # Monatskalender im Datumsdialog (B4e): flache Tagesknöpfe, heute in Akzentschrift, gewählter Tag gefüllt
+    klein = (UIUtils.px(root, 2), UIUtils.px(root, 1))
+    for stil, grund, schrift, extra in (("Kalender.TButton", f["flaeche"], f["text"], {}),
+                                        ("KalenderHeute.TButton", f["flaeche"], f["akzent"], {"font": fett}),
+                                        ("KalenderGewaehlt.TButton", f["akzent"], "#ffffff", {"font": fett})):
+        s.configure(stil, padding=klein, background=grund, foreground=schrift, bordercolor=grund,
+                    lightcolor=grund, darkcolor=grund, **extra)
+        aktiv = f["akzent_hover"] if grund == f["akzent"] else f["knopf_hover"]
+        s.map(stil, background=[("disabled", f["flaeche"]), ("pressed", f["rand"]), ("active", aktiv)],
+              foreground=[("disabled", f["balken"])], lightcolor=[("active", aktiv)],
+              darkcolor=[("active", aktiv)])
+    s.configure("KalenderKopf.TLabel", foreground=f["leise"])
+    # Aufklapp-Kalender unter dem Datumsfeld: weißer Grund mit feiner Kante
+    s.configure("Klappe.TFrame", background=f["flaeche"], borderwidth=1, relief="solid", bordercolor=f["balken"],
+                lightcolor=f["balken"], darkcolor=f["balken"])
+
     zeilenabstand = basis.metrics("linespace")
     s.configure("Treeview", background=f["flaeche"], fieldbackground=f["flaeche"], foreground=f["text"],
                 bordercolor=f["rand"], lightcolor=f["flaeche"], darkcolor=f["flaeche"], borderwidth=0,

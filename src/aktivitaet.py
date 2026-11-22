@@ -19,12 +19,15 @@ Benutzung aus jedem Modul, ohne die GUI zu kennen:
     with aktivitaet.warte_auf_antwort("Datei umbenennen"):
         antwort = messagebox.askyesno(...)
 
+    aktivitaet.erledigt("Ordnerstruktur angelegt")    # statt einer reinen Erfolgsmeldung im Fenster
+
 Ohne registrierte Anzeige (Tests, Skripte) sind alle Funktionen wirkungslos. Aufrufe aus
 Hintergrund-Threads sind erlaubt - die Anzeige leitet sie per root.after in den
 Tk-Thread; `atme()` wirkt nur im Tk-Thread (update_idletasks aus einem Thread wäre ein
 Absturzrisiko).
 """
 import itertools
+import logging
 import threading
 import time
 
@@ -36,6 +39,8 @@ SPINNER = "|/-\\"
 TICK_MS = 250
 DAUER_AB_SEKUNDEN = 3    # ab hier wird "(12 s)" angehängt
 ATEM_ABSTAND = 0.1       # update_idletasks höchstens alle 100 ms
+ERLEDIGT_MS = 2500       # so lange steht eine Erfolgsmeldung (Peter 21.11.2026 im Probefenster: 5 s zu lang)
+ERLEDIGT_ZEICHEN = "✓"
 
 
 def registriere(anzeige):
@@ -95,6 +100,18 @@ class phase:
         return False
 
 
+def erledigt(text, dauer_ms=ERLEDIGT_MS):
+    """Erfolg melden, ohne dass jemand OK klicken muss (Fenster-Durchsicht A2, Peter 21.11.2026: „modale Dialoge,
+    welche lediglich bestätigen, dass etwas erfolgreich ausgeführt wurde ... streichen, die erfolgreiche
+    Ausführung steht ja auch im Log“): schreibt `text` ins Protokoll und zeigt ihn ein paar Sekunden als
+    „✓ text“ in der Leiste - ohne Spinner und Dauer, eine laufende Phase hat Vorrang - und im Programm als
+    blinkendes lime-grünes Feld oben rechts (UIUtils.erfolgsfeld). Nur für reinen Erfolg;
+    Teilerfolg, Fehler oder etwas, das der Nutzer tun soll, bleibt ein Meldungsfenster."""
+    logging.getLogger("DocManager").info(text)
+    if _anzeige is not None:
+        _anzeige.erledigt(text, dauer_ms)
+
+
 def warte_auf_antwort(titel):
     """Phase „Wartet auf deine Antwort: „<Dialogtitel>"" um einen modalen Dialog herum."""
     return phase(f"Wartet auf deine Antwort: „{titel}\"")
@@ -106,8 +123,11 @@ class Anzeige:
     sind thread-sicher (Umleitung per root.after, wenn nicht im Tk-Thread).
     """
 
-    def __init__(self, root, menubar, index, ruhe_text=RUHE_TEXT):
+    def __init__(self, root, menubar, index, ruhe_text=RUHE_TEXT, erfolg_feld=None):
+        """erfolg_feld(text, dauer_ms): zeigt eine Erfolgsmeldung zusätzlich auffällig an (layout_builder gibt
+        UIUtils.erfolgsfeld - das lime-grüne Feld; dieses Modul bleibt ohne tkinter)."""
         self.root = root
+        self.erfolg_feld = erfolg_feld
         self.menubar = menubar
         self.index = index
         self.ruhe_text = ruhe_text
@@ -117,6 +137,8 @@ class Anzeige:
         self._letzter_atem = 0.0
         self._tk_thread = threading.current_thread()
         self._letzter_text = ruhe_text   # der Eintrag wurde mit diesem Text angelegt
+        self._erledigt = None            # (Text, Nummer) der zuletzt gemeldeten Erfolgsmeldung
+        self._erledigt_nr = 0
         self._zeige(ruhe_text)
 
     # ------------------------------------------------------------ Thread-Umleitung
@@ -141,6 +163,9 @@ class Anzeige:
 
     def beende(self, token):
         self._ausfuehren(self._beende, token)
+
+    def erledigt(self, text, dauer_ms=ERLEDIGT_MS):
+        self._ausfuehren(self._erledigt_zeigen, text, dauer_ms)
 
     def atme(self):
         if not self._im_tk_thread():
@@ -204,6 +229,27 @@ class Anzeige:
                 pass
             self._tick_job = None
 
+    def _erledigt_zeigen(self, text, dauer_ms):
+        self._erledigt_nr += 1
+        nr = self._erledigt_nr
+        self._erledigt = (text, nr)
+        self._zeichne(sofort=False)
+        if self.erfolg_feld is not None:
+            try:
+                self.erfolg_feld(text, dauer_ms)
+            except Exception:
+                pass   # die Meldung steht trotzdem in Leiste und Log
+        try:
+            self.root.after(dauer_ms, self._erledigt_weg, nr)
+        except Exception:
+            pass
+
+    def _erledigt_weg(self, nr):
+        # nur die eigene Meldung abräumen - eine neuere bekommt ihre volle Zeit
+        if self._erledigt and self._erledigt[1] == nr:
+            self._erledigt = None
+            self._zeichne(sofort=False)
+
     def _tick(self):
         self._tick_job = None
         if self._phasen:
@@ -212,7 +258,7 @@ class Anzeige:
 
     def _zeichne(self, sofort):
         if not self._phasen:
-            self._zeige(self.ruhe_text)
+            self._zeige(f"{ERLEDIGT_ZEICHEN} {self._erledigt[0]}" if self._erledigt else self.ruhe_text)
             return
         _token, text, start, nebensache = self._phasen[-1]
         dauer = time.monotonic() - start

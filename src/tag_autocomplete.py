@@ -21,19 +21,22 @@ class TagAutocomplete:
 
     MAX_SUGGESTIONS = 8
 
-    def __init__(self, app, text=None, trenner=",", ausschluss_fn=None, nach_uebernahme=None):
+    def __init__(self, app, text=None, trenner=",", ausschluss_fn=None, nach_uebernahme=None, popup_parent=None):
         """
         :param app: Referenz auf die Hauptinstanz (DokumentenVerwaltung).
         :param text: das tk.Text-Feld; ohne Angabe app.entry_tags (Tags-Feld).
         :param trenner: Zeichen zwischen den Begriffen; None = Leerzeichen (Suchfeld).
         :param ausschluss_fn: liefert Begriffe, die nicht vorgeschlagen werden (Tags-Feld: schon vergebene).
         :param nach_uebernahme: wird nach dem Einsetzen eines Vorschlags aufgerufen.
+        :param popup_parent: Fenster, an dem die Vorschlagsliste hängt (Standard: Hauptfenster). In einem
+               modalen Dialog (grab_set) der Dialog selbst - sonst nimmt die Liste keine Mausklicks an.
         """
         self.app = app
         self.text = text if text is not None else self.app.entry_tags
         self.trenner = trenner
         self._ausschluss_fn = ausschluss_fn
         self._nach_uebernahme = nach_uebernahme
+        self._popup_parent = popup_parent
         if text is None and trenner == ",":
             # Standardverhalten des Tags-Felds (wie vor dem 13.09.2026)
             if self._ausschluss_fn is None:
@@ -183,7 +186,7 @@ class TagAutocomplete:
             return
 
         if self.popup is None or not self.popup.winfo_exists():
-            self.popup = tk.Toplevel(self.app.root)
+            self.popup = tk.Toplevel(self._popup_parent if self._popup_parent is not None else self.app.root)
             self.popup.overrideredirect(True)  # Kein Fensterrahmen
             self.popup.attributes("-topmost", True)
             self.listbox = tk.Listbox(self.popup, activestyle="none",

@@ -43,6 +43,54 @@ class TestStatusfenster(unittest.TestCase):
         fenster.assert_not_called()
 
 
+class TestStatusfensterNurImDienstUeberAllem(unittest.TestCase):
+    """B1 (Peter 21.11.2026): „Vollautomatik läuft“ lag über ALLEN Programmen. Jetzt nur im Dienstmodus; mit
+    Hauptfenster kommt es nach vorn, sobald KID den Fokus bekommt - nicht, solange das Mail-Fenster offen ist."""
+
+    def _app(self):
+        app = MagicMock(spec=["root", "vollautomatik_fenster"])
+        app.vollautomatik_fenster.winfo_exists.return_value = True
+        app.vollautomatik_fenster.winfo_viewable.return_value = True
+        return app
+
+    def test_topmost_nur_im_dienstmodus(self):
+        import inspect
+        quelle = inspect.getsource(vollautomatik_fenster.VollautomatikFenster.__init__)
+        teil = quelle.split("if self._dienst:")[1].split("else:")[0]
+        self.assertIn('self.attributes("-topmost", True)', teil)
+        self.assertNotIn('-topmost', quelle.split("if self._dienst:")[0])
+        self.assertIn("vorn_halten(app)", quelle)
+
+    def test_kid_im_fokus_holt_es_ueber_das_hauptfenster(self):
+        app = self._app()
+        vollautomatik_fenster.vorn_halten(app)
+        vollautomatik_fenster.vorn_halten(app)               # zweites Fenster: nicht doppelt binden
+        self.assertEqual(app.root.bind.call_count, 1)
+        ereignis, rueckruf = app.root.bind.call_args.args
+        self.assertEqual((ereignis, app.root.bind.call_args.kwargs.get("add")), ("<FocusIn>", "+"))
+        rueckruf(None)
+        app.vollautomatik_fenster.lift.assert_called_once_with(app.root)
+
+    def test_mail_fenster_offen_haelt_es_zurueck(self):
+        app = self._app()
+        app.vollautomatik_fenster._dienst = False
+        vollautomatik_fenster.zuruecktreten(app, True)
+        vollautomatik_fenster.nach_vorn(app)
+        app.vollautomatik_fenster.lift.assert_not_called()
+        app.vollautomatik_fenster.attributes.assert_not_called()   # mit Hauptfenster nie -topmost
+        vollautomatik_fenster.zuruecktreten(app, False)
+        vollautomatik_fenster.nach_vorn(app)
+        app.vollautomatik_fenster.lift.assert_called_once_with(app.root)
+
+    def test_im_dienstmodus_weiter_ueber_topmost(self):
+        app = self._app()
+        app.vollautomatik_fenster._dienst = True
+        vollautomatik_fenster.zuruecktreten(app, True)
+        app.vollautomatik_fenster.attributes.assert_called_with("-topmost", False)
+        vollautomatik_fenster.zuruecktreten(app, False)
+        app.vollautomatik_fenster.attributes.assert_called_with("-topmost", True)
+
+
 class _Einstellungen(dict):
     def get(self, k, d=None):
         return super().get(k, d)

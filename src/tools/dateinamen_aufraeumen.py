@@ -11,13 +11,14 @@ import threading
 import tkinter as tk
 from tkinter import ttk, messagebox as mb
 
+import aktivitaet
 import app_paths
 import bestaetigung
 import dateinamen
 import ollama_client
 from tools.ai_title_suggest import render_first_page_png
 from tools.base_tool import BaseTool, ToolContext
-from ui_utils import UIUtils
+from ui_utils import Tooltip, UIUtils
 
 
 class DateinamenAufraeumenTool(BaseTool):
@@ -59,9 +60,7 @@ class DateinamenAufraeumenTool(BaseTool):
             mb.showinfo("Hinweis", "Bitte zuerst einen Hauptordner wählen.")
             return False
         auswahl = [p for p in (context.selected_files or []) if p.lower().endswith(".pdf")]
-        if self.window and self.window.winfo_exists():
-            self.window.destroy()
-        self.window = DateinamenFenster(context.app, auswahl)
+        self.window = self.oeffne_fenster(lambda: DateinamenFenster(context.app, auswahl), auswahl)
         return True
 
     def on_file_moved(self, old_path, new_path):
@@ -82,16 +81,65 @@ def aktueller_ordner(app):
     return app.master_folder
 
 
+def aendert_sich(z):
+    """Bekäme die Zeile einen anderen Namen?"""
+    return bool(z["vorschlag"]) and z["vorschlag"] != z["name"]
+
+
+def hat_anderen_original(z):
+    return bool(z["originalname"]) and z["originalname"] != z["name"]
+
+
+def ist_muell(z):
+    """Müll-Titel aus der Scanner-OCR (⚠), für den die KI noch nicht gefragt wurde."""
+    return bool(z["verdaechtig"]) and not z.get("ki_titel")
+
+
+def umbenenn_kandidaten(zeilen):
+    """Angehakte Zeilen, die wirklich einen anderen Namen bekämen - die Zahl steht auf dem Umbenennen-Knopf."""
+    return [iid for iid, z in zeilen.items() if z["markiert"] and aendert_sich(z)]
+
+
+def ki_ziele(zeilen):
+    """Wofür „KI-Titel“ fragt (B6, Peter 21.11.2026: EINE Auswahl statt Haken + Tabellenmarkierung): die angehakten
+    Zeilen, ohne Haken alle mit Müll-Titel ⚠. :return: (Zeilen, Art) - Art „angehakte“ oder „⚠“"""
+    angehakt = [iid for iid, z in zeilen.items() if z["markiert"] and not z.get("ki_laeuft")]
+    if angehakt:
+        return angehakt, "angehakte"
+    return [iid for iid, z in zeilen.items() if ist_muell(z) and not z.get("ki_laeuft")], "⚠"
+
+
+def alle_umschalten(zeilen):
+    """Klick auf den ✓-Spaltenkopf: fehlt noch ein Haken bei einer Zeile mit neuem Namen, alle diese anhaken -
+    sonst alle Haken weg (ersetzt die Knöpfe „Abweichende anhaken“ und „Alle abwählen“)."""
+    offen = any(aendert_sich(z) and not z["markiert"] for z in zeilen.values())
+    for z in zeilen.values():
+        z["markiert"] = offen and aendert_sich(z)
+
+
+def menue_eintraege(zeilen, iid):
+    """Rechtsklick-Menü einer Zeile: (Aktion, Beschriftung). Seltenes wie „Originalnamen wiederherstellen“ steht
+    nur hier (B6) - und nur, wenn es einen anderen Originalnamen gibt."""
+    z = zeilen[iid]
+    eintraege = [("vorschlag", "Neuen Namen bearbeiten…"),
+                 ("check", "Haken entfernen" if z["markiert"] else "Haken setzen"),
+                 ("ki", "KI-Titel vorschlagen")]
+    if hat_anderen_original(z):
+        eintraege.append(("original", f"Originalnamen wiederherstellen ({z['originalname']})"))
+    return eintraege
+
+
 class DateinamenFenster(tk.Toplevel):
-    SPALTEN = ("check", "name", "titel", "vorschlag", "original", "ordner")
+    # „Neuer Name“ direkt neben dem aktuellen (B6); Spalten immer über ihre ID ansprechen (FALLSTRICKE #140)
+    SPALTEN = ("check", "name", "vorschlag", "titel", "ordner")
 
     def __init__(self, app, auswahl):
         super().__init__(app.root)
         UIUtils.werkzeugfenster(self, app.root)   # über KID, nicht modal (Peter 04.11.2026)
         self.app = app
         self.title("Dateinamen aufräumen")
-        UIUtils.position_near_mouse(self, UIUtils.px(self, 1200), UIUtils.px(self, 600))
-        self.minsize(UIUtils.px(self, 800), UIUtils.px(self, 400))
+        UIUtils.position_near_mouse(self, UIUtils.px(self, 1100), UIUtils.px(self, 600))
+        self.minsize(UIUtils.px(self, 700), UIUtils.px(self, 350))
         self.zeilen = {}   # iid -> Zeile aus dateinamen.zeile_fuer + "markiert"
         self.auswahl = list(auswahl)
         self._ki_laeuft = False
@@ -103,6 +151,9 @@ class DateinamenFenster(tk.Toplevel):
 
     # ------------------------------------------------------------------ Aufbau
     def _setup_ui(self):
+        """B6 (Peter 21.11.2026: „zu komplex und umständlich“): Haken sind die EINZIGE Auswahl, unten nur noch
+        KI-Titel, Umbenennen (n) und Schließen; Seltenes im Rechtsklick-Menü; Knöpfe ausgegraut statt
+        „Nichts angehakt“-Meldungen."""
         kopf = ttk.Frame(self)
         kopf.pack(fill=tk.X, padx=10, pady=(10, 4))
         ttk.Label(kopf, text="Dateien:").pack(side=tk.LEFT)
@@ -115,19 +166,20 @@ class DateinamenFenster(tk.Toplevel):
                         variable=self.var_bereich, command=self._laden).pack(side=tk.LEFT, padx=(6, 0))
         ttk.Checkbutton(kopf, text="mit Unterordnern", variable=self.var_rekursiv,
                         command=self._laden).pack(side=tk.LEFT, padx=(12, 0))
-        ttk.Button(kopf, text="Neu laden", command=self._laden).pack(side=tk.RIGHT)
 
-        # Statuszeile und Knöpfe ZUERST und von unten packen: sie bleiben so auch dann im
+        # Knöpfe und Statuszeile ZUERST und von unten packen: sie bleiben so auch dann im
         # Fenster, wenn die Tabelle mehr Platz verlangt, als da ist (Lehre aus dem Test-Wizard).
-        buttons = ttk.Frame(self)
-        buttons.pack(side=tk.BOTTOM, pady=(0, 10))
-        self.btn_ki = ttk.Button(buttons, text="KI-Titel vorschlagen (markierte Zeilen)", command=self._ki_titel)
-        self.btn_ki.pack(side=tk.LEFT, padx=4)
-        ttk.Button(buttons, text="Abweichende Vorschläge anhaken", command=self._abweichende_anhaken).pack(side=tk.LEFT, padx=(16, 4))
-        ttk.Button(buttons, text="Alle abwählen", command=self._alle_abwaehlen).pack(side=tk.LEFT, padx=4)
-        ttk.Button(buttons, text="Angehakte umbenennen", command=self._umbenennen, style="Accent.TButton").pack(side=tk.LEFT, padx=(16, 4))
-        ttk.Button(buttons, text="Originalnamen wiederherstellen (angehakte)", command=self._wiederherstellen).pack(side=tk.LEFT, padx=4)
-        ttk.Button(buttons, text="Schließen", command=self.destroy).pack(side=tk.LEFT, padx=(16, 4))
+        unten = ttk.Frame(self)
+        unten.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
+        self.btn_ki = ttk.Button(unten, text="KI-Titel", command=self._ki_titel)
+        self.btn_ki.pack(side=tk.LEFT)
+        Tooltip(self.btn_ki, "Die KI liest den Titel von der ersten Seite - für die angehakten Zeilen, ohne Haken "
+                             "für alle mit Müll-Titel ⚠. Die KI setzt keinen Haken: erst ansehen, dann anhaken.")
+        ttk.Button(unten, text="Schließen", command=self.destroy).pack(side=tk.RIGHT)
+        self.btn_umbenennen = ttk.Button(unten, text="Umbenennen", command=self._umbenennen, style="Accent.TButton")
+        self.btn_umbenennen.pack(side=tk.RIGHT, padx=(0, 8))
+        Tooltip(self.btn_umbenennen, "Benennt die angehakten Dateien um. Der bisherige Name bleibt als Originalname "
+                                     "im PDF und lässt sich per Rechtsklick wiederherstellen.")
         self.status = ttk.Label(self, anchor="w", foreground="gray40")
         self.status.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 5))
 
@@ -136,22 +188,24 @@ class DateinamenFenster(tk.Toplevel):
         self.tree = ttk.Treeview(rahmen, columns=self.SPALTEN, show="headings", selectmode="extended")
         for col, text, width, stretch in (
             ("check", "✓", 32, False), ("name", "Aktueller Name", 260, True),
-            ("titel", "Titel (PDF)", 220, True),
-            ("vorschlag", "Vorschlag (Doppelklick bearbeitet)", 300, True),
-            ("original", "Originalname", 200, True), ("ordner", "Ordner", 140, True),
+            ("vorschlag", "Neuer Name", 300, True), ("titel", "Titel (PDF)", 220, True),
+            ("ordner", "Ordner", 140, True),
         ):
             self.tree.heading(col, text=text)
             breite = UIUtils.px(self, width)
             self.tree.column(col, width=breite, minwidth=min(breite, UIUtils.px(self, 32)), stretch=stretch, anchor="w")
+        self.tree.heading("check", command=self._alle_umschalten)
         self.tree.tag_configure("gleich", foreground="gray50")
-        # Müll-Titel (Datenmüll aus der Scanner-OCR): orange - hier lohnt "KI-Titel vorschlagen"
+        # Müll-Titel (Datenmüll aus der Scanner-OCR): orange - hier lohnt "KI-Titel"
         self.tree.tag_configure("verdaechtig", foreground="#b35c00")
         scroll = ttk.Scrollbar(rahmen, command=self.tree.yview)
         self.tree.configure(yscrollcommand=scroll.set)
         scroll.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        self.tree.bind("<Double-Button-1>", self._on_doppelklick)
+        UIUtils.tabelle_bearbeitbar(self.tree, self._bearbeite, menue=lambda iid: menue_eintraege(self.zeilen, iid),
+                                    f2_spalte="vorschlag")
         self.tree.bind("<space>", lambda e: (self._umschalten(), "break")[1])
+        self.tree.bind("<Button-1>", self._klick, add="+")
         self.tree.bind("<<TreeviewSelect>>", self._sync_hauptfenster)
 
     # ------------------------------------------------------------------ Daten
@@ -185,25 +239,35 @@ class DateinamenFenster(tk.Toplevel):
             self.tree.set(iid, "titel", "KI fragt nach…")
         else:
             self.tree.set(iid, "titel", ("⚠ " if z["verdaechtig"] else "") + (z["titel"] or "(kein Titel)"))
-        self.tree.set(iid, "vorschlag", z["vorschlag"] or "(kein Vorschlag: Datum oder Titel fehlt)")
-        self.tree.set(iid, "original", z["originalname"] or "—")
-        if z["verdaechtig"] and not z.get("ki_titel"):
+        if not z["vorschlag"]:
+            self.tree.set(iid, "vorschlag", "(Datum oder Titel fehlt)")
+        else:
+            self.tree.set(iid, "vorschlag", z["vorschlag"] if aendert_sich(z) else "(unverändert)")
+        if ist_muell(z):
             self.tree.item(iid, tags=("verdaechtig",))
         else:
-            self.tree.item(iid, tags=("gleich",) if not z["vorschlag"] or z["vorschlag"] == z["name"] else ())
+            self.tree.item(iid, tags=() if aendert_sich(z) else ("gleich",))
 
     def _status(self, zusatz=""):
-        gesamt = len(self.zeilen)
-        abweichend = sum(1 for z in self.zeilen.values() if z["vorschlag"] and z["vorschlag"] != z["name"])
-        markiert = sum(1 for z in self.zeilen.values() if z["markiert"])
-        mit_original = sum(1 for z in self.zeilen.values() if z["originalname"] and z["originalname"] != z["name"])
-        verdaechtig = sum(1 for z in self.zeilen.values() if z["verdaechtig"] and not z.get("ki_titel"))
-        text = (f"{gesamt} Datei(en), {abweichend} mit abweichendem Vorschlag, {verdaechtig} mit Müll-Titel (⚠, KI fragen), "
-                f"{mit_original} mit anderem Originalnamen, {markiert} angehakt. "
-                "Doppelklick auf ✓ oder Leertaste hakt an/ab, Doppelklick auf den Vorschlag bearbeitet ihn.")
-        if zusatz:
-            text = zusatz + "  |  " + text
-        self.status.config(text=text)
+        zeilen = self.zeilen.values()
+        markiert = sum(1 for z in zeilen if z["markiert"])
+        abweichend = sum(1 for z in zeilen if aendert_sich(z))
+        muell = sum(1 for z in zeilen if ist_muell(z))
+        teile = [f"{markiert} angehakt", f"{abweichend} würden sich ändern"]
+        if muell:
+            teile.append(f"{muell} mit ⚠ Müll-Titel")
+        text = " · ".join(teile) + "   (Klick auf ☐ hakt an, auf den Kopf ✓ alle mit neuem Namen; Rechtsklick = mehr)"
+        self.status.config(text=f"{zusatz}  |  {text}" if zusatz else text)
+        self._knoepfe()
+
+    def _knoepfe(self):
+        """Zahlen auf die Knöpfe, ausgegraut statt „Nichts angehakt“-Meldung (B6)."""
+        n = len(umbenenn_kandidaten(self.zeilen))
+        self.btn_umbenennen.config(text=f"Umbenennen ({n})" if n else "Umbenennen")
+        self.btn_umbenennen.state(["!disabled"] if n else ["disabled"])
+        ziele, art = ki_ziele(self.zeilen)
+        self.btn_ki.config(text=f"KI-Titel für {art} ({len(ziele)})" if ziele else "KI-Titel")
+        self.btn_ki.state(["!disabled"] if ziele and not self._ki_laeuft else ["disabled"])
 
     def pfad_nachziehen(self, alt, neu):
         """Datei wurde anderswo verschoben/umbenannt: Zeile aktualisieren statt ins Leere zu laufen."""
@@ -215,14 +279,38 @@ class DateinamenFenster(tk.Toplevel):
                     self._zeichne_zeile(iid)
 
     # ------------------------------------------------------------------ Bedienung
-    def _on_doppelklick(self, event):
-        iid = self.tree.identify_row(event.y)
-        if not iid or iid not in self.zeilen:
+    def _bearbeite(self, iid, spalte):
+        """Doppelklick, Rechtsklick-Menü oder F2 (UIUtils.tabelle_bearbeitbar): der Vorschlag wird bearbeitet, der
+        Haken umgeschaltet (Doppelklick auf ☐ = zwei Klicks); aus dem Menü außerdem KI-Titel und Originalname.
+        Andere Zellen tun beim Doppelklick nichts mehr (Peter 21.11.2026: „anhaken sollte man mit nur einem
+        Klick, Doppelklick auch hier ist ungewöhnlich“ - der Einzelklick auf ☐ hakt an, `_klick`). Vorher fragte
+        der Doppelklick „#3“ ab - eine neue Spalte verschob still sein Ziel (FALLSTRICKE #140)."""
+        if iid not in self.zeilen:
             return
-        if self.tree.identify_column(event.x) == "#3":
+        if spalte == "vorschlag":
             self._bearbeite_vorschlag(iid)
-        else:
+        elif spalte == "ki":
+            self._ki_titel(self._betroffene(iid))
+        elif spalte == "original":
+            self._wiederherstellen(self._betroffene(iid))
+        elif spalte == "check":
             self._umschalten(iid)
+
+    def _klick(self, event):
+        """Einzelklick auf ☐/☑ hakt an/ab (wie in jeder Haken-Liste); die Zeile wird dabei auch ausgewählt."""
+        if self.tree.identify_region(event.x, event.y) != "cell":
+            return
+        if self.tree.column(self.tree.identify_column(event.x), "id") != "check":
+            return
+        iid = self.tree.identify_row(event.y)
+        if iid in self.zeilen:
+            self._umschalten(iid)
+
+    def _betroffene(self, iid):
+        """Rechtsklick auf eine angehakte Zeile wirkt auf alle angehakten, sonst nur auf diese Zeile."""
+        if self.zeilen[iid]["markiert"]:
+            return [i for i, z in self.zeilen.items() if z["markiert"]]
+        return [iid]
 
     def _umschalten(self, iid=None):
         ziele = [iid] if iid else list(self.tree.selection())
@@ -230,6 +318,12 @@ class DateinamenFenster(tk.Toplevel):
             if iid in self.zeilen:
                 self.zeilen[iid]["markiert"] = not self.zeilen[iid]["markiert"]
                 self._zeichne_zeile(iid)
+        self._status()
+
+    def _alle_umschalten(self):
+        alle_umschalten(self.zeilen)
+        for iid in self.zeilen:
+            self._zeichne_zeile(iid)
         self._status()
 
     def _bearbeite_vorschlag(self, iid):
@@ -246,34 +340,21 @@ class DateinamenFenster(tk.Toplevel):
         self._zeichne_zeile(iid)
         self._status()
 
-    def _abweichende_anhaken(self):
-        for iid, z in self.zeilen.items():
-            z["markiert"] = bool(z["vorschlag"]) and z["vorschlag"] != z["name"]
-            self._zeichne_zeile(iid)
-        self._status()
-
-    def _alle_abwaehlen(self):
-        for iid, z in self.zeilen.items():
-            z["markiert"] = False
-            self._zeichne_zeile(iid)
-        self._status()
-
     # ------------------------------------------------------------------ KI-Titel
-    def _ki_titel(self):
+    def _ki_titel(self, ziele=None):
         """
-        Lässt die KI für die in der Tabelle markierten Zeilen (ohne Markierung: alle mit
-        Müll-Titel ⚠) einen Titel von der ersten Seite ablesen. Der Vorschlag wird zu
-        'JJJJMMTT_KI-Titel.pdf', die Zeile bleibt bewusst OHNE Haken - der Nutzer sieht
-        den Vorschlag erst an und hakt dann selbst an. Beim Umbenennen wandert der KI-Titel
-        auch in die PDF-Metadaten, damit Dateiname und Titel zusammenpassen.
+        Lässt die KI einen Titel von der ersten Seite ablesen - für `ziele`, ohne Angabe für die angehakten
+        Zeilen bzw. ohne Haken alle mit Müll-Titel ⚠ (`ki_ziele`). Der Vorschlag wird zu
+        'JJJJMMTT_KI-Titel.pdf'. Die KI setzt keinen Haken (⚠-Zeilen erst ansehen, dann anhaken), vorhandene
+        bleiben. Beim Umbenennen wandert der KI-Titel auch in die PDF-Metadaten, damit
+        Dateiname und Titel zusammenpassen.
         """
         if self._ki_laeuft:
             return
-        ziele = [iid for iid in self.tree.selection() if iid in self.zeilen]
+        if ziele is None:
+            ziele = ki_ziele(self.zeilen)[0]
+        ziele = [iid for iid in ziele if iid in self.zeilen]
         if not ziele:
-            ziele = [iid for iid, z in self.zeilen.items() if z["verdaechtig"] and not z.get("ki_titel")]
-        if not ziele:
-            mb.showinfo("KI-Titel vorschlagen", "Keine Zeilen markiert und kein Müll-Titel (⚠) in der Tabelle.", parent=self)
             return
         base_url = self.app.config.get("ollama_url", ollama_client.DEFAULT_URL)
         model = self.app.config.get("ollama_model", ollama_client.DEFAULT_MODEL)
@@ -283,7 +364,6 @@ class DateinamenFenster(tk.Toplevel):
                            "Server-Adresse in den Einstellungen prüfen, oder Ollama lokal/im Netzwerk starten.", parent=self)
             return
         self._ki_laeuft = True
-        self.btn_ki.config(state=tk.DISABLED)
         auftraege = []
         for iid in ziele:
             self.zeilen[iid]["ki_laeuft"] = True
@@ -319,7 +399,6 @@ class DateinamenFenster(tk.Toplevel):
                 self._zeichne_zeile(iid)
         if nr >= gesamt:
             self._ki_laeuft = False
-            self.btn_ki.config(state=tk.NORMAL)
             self._status("KI fertig - Vorschläge prüfen und anhaken")
         else:
             self._status(f"KI: {nr}/{gesamt}…")
@@ -369,29 +448,28 @@ class DateinamenFenster(tk.Toplevel):
         self._status(f"{titel}: {erledigt} Datei(en) umbenannt" + (f", {len(fehler)} Fehler" if fehler else ""))
         if fehler:
             mb.showerror(f"{titel} - teilweise fehlgeschlagen", "\n".join(fehler), parent=self)
+        elif erledigt:
+            aktivitaet.erledigt(f"{titel}: {erledigt} Datei(en)")
 
     def _umbenennen(self):
-        kandidaten = [(iid, z) for iid, z in self.zeilen.items()
-                      if z["markiert"] and z["vorschlag"] and z["vorschlag"] != z["name"]]
+        kandidaten = [(iid, self.zeilen[iid]) for iid in umbenenn_kandidaten(self.zeilen)]
         if not kandidaten:
-            mb.showinfo("Dateinamen aufräumen", "Nichts angehakt, das einen anderen Namen bekäme.", parent=self)
-            return
+            return   # der Knopf ist dann ausgegraut
         if not bestaetigung.frage("Dateinamen aufräumen",
                                   f"{len(kandidaten)} Datei(en) umbenennen?\n"
                                   "Der bisherige Name wird als Originalname im PDF gespeichert und lässt sich "
-                                  "jederzeit wiederherstellen.", parent=self):
+                                  "jederzeit wiederherstellen (Rechtsklick auf die Zeile).", parent=self):
             return
         # KI-Titel wandert mit ins PDF (Dateiname und Titel passen dann zusammen)
         self._fuehre_aus("Umbenannt", kandidaten,
                          lambda z: dateinamen.benenne_um(z["pfad"], z["vorschlag"],
                                                          zusatz_metadaten={"title": z["ki_titel"]} if z.get("ki_titel") else None))
 
-    def _wiederherstellen(self):
-        kandidaten = [(iid, z) for iid, z in self.zeilen.items()
-                      if z["markiert"] and z["originalname"] and z["originalname"] != z["name"]]
+    def _wiederherstellen(self, ziele):
+        """Originalnamen zurück - aus dem Rechtsklick-Menü für die Zeile bzw. alle angehakten (B6)."""
+        kandidaten = [(iid, self.zeilen[iid]) for iid in ziele
+                      if iid in self.zeilen and hat_anderen_original(self.zeilen[iid])]
         if not kandidaten:
-            mb.showinfo("Originalnamen wiederherstellen",
-                        "Nichts angehakt, das einen gespeicherten Originalnamen hat (Spalte 'Originalname').", parent=self)
             return
         if not bestaetigung.frage("Originalnamen wiederherstellen",
                                   f"{len(kandidaten)} Datei(en) auf ihren Originalnamen zurückbenennen?", parent=self):

@@ -1,6 +1,8 @@
 import json
 import logging
 import os
+
+import aktivitaet
 import tkinter as tk
 from tkinter import messagebox, ttk, font as tkfont
 import bestaetigung
@@ -336,10 +338,8 @@ class TagEditor:
         self.app.tag_manager.sync_tag_tree_selection()
         if hasattr(self.app, "folder_manager"):
             self.app.folder_manager.on_folder_select(None)
-        messagebox.showinfo(
-            "Tag ignorieren",
-            f"'{text}' entfernt ({geaendert} Dokument(e) geändert) und auf die Ignorierliste gesetzt.\n"
-            "Rückgängig machen: Tools → Tag-Hygiene → 'Ignorierliste…'.")
+        # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026) - rückgängig: Tools → Tag-Hygiene → „Ignorierliste…“
+        aktivitaet.erledigt(f"'{text}' ignoriert, aus {geaendert} Dokument(en) entfernt")
 
     def delete_tag(self, event=None):
         """Löscht das ausgewählte Tag samt aller Unter-Tags nach Sicherheitsabfrage (System-Knoten geschützt)."""

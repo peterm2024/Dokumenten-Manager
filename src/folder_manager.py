@@ -272,8 +272,8 @@ class FolderManager:
             build_structure(self.app.master_folder, structure_to_build)
             
             self.refresh_folder_tree()
-            self.app.logger.info("Ordnerstruktur wurde aus JSON generiert.")
-            messagebox.showinfo("Erfolg", "Die Ordnerstruktur wurde erfolgreich angelegt!")
+            # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+            aktivitaet.erledigt("Ordnerstruktur angelegt")
         except Exception as e:
             self.app.logger.error(f"Fehler beim Erstellen der Ordner: {e}")
             messagebox.showerror("Fehler", f"Ordner konnten nicht erstellt werden:\n{e}")

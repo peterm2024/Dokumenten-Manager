@@ -37,6 +37,7 @@ from fehlerfaenger import Fehlerfaenger
 from file_operations import FileOperations
 from folder_monitor import FolderMonitor
 from index_manager import IndexManager
+from ui_utils import UIUtils
 
 TITEL = "KID – Hintergrund-Automatik"
 SCHALTER = "--dienst"
@@ -117,6 +118,7 @@ class DienstApp:
         auto_pilot.protokolliere(self.master_folder, "DIENST    gestartet - Hintergrund-Automatik ohne Hauptfenster",
                                  self.logger)
         ui_theme.wende_an(root)      # dasselbe helle Design wie mit Oberfläche (Etappe 11) - vor dem Statusfenster
+        UIUtils.mindestgroesse_ueberall(root)        # B5: Mindestgröße wie mit Oberfläche
         self.auto_pilot_service = AutoPilotService(self, immer_an=True)
         self.auto_pilot_service.start()               # öffnet auch das Statusfenster (vollautomatik_fenster)
         threading.Thread(target=self._lebenszeichen, name="Posteingang-Sperre", daemon=True).start()

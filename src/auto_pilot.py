@@ -21,10 +21,12 @@ from collections import Counter
 from datetime import datetime
 
 import app_paths
+import eingangsstempel
 import mail_lesen
 import ollama_client
 import ordner_aliase
 import ordner_steckbrief
+import ordnernamen
 import scan_date
 import spell_correct
 from pdf_handler import PDFHandler
@@ -729,7 +731,8 @@ def normalisiere_datum(text):
     """
     Bringt ein Datum in die Form JJJJ-MM-TT: akzeptiert '2026-07-20', '20.07.2026',
     '20.7.26', '2026.07.20', '20/07/2026' (auch mit umgebenden Leerzeichen/Punkt am Ende).
-    Zweistellige Jahre: 00-49 -> 20xx, 50-99 -> 19xx. Liefert den Text unverändert
+    Zweistellige Jahre wie im Hauptfenster (PDFHandler.jahr_vierstellig: bis zum laufenden Jahr 20xx,
+    sonst 19xx). Liefert den Text unverändert
     (gestrippt), wenn keine Form passt - die Plausibilitätsprüfung lehnt ihn dann ab.
     """
     text = (text or "").strip().rstrip(".")
@@ -742,8 +745,37 @@ def normalisiere_datum(text):
             return text
         tag, monat, jahr = m.groups()
         if len(jahr) == 2:
-            jahr = ("20" if int(jahr) < 50 else "19") + jahr
+            jahr = str(PDFHandler.jahr_vierstellig(int(jahr)))
     return f"{int(jahr):04d}-{int(monat):02d}-{int(tag):02d}"
+
+
+WOCHENTAGE = ("Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag", "Sonntag")
+
+
+def datum_aus_eingabe(text):
+    """
+    Prüft eine Datums-Eingabe des Nutzers (B4b, 21.11.2026): alle Formen von normalisiere_datum und zusätzlich
+    reine Ziffern TTMMJJ / TTMMJJJJ wie im Datumsfeld des Hauptfensters ('200726' -> 2026-07-20).
+    :return: ('JJJJ-MM-TT' oder None, Hinweis für den Dialog) - der Hinweis nennt bei Erfolg den Wochentag
+             (Tippfehler fallen so auf), sonst den Grund (Zukunft, vor 1950, kein Datum).
+    """
+    roh = (text or "").strip()
+    if not roh:
+        return None, "Bitte ein Datum eingeben, z.B. 20.07.2026."
+    if roh.isdigit() and len(roh) in (6, 8):
+        roh = f"{roh[:2]}.{roh[2:4]}.{roh[4:]}"
+    datum = normalisiere_datum(roh)
+    try:
+        wert = datetime.strptime(datum, "%Y-%m-%d") if _DATUM_FORMAT.match(datum) else None
+    except ValueError:
+        wert = None
+    if wert is None:
+        return None, "Kein gültiges Datum - bitte als TT.MM.JJJJ, JJJJ-MM-TT oder TTMMJJ."
+    if wert.date() > datetime.now().date():
+        return None, f"{wert:%d.%m.%Y} liegt in der Zukunft."
+    if wert.year < 1950:
+        return None, f"{wert:%d.%m.%Y} liegt vor 1950 - bitte prüfen."
+    return datum, f"✓ {WOCHENTAGE[wert.weekday()]}, {wert:%d.%m.%Y}"
 
 
 def _datum_ist_plausibel(datum):
@@ -1298,7 +1330,7 @@ def merke_orte(orte, gelesen):
 
 def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=None, vocabulary=None, aliase=None,
                       known_tags=None, kategorien=None, ignorierte_tags=None, tag_eltern=None,
-                      synonyme=None, gedaechtnis=None, orte=None):
+                      synonyme=None, gedaechtnis=None, orte=None, textdaten=None, textwoerter=None):
     """
     Verwandelt den KI-Vorschlag (ollama_client.suggest_filing) in eine geprüfte
     Ablage-Entscheidung - reine Funktion, kein Dateisystem-/Netzwerkzugriff.
@@ -1318,8 +1350,13 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
                         Namensregeln; None = aus
     :param orte: bisher gesehene Ortswörter des Laufs (merke_orte) - zählen wie der Ort des Dokuments
                  bei der Vorauswahl eines ähnlichen Ordners nicht mit (FALLSTRICKE #83); None = nur der eigene
+    :param textdaten: Daten aus der Textebene (eingangsstempel.textdaten, von lies_dokument) - nahm die KI das
+                      Datum eines Eingangsstempels, gilt das Briefdatum davor; None = KI-Datum unverändert
+    :param textwoerter: Wörter der Textebene (ordnernamen.textwoerter, von lies_dokument) - ein Lesefehler der KI
+                        im Ordnernamen bekommt die Schreibweise aus dem Text; None = Name wie von der KI
     :return: Dict mit pdf_path, titel, titel_korrekturen, tags, tag_ersetzungen [(alt, neu)],
-             neue_tags [(Tag, Kategorie)], datum,
+             neue_tags [(Tag, Kategorie)], tag_vorschlaege (Katalog-Tags der KI, nur zum Anklicken - B4a),
+             datum, datum_stempel (das ersetzte Stempeldatum der KI oder ""),
              absender, ordnername, zielordner, ordner_neu, ordner_per_alias,
              ordner_gedaechtnis (Stimmen, 0 = Ordner nicht aus dem Gedächtnis),
              ordner_hinweis ('Tag'/'Dateiname'/''), neuer_dateiname, sicher, probleme (Liste von Gründen).
@@ -1337,6 +1374,9 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
     tags = ohne_kategorien(tags, kategorien)  # grau = nie vergeben, auch nicht automatisch
     tags = ergaenze_oberkategorien(tags, tag_eltern, ignorierte_tags)
     datum = normalisiere_datum(ki_antwort.get("datum"))
+    datum_stempel, briefdatum = "", eingangsstempel.briefdatum_statt_stempel(datum, textdaten)
+    if briefdatum:
+        datum_stempel, datum = datum, briefdatum
     # Rücksendezeile statt Name ('Bay. LfSt, PF 0151 Straubing'): Adressteil weg, der Rest
     # ist der Alias-Schlüssel und Vergleichsname; ein reines Kürzel wird unten nie zum
     # neuen Ordner (siehe trenne_adresszeile / absender_ist_kuerzel).
@@ -1346,10 +1386,18 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
     # nachweislich aus dem Absender stammt (siehe ordnername_passt_zum_absender: die KI
     # lieferte sonst den Empfänger). Fehlt/verworfen: der Absender selbst ist der Ordnername.
     ordnername_ki, _ = trenne_adresszeile(ki_antwort.get("ordnername"))
-    if ordnername_ki and not ordnername_passt_zum_absender(ordnername_ki, absender):
+    if ordnername_ki and (not ordnername_passt_zum_absender(ordnername_ki, absender)
+                          or ordnernamen.ist_firma_in_telefonbuchform(ordnername_ki, absender)):
         ordnername_ki = ""
     roh = ordnername_ki or absender
+    # Namen neuer Ordner bleiben für Jahre (Frisch-Versuch 20./21.11.2026, ordnernamen.py): Schreibweise aus der
+    # Textebene - „Haustchnik Mustergültig GmbH“ wird „Haustechnik Mustergültig GmbH“
+    roh = ordnernamen.schreibweise_aus_text(roh, textwoerter)
     ordnername = bereinige_ordnername(ordnername_aus_adresse(roh))
+    # Die Rechtsform fällt nur im Namen eines NEU angelegten Ordners weg. Verglichen wird weiter mit ihr: Ohne sie
+    # traf 'Muster' den vorhandenen 'Muster Medizintechnik' sicher statt nachzufragen (so im Korpus 21.11.2026) - eine
+    # Namensbereinigung soll keine Entscheidung ändern.
+    ordnername_neu = bereinige_ordnername(ordnernamen.ohne_rechtsform(ordnername))
     # Mit vorhandenen Ordnern wird eine bloße Adresse nur über den Domainnamen verglichen (FALLSTRICKE #107)
     vergleichsnamen = [_vergleichsname(absender), ordnername if _vergleichsname(roh) == roh else _vergleichsname(roh)]
     tags, tags_verworfen = ohne_unbrauchbare_neue_tags(
@@ -1424,8 +1472,8 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
             # dann reicht in der Ablage-Vorschau Enter (Betatest 25.10.2026).
             zielordner = finde_aehnlichen_ordner(vergleichsnamen, vorhandene_ordner)
         else:
-            gruppe = finde_buchstabengruppe(ordnername, vorhandene_ordner)
-            neuer_ordner = os.path.join(gruppe, ordnername) if gruppe else ordnername
+            gruppe = finde_buchstabengruppe(ordnername_neu, vorhandene_ordner)
+            neuer_ordner = os.path.join(gruppe, ordnername_neu) if gruppe else ordnername_neu
             aehnlich = finde_aehnlichen_ordner(vergleichsnamen, vorhandene_ordner)
             vorwahl = aehnlich and finde_aehnlichen_ordner(
                 vergleichsnamen, vorhandene_ordner, ohne_gattungswoerter=True,
@@ -1442,7 +1490,7 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
                 # bestätigt ihn (oder tippt den neuen Namen) - Betatest 25.10.2026.
                 zielordner = vorwahl
                 probleme.append(f"{_PROBLEM_AEHNLICHER_ORDNER} '{vorwahl}' - passt er zu '{absender or ordnername}'? "
-                                f"Zielordner anklicken (oder neuen Ordner '{ordnername}' eintippen)")
+                                f"Zielordner anklicken (oder neuen Ordner '{ordnername_neu}' eintippen)")
             elif aehnlich:
                 # Nur über ein Gattungswort ähnlich ('Versicherung'): trotzdem bremsen, aber der NEUE
                 # Ordner ist vorgewählt - Enter in der Ablage-Vorschau legt ihn an. Bleibt das Dokument
@@ -1451,7 +1499,7 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
                 zielordner = neuer_ordner
                 ordner_neu = True
                 probleme.append(f"{_PROBLEM_AEHNLICHER_ORDNER} '{aehnlich}' - gehört '{absender or ordnername}' "
-                                f"dorthin? Sonst wird der neue Ordner '{ordnername}' angelegt - Zielordner "
+                                f"dorthin? Sonst wird der neue Ordner '{ordnername_neu}' angelegt - Zielordner "
                                 "anklicken oder bestätigen")
             else:
                 zielordner = neuer_ordner
@@ -1471,6 +1519,10 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
     # Die KI vergibt keine Tags mehr, auch keinen Absender-Tag beim Sammelordner. Ihre Tags dienten oben nur noch als Hinweis
     # für die Ordnerwahl ohne Absender (finde_ordner_ueber_hinweise). Tags setzt der Mensch, etwa in der Ablage-Vorschau;
     # ein Dokument ohne Tags ist darum auch kein Grund mehr für „unsicher“ (FALLSTRICKE #120).
+    # B4a (21.11.2026): Was davon schon im Tag-Katalog steht, bleibt als Vorschlag zum Anklicken im Tag-Dialog der
+    # Ablage-Vorschau - vergeben wird es weiterhin nur per Klick, wie beim Titelvorschlag.
+    katalog = {t.lower() for t in (known_tags or [])}
+    tag_vorschlaege = [t for t in tags if t.lower() in katalog]
     tags, tag_ersetzungen, tags_verworfen, neue_tags = [], [], [], []
 
     sicher = not probleme
@@ -1481,8 +1533,10 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
         "tags": tags,
         "tag_ersetzungen": tag_ersetzungen,
         "tags_verworfen": tags_verworfen,
+        "tag_vorschlaege": tag_vorschlaege,
         "neue_tags": neue_tags,
         "datum": datum,
+        "datum_stempel": datum_stempel,
         "absender": absender,
         "ordnername": ordnername,
         "zielordner": zielordner,
@@ -1624,7 +1678,7 @@ _PROBLEM_KEIN_DATUM = "kein plausibles Dokumentdatum erkannt"
 def wende_korrektur_an(entscheidung, titel=None, datum=None, tags=None, known_tags=None, kategorien=None):
     """
     Liefert eine Kopie der Entscheidung mit vom Nutzer korrigiertem Titel, Datum und/oder
-    Tags (Klick auf die Zelle in der Ablage-Vorschau). Das jeweilige KI-Problem entfällt
+    Tags (Doppelklick auf die Zelle in der Ablage-Vorschau). Das jeweilige KI-Problem entfällt
     bzw. kommt zurück, wenn die Eingabe leer/unplausibel ist; 'sicher' und der Dateiname
     werden neu bestimmt. None = Feld unverändert lassen.
     :param tags: kommagetrennter Eingabetext des Nutzers (Nutzerwunsch 01./03.09.2026);
@@ -1954,9 +2008,11 @@ def analysiere_dokument(pdf_path, known_tags, vorhandene_ordner, base_url, model
 def lies_dokument(pdf_path, known_tags, base_url, model, kategorien=None):
     """
     Lesemodell-Teil: Schreibschutz prüfen, Seite 1 rendern, KI befragen. Wirft Verbindungs-/
-    Serverfehler des KI-Aufrufs weiter. :return: {"pdf_path", "schreibschutz", "png", "ki_antwort", "merkmale"}
-    (png None = Seite nicht darstellbar, dann ohne KI-Aufruf; merkmale = Nummern/Adressen aus der Textebene für
-    den Ordner-Steckbrief, leer ohne Textebene - kein OCR, das kostete je Dokument Sekunden)
+    Serverfehler des KI-Aufrufs weiter. :return: {"pdf_path", "schreibschutz", "png", "ki_antwort", "merkmale",
+    "daten", "woerter"} (png None = Seite nicht darstellbar, dann ohne KI-Aufruf; merkmale = Nummern/Adressen aus der
+    Textebene für den Ordner-Steckbrief, daten = Brief- und Stempeldaten der Textebene (eingangsstempel.textdaten),
+    woerter = Schreibweisen für den Ordnernamen (ordnernamen.textwoerter); alles leer ohne Textebene - kein OCR, das
+    kostete je Dokument Sekunden)
     """
     schreibschutz = PDFHandler.get_write_protection(pdf_path)
     png = PDFHandler.render_page_png(pdf_path)
@@ -1965,8 +2021,10 @@ def lies_dokument(pdf_path, known_tags, base_url, model, kategorien=None):
         ki_antwort = ollama_client.suggest_filing(
             png, known_tags=known_tags, base_url=base_url, model=model, kategorien=kategorien)
         ki_antwort = mit_mailkopf(ki_antwort, PDFHandler.get_metadata(pdf_path))
+    volltext = PDFHandler.get_fulltext(pdf_path)
     return {"pdf_path": pdf_path, "schreibschutz": schreibschutz, "png": png, "ki_antwort": ki_antwort,
-            "merkmale": ordner_steckbrief.merkmale(PDFHandler.get_fulltext(pdf_path))}
+            "merkmale": ordner_steckbrief.merkmale(volltext), "daten": eingangsstempel.textdaten(volltext),
+            "woerter": ordnernamen.textwoerter(volltext)}
 
 
 def mit_mailkopf(ki_antwort, meta):
@@ -2070,7 +2128,8 @@ def entscheide_gelesen(gelesen, vorhandene_ordner, base_url, vocabulary=None, al
     entscheidung = baue_entscheidung(gelesen["pdf_path"], gelesen["ki_antwort"], vorhandene_ordner,
                                      schreibschutz=gelesen["schreibschutz"], vocabulary=vocabulary, aliase=aliase,
                                      known_tags=known_tags, kategorien=kategorien, ignorierte_tags=ignorierte_tags,
-                                     tag_eltern=tag_eltern, synonyme=synonyme, gedaechtnis=gedaechtnis, orte=orte)
+                                     tag_eltern=tag_eltern, synonyme=synonyme, gedaechtnis=gedaechtnis, orte=orte,
+                                     textdaten=gelesen.get("daten"), textwoerter=gelesen.get("woerter"))
     if entscheidungsmodell and braucht_zweitmeinung(entscheidung):
         try:
             if rangliste is None:

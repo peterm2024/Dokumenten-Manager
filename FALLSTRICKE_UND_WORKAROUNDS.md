@@ -1203,3 +1203,87 @@ Im selben Zug verworfen (Etappe 11 Schritt 2, Code in `KID-Messungen/verworfen_m
 **Nebenbefund:** Ollama 0.40.16 meldet gemma4 in `/api/ps` viel zu klein (`gemma4:12b` 1,0 GB, laut nvidia-smi 6,8 GB belegt; qwen-Modelle stimmen). Speicheranzeige im Benchmark und `gpu_status` („teilweise auf der Karte?“) taugen bei gemma4 darum nicht.
 
 **Merksatz:** Ein Messlauf mit vielen Fehlern ist kein Messwert. Was nur bestimmte Modelle können, zeigt die Auswahl auch nur für diese an.
+
+## 136. Die KI nimmt das Datum des Eingangsstempels statt des Briefdatums
+
+**Problem:** Im Frisch-Versuch (20./21.11.2026: die 40 Prüfbriefe im Posteingang eines frischen KID) bekamen 4 von 29 digital und 1 bis 3 der gescannten Briefe das Datum des Eingangsstempels („16. JAN. 2026“), 3 bis 4 Tage nach dem Briefdatum - als Dokumentdatum und vorn im Dateinamen. Im Benchmark fiel das kaum auf; in der Firma bekommt aber jeder Brief einen Stempel.
+
+**Ursache:** Das Datum kommt allein von der KI, die das Bild der ersten Seite liest. Der Prompt schließt Fälligkeits- und Vertragsdaten aus, nicht den Stempel. Welches Datum sie nimmt, schwankt von Lauf zu Lauf (derselbe Brief einmal richtig, einmal mit Stempeldatum).
+
+**Lösung:** `eingangsstempel.py`: `lies_dokument` legt die Daten der Textebene getrennt nach gewöhnlichen Daten und Stempeln in `gelesen["daten"]` (Stempel = abgekürzter Monat in GROSSBUCHSTABEN, auch ohne Jahr, oder eine Zeile mit „Eingang“). `baue_entscheidung` ersetzt das KI-Datum nur, wenn es als Stempel und nicht zugleich als gewöhnliches Datum dasteht und höchstens 31 Tage davor ein gewöhnliches Datum steht - dann das späteste davon. Echter Korpus: 9 von 403 geändert, alle 9 von Hand geprüft richtig.
+
+**Grenze:** Liest der Scanner den Stempel nicht mit (kommt beim Scan vor), sieht die Regel ihn nicht. Eine zweite Regel „KI-Datum steht nirgends im Text, kurz davor ein anderes“ war bei den Prüfbriefen 4/4 richtig, änderte im Korpus aber 18 Dokumente, darunter mindestens 2 klar falsch (Ende eines Abrechnungszeitraums als Briefdatum) - verworfen. Für die Datums-Wahl gibt es im Korpus keine Wahrheit; jede weitere Regel lässt sich dort nur von Hand prüfen. Auch der Prompt hilft kaum (gemessen 21.11.2026, Scan niedrig, je 4 × 40 Briefe im Wechsel): der Satz „NICHT das Datum eines Eingangsstempels“ 147 richtig/12 Stempel gegen 145/15, ein eigenes Feld „eingangsstempel“ 145/15 gegen 143/16 - die KI meldete nur 5 von 32 Stempeln und nie die, deren Datum sie nahm; für sie ist der Stempel dann „das Datum“. Tesseract (KIDs eigene Texterkennung) liest die farbigen, schrägen Stempel ebenfalls nicht (1 von 8, und den kannte die Textebene schon). Darum keine Prompt-Änderung: Sie verschiebt alle KI-Antworten für höchstens 3 von 160 Fällen.
+
+**Nebenbefund (Versuchsaufbau):** Ein „frisches KID“ lässt sich NICHT mit `python main.py` und eigener settings.json im Arbeitsverzeichnis starten - `main.py` wechselt ins Programmverzeichnis (FALLSTRICKE #102) und liest die echte settings.json; ein Versuch öffnete so Peters echte Sammlung (zum Glück mit Vollautomatik aus). Neuen Code für solche Versuche erst als EXE bauen (`KID-Messungen/frisch/`).
+
+**Merksatz:** KI schlägt vor, Code entscheidet - aber nur, wo der Code etwas sieht. Eine Regel ohne Wahrheit zum Nachmessen bleibt eng.
+
+## 137. transient nimmt die Maximieren-Schaltfläche - und Tk nimmt sie nach dem Zurücksetzen wieder
+
+**Problem:** Die Ablage-Vorschau rutschte hinter das Hauptfenster (Fenster-Durchsicht 21.11.2026, A1); ein erneuter Aufruf verwarf sie dann samt aller Korrekturen (A3). Sie war bewusst nicht transient: Unter Windows nimmt `transient` einem Fenster die Maximieren-Schaltfläche, und die wollte Peter für große Stapel (01.09.2026). Der Dubletten-Finder hatte sie aus demselben Grund behalten - bis er am 04.11.2026 mit allen Werkzeugfenstern transient wurde und sie still verlor (sein Kopfkommentar sagte noch das Gegenteil). Der Wächter-Test `test_fenster_ueber_kid` ließ die Vorschau durch, weil er nur nach dem Text „transient(“ suchte - und ihr Kommentar lautete „Bewusst KEIN transient(app.root)“.
+
+**Ursache:** Tk gibt transienten Fenstern unter Windows den Stil eines Dialogs ohne `WS_MAXIMIZEBOX`. Die Schaltfläche lässt sich per `SetWindowLongW` nachträglich setzen, aber Tk baut den äußeren Fensterrahmen bei manchen Vorgängen komplett neu auf (`UpdateWrapper`) und vergisst dabei Schaltfläche UND Maximierung. Im Probefenster gemessen: Hauptfenster minimiert und zurückgeholt (auch per Klick auf sein Taskleisten-Symbol), `resizable(...)`, erneutes `transient(...)`. Ein bloßer Klick ins Hauptfenster schadet nicht.
+
+**Lösung:** `UIUtils.werkzeugfenster(fenster, hauptfenster, maximierbar=True)`: `<Unmap>` merkt sich, ob das Fenster maximiert war (über `IsZoomed` - Tk meldet in dem Moment nur noch „withdrawn“), `<Map>` setzt die Schaltfläche neu und maximiert wieder; der Merker gilt nur für EIN Verbergen/Zeigen (sonst maximierte ein Neuaufbau ohne `<Unmap>` ein inzwischen wiederhergestelltes Fenster ungefragt - live gefunden). Beide Ereignisse feuern auch für Kind-Widgets, darum `event.widget is fenster`. Eigene `ctypes.WinDLL("user32")`, damit die argtypes nicht für `ctypes.windll` gelten. Die Vorschau öffnet sich über `oeffne_vorschau` nur noch einmal für beide Tools (`UIUtils.einzelfenster`): ein zweiter Aufruf holt die offene nach vorn, bei anderer Auswahl mit Hinweis; nur ein reines Protokoll (nach „Jetzt einsortieren“) weicht der neuen Auswahl. Der Wächter-Test zählt jetzt nur echte Aufrufe (ast), Rotprobe: alter Stand der Vorschau -> rot. Tests `TestMaximierbarHalten`, `TestNurEineVorschau`, je mit Rotprobe.
+
+**Merksatz:** Was man unter Tk per Win32 an einem Fensterrahmen ändert, hält nur bis zum nächsten Neuaufbau - bei `<Map>` neu setzen. Und ein Wächter-Test, der Quelltext nach Wörtern durchsucht, lässt sich von Kommentaren täuschen.
+
+## 138. „[Alias]“ in der Ablage-Vorschau, obwohl kein Alias gespeichert wurde
+
+**Problem:** Wer in der Ablage-Vorschau den Zielordner von Hand wählte (ohne „für alle Dokumente des Absenders“), sah danach „[Alias]“ in der Zelle - Peter hielt das beim Test T10g.74 (21.11.2026) zu Recht für einen Fehler, denn gespeichert wurde nichts.
+
+**Ursache:** `auto_pilot.wende_zielordner_an` setzt `ordner_per_alias = True` für jede Handwahl. Das ist für die Logik gewollt: Gedächtnis, Rangliste und Zweitmeinung fragen dieses Feld ab und überstimmen einen so festgelegten Ordner nicht. Die Zelle las dasselbe Feld aber als „kommt aus einem gespeicherten Alias“. Ein Feld, zwei Bedeutungen.
+
+**Lösung:** Die Vorschau markiert eine Handwahl zusätzlich mit `ordner_von_hand` (`_setze_zielordner`; nur „für alle des Absenders“ mit gespeichertem Alias bleibt ohne), `zielordner_text` zeigt dann „[von Hand]“. `auto_pilot` bleibt unverändert, die Ablage-Entscheidungen auch. Die Begleitet-Erfassung zeigt den Ordner-Grund nur für den Vorschlag vor der Eingabe und ist nicht betroffen. Tests `TestZielordnerVonHand` (Rotprobe: Markierung weg -> rot).
+
+**Merksatz:** Ein Feld, das die Logik steuert, nicht ungeprüft als Anzeige-Text deuten - erst nachsehen, wer es noch setzt.
+
+## 139. Ein Hinweisfeld ohne Fokus: an Tk vorbei einblenden - und dann alles selbst setzen
+
+**Problem:** Das lime-grüne Erfolgsfeld (`aktivitaet.erledigt`, Fenster-Durchsicht A2, 21.11.2026) darf nie den Fokus nehmen - wer tippt, soll weitertippen. Im ersten Probefenster sah Peter nur den Text in der Menüleiste („Blinkt nicht“): Das Feld stand unsichtbar bei 0,0 in der linken oberen Bildschirmecke, ohne Besitzer, hinter allem. Vorher schon: Ein Eintrag der Windows-Menüleiste lässt sich in Tk nicht färben (foreground/background werden ignoriert, auch Emoji wie ✅ erscheinen dort schwarz-weiß).
+
+**Ursache:** `deiconify()` aktiviert das Fenster, darum wird es per Win32 eingeblendet (`WS_EX_NOACTIVATE`, `ShowWindow(SW_SHOWNOACTIVATE)`). Dann aber wendet Tk ein vorher gesetztes `geometry("+x+y")` nicht an (es wartet auf sein eigenes Einblenden), und ein `transient()` NACH dem Setzen des Stils baut den Rahmen neu auf (wie in #137) - das Einblenden traf einen verworfenen Rahmen.
+
+**Lösung:** `UIUtils.erfolgsfeld` → `_win_ohne_fokus_zeigen`: overrideredirect, KEIN `transient`, Besitzer per `SetWindowLongPtrW(GWLP_HWNDPARENT, Hauptfenster)` (liegt über dem Hauptfenster und geht mit ihm hinter andere Programme), Ort per `SetWindowPos(... NOACTIVATE)`, dann `ShowWindow(SW_SHOWNOACTIVATE)`. Farbwechsel (Blinken) zeichnet Tk danach normal. Gemessen statt geglaubt: Bildpunkt an der Stelle des Feldes abgetastet (lime/blass im Takt) und Fokus nach dem Einblenden geprüft.
+
+**Merksatz:** Wer ein Fenster an Tk vorbei zeigt, muss Ort und Besitzer selbst setzen - und prüft per Bildschirm-Messung, ob es wirklich zu sehen ist, nicht nur per `IsWindowVisible`.
+
+## 140. Spalte „#3“: eine neue Spalte verschiebt still das Ziel des Doppelklicks
+
+**Problem:** In „Dateinamen aufräumen“ steht über der Spalte „Vorschlag (Doppelklick bearbeitet)“ - ein Doppelklick darauf hakte die Zeile aber nur an. Bearbeiten ließ sich der Vorschlag nur über einen Doppelklick auf „Titel (PDF)“. Gefunden bei der Fenster-Durchsicht B4c (21.11.2026), nicht von einem Nutzer gemeldet.
+
+**Ursache:** `_on_doppelklick` verglich `identify_column(event.x) == "#3"`. Die Nummer zählt die angezeigten Spalten; mit „Titel (PDF)“ an dritter Stelle rückte der Vorschlag auf „#4“, der Vergleich blieb stehen.
+
+**Lösung:** Spalten über ihre ID: `tree.column(tree.identify_column(x), "id")`. Für alle Tabellen mit bearbeitbaren Zellen jetzt `UIUtils.tabelle_bearbeitbar(tree, bearbeite, menue, f2_spalte)` - Doppelklick, Rechtsklick-Menü und F2 rufen `bearbeite(iid, spalte_id)`. Tests `TestDoppelklickTrifftDenVorschlag`, `TestTabelleBearbeitbar` (Rotprobe: alter Stand -> rot). Noch über Nummern, aber richtig, weil es die erste Spalte ist (Haken): `mails_importieren._klick` und `wiki_suche._klick` („#1“) - beim nächsten Umbau mitziehen.
+
+**Merksatz:** „#n“ ist eine Position, keine Spalte - wer eine Spalte meint, fragt nach ihrer ID.
+
+## 141. `wm_minsize()` unter Windows: (120, 1) ist keine eigene Mindestgröße
+
+**Problem:** Die zentrale Mindestgröße (B5, `UIUtils.mindestgroesse`) setzte live bei keinem einzigen Fenster etwas - in den Tests mit Attrappen lief alles grün.
+
+**Ursache:** Die Funktion lässt Fenster mit eigener Mindestgröße in Ruhe und erkannte die an `wm_minsize() != (1, 1)`. Ein frisches Toplevel meldet auch (1, 1) - aber sobald Windows es zeigt, trägt Tk die Mindestbreite der Titelleiste ein: (120, 1). Beim `<Map>` sah also jedes Fenster so aus, als hätte es schon eine.
+
+**Lösung:** Eigene Mindestgröße nur, wenn BEIDE Werte > 1 sind (alle Stellen im Code setzen Breite und Höhe). Test `test_windows_vorgabe_zaehlt_nicht_als_eigene` (Rotprobe: `or` statt `and` -> rot).
+
+**Merksatz:** Werte, die Tk vom Fenstermanager übernimmt, sind nach dem Zeigen andere als davor - eine Attrappe mit der Vorgabe von vorher beweist nichts; den echten Wert einmal live auslesen.
+
+## 142. Feste Startgröße: ein Reiter wächst still über das Fenster hinaus
+
+**Problem:** Im Einstellungsfenster, Reiter „KI-Server“, war der Knopf „Verbindung testen“ unten abgeschnitten (Peter 21.11.2026 bei T9c.7). Niemand hatte es gemerkt - der Reiter war über Wochen gewachsen.
+
+**Ursache:** Das Fenster öffnete fest mit 730 × 620 px; die Mindestgröße wurde auf diese Startgröße gedeckelt. Mit den Hinweisen zu „Wecken (MAC)“ und „KI ohne Grafikkarte“ brauchte der Reiter 630 px - die letzten 10 px (die Knopfzeile) fielen unten weg. Die Mindestgröße aus B5 (`UIUtils.mindestgroesse`) hilft hier nicht: sie lässt ein Fenster bewusst nie über seine Startgröße wachsen.
+
+**Lösung:** Nach `_setup_ui()` die verlangte Größe messen und die Startgröße darauf anheben (`position_near_mouse` begrenzt weiter auf den Bildschirm). Test `TestStartgroesseNachInhalt` (Rotprobe).
+
+**Merksatz:** Eine feste Startgröße ist eine Schätzung von damals - nach dem Aufbau gegen den Inhalt messen.
+
+## 143. `open_help(modal=True)` blockiert nicht - der nächste Start-Dialog kam sofort
+
+**Problem:** Beim Erststart sollte zuerst der Schnellstart kommen und danach die Willkommens-Frage (Peter 22.11.2026). Der Erststart-Check an der frischen EXE zeigte beide gleichzeitig - genau das, was FALLSTRICKE #51 verhindern sollte.
+
+**Ursache:** `modal=True` setzt im Hilfe-Fenster nur `grab_set`; `open_help` kehrt sofort zurück. Solange der Schnellstart als LETZTER Start-Dialog kam, fiel das nicht auf - die Willkommens-Frage (`messagebox`) blockiert dagegen selbst.
+
+**Lösung:** `start_dialoge_zeigen` wartet mit `wait_window()` auf das Hilfe-Fenster, wenn danach noch ein Schritt folgt. Test `test_einrichtung_erst_nach_dem_schliessen_des_schnellstarts` (Rotprobe: ohne das Warten rot).
+
+**Merksatz:** „modal“ heißt bei einem eigenen Toplevel nur: nichts anderes anklickbar - nicht: der Aufrufer wartet.

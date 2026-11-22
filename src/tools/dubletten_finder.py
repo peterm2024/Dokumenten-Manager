@@ -10,8 +10,8 @@ mehr Metadaten) ist vorbelegt und pro Zeile umschaltbar. Verschoben wird erst au
 
 Layout (Nutzerwunsch 30.08.2026): Tabelle im oberen Drittel, darunter zwei große
 Vorschauen (markierte Zeile + Gruppen-Partner), die mit dem Fenster mitwachsen -
-das Fenster ist maximierbar (deshalb kein transient(), das nimmt unter Windows die
-Titelleisten-Knöpfe). Zwischen beiden steht die Wortliste "nur links / nur rechts":
+das Fenster ist maximierbar (transient nimmt unter Windows die Maximieren-Schaltfläche,
+UIUtils.werkzeugfenster(maximierbar=True) setzt sie wieder, FALLSTRICKE #137). Zwischen beiden steht die Wortliste "nur links / nur rechts":
 unterscheiden sich zwei Briefe nur in Rechnungsnummer, Anrede oder Datum, sind es
 keine Dubletten und beide bleiben.
 
@@ -23,6 +23,8 @@ gleicher Zoom, gleiche Scroll-Lage), damit man zwei Scans Zeile für Zeile vergl
 
 import io
 import os
+
+import aktivitaet
 import threading
 import tkinter as tk
 import tkinter.messagebox as mb
@@ -93,9 +95,7 @@ class DublettenFinderTool(BaseTool):
         if not master or not os.path.isdir(master):
             mb.showinfo("Hinweis", "Bitte zuerst einen Hauptordner wählen.")
             return False
-        if self.window and self.window.winfo_exists():
-            self.window.destroy()
-        self.window = DublettenFenster(context.app)
+        self.window = self.oeffne_fenster(lambda: DublettenFenster(context.app))
         return True
 
 
@@ -386,7 +386,8 @@ def kid_id_von(info):
 class DublettenFenster(tk.Toplevel):
     def __init__(self, app):
         super().__init__(app.root)
-        UIUtils.werkzeugfenster(self, app.root)   # über KID, nicht modal (Peter 04.11.2026)
+        # über KID, nicht modal (Peter 04.11.2026), maximierbar für die großen Vorschauen (FALLSTRICKE #137)
+        UIUtils.werkzeugfenster(self, app.root, maximierbar=True)
         self.app = app
         self.title("Dubletten finden")
         UIUtils.position_near_mouse(self, UIUtils.px(self, 1400), UIUtils.px(self, 900))
@@ -862,8 +863,10 @@ class DublettenFenster(tk.Toplevel):
         finally:
             self.app.is_moving = False
             self.app.folder_manager.sync_ui()
-        text = f"{verschoben} Datei(en) in den Papierkorb verschoben."
+        text = f"{verschoben} Datei(en) in den Papierkorb verschoben"
         if fehler:
-            text += "\n\nFehler:\n" + "\n".join(fehler)
-        mb.showinfo("Dubletten finden", text, parent=self)
+            mb.showwarning("Dubletten finden", text + ".\n\nFehler:\n" + "\n".join(fehler), parent=self)
+        else:
+            # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
+            aktivitaet.erledigt(text)
         self._starte_suche()

@@ -2,6 +2,21 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.36 — 2026-11-22
+
+- Erster Start: Zuerst erscheint der Schnellstart mit den fünf Schritten, erst danach die Frage nach dem Dokumentenordner - der erste Schritt des Schnellstarts erklärt genau diese Frage. Der Knopf „Vollautomatik einschalten“ darin wartet, bis eine Sammlung eingerichtet ist.
+- Hintergrund-Automatik: Trägt ein Brief einen Eingangsstempel, nimmt die Ablage das Briefdatum statt des Stempeldatums (wenn das Dokument eine Textebene hat).
+- Hintergrund-Automatik: Neue Ordner bekommen saubere Namen - ohne Rechtsform („Musterversicherung“ statt „Musterversicherung AG“), eine Firma nie als „Nachname, Vorname“, Schreibweise aus dem Dokumenttext statt aus einer verlesenen KI-Antwort.
+- Ablage-Vorschau überarbeitet: bleibt über dem Hauptfenster, lässt sich maximieren und ist höchstens einmal offen. Ein Klick wählt eine Zeile aus, Doppelklick, Rechtsklick oder F2 korrigieren. Eine grüne Zeile lässt sich auf Gelb setzen und umgekehrt. Ein von Hand gewählter Zielordner heißt „[von Hand]“ statt „[Alias]“.
+- Ablage-Vorschau: Titel über den Auswahl-Dialog mit KI-Titel und dem bisherigen Titel des Dokuments; Tags über den Knopf-Dialog mit den Vorschlägen der KI und Vervollständigung aus dem Katalog - eine Zeile ohne Tags zeigt „+ n Vorschläge“; das Datum wird beim Tippen geprüft (Wochentag bzw. Grund, OK erst bei gültigem Datum).
+- Datum: Kalender zum Anklicken im Datumsdialog und am Datumsfeld des Hauptfensters (Klick auf „Datum ▼“ oder Alt+↓ im Feld). Hauptfenster und Ablage-Vorschau lesen ein Datum jetzt gleich: zweistellige Jahre bis zum laufenden Jahr als 20xx, sonst 19xx; ein Datum in der Zukunft gilt nicht.
+- Erfolgsmeldungen ohne Fenster zum Wegklicken: ein kurz blinkendes grünes Feld oben rechts, dazu die Menüleiste und das Protokoll. Ein Fenster kommt nur noch, wenn etwas schiefging oder eine Entscheidung nötig ist.
+- Werkzeugfenster sind höchstens einmal offen, ein zweiter Aufruf holt das offene nach vorn. Tabellen mit bearbeitbaren Zellen verhalten sich überall gleich (Doppelklick, Rechtsklick-Menü, F2).
+- Fenster und Dialoge lassen sich nicht mehr kleiner ziehen, als ihr Inhalt braucht; Eingabedialoge lassen sich in der Breite ziehen, das Feld wächst mit.
+- „Dateinamen aufräumen“ vereinfacht: Haken sind die einzige Auswahl (ein Klick hakt an, Klick auf den Spaltenkopf ✓ alle mit neuem Namen), unten nur noch „KI-Titel“, „Umbenennen (n)“ und Schließen; „Originalnamen wiederherstellen“ im Rechtsklick-Menü. Behoben: Ein Doppelklick auf den Vorschlag bearbeitete ihn nicht.
+- Das Statusfenster „Vollautomatik läuft“ liegt nicht mehr über anderen Programmen, sondern über KID (und bleibt stehen, wenn KID minimiert ist); über allen Programmen nur noch im Dienstmodus.
+- Einstellungen: Im Reiter „KI-Server“ war der Knopf „Verbindung testen“ unten abgeschnitten.
+
 ## v0.9.35 — 2026-11-20
 
 - Neu: Werkzeug „Benchmark“ (Tools → KI-Helfer). Es legt 40 erfundene Prüfbriefe so ab wie die Hintergrund-Automatik, aber in einem Wegwerf-Ordner, und misst Sekunden je Dokument, Laden, Modellwechsel und ob die Modelle ganz auf der Grafikkarte liegen. Drei Läufe stehen nebeneinander, „Ergebnis kopieren“ gibt nur Zahlen weiter. Die Hilfe nennt Vergleichswerte für eine Grafikkarte mit 16 und eine mit 8 GB.

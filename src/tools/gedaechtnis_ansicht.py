@@ -66,9 +66,7 @@ class GedaechtnisAnsichtTool(BaseTool):
         return "none"
 
     def execute(self, context: ToolContext) -> bool:
-        if self.window and self.window.winfo_exists():
-            self.window.destroy()
-        self.window = GedaechtnisFenster(context.app)
+        self.window = self.oeffne_fenster(lambda: GedaechtnisFenster(context.app))
         return True
 
 

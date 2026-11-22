@@ -157,7 +157,9 @@ class LayoutBuilder:
         # in Klartext („Lese Ordner … 12/80", „Wartet auf deine Antwort: …"), siehe aktivitaet.py.
         # Der ToolManager fügt „Tools" VOR „Hilfe" ein und lässt diesen Eintrag am Ende.
         self.app.menu_bar.add_command(label=aktivitaet.RUHE_TEXT, state="disabled")
-        self.app.aktivitaet = aktivitaet.Anzeige(self.root, self.app.menu_bar, self.app.menu_bar.index("end"))
+        self.app.aktivitaet = aktivitaet.Anzeige(
+            self.root, self.app.menu_bar, self.app.menu_bar.index("end"),
+            erfolg_feld=lambda text, dauer_ms: UIUtils.erfolgsfeld(self.root, text, dauer_ms))
         aktivitaet.registriere(self.app.aktivitaet)
 
         self.root.config(menu=self.app.menu_bar)
@@ -538,7 +540,13 @@ class LayoutBuilder:
         # Dokumenten-Datum: seit 31.08.2026 bei den Eigenschaften statt über der Vorschau (Enter
         # speichert wie bisher); als bearbeitbare Zelle im Raster, teilt sich die Zeile mit
         # Scan-Zeitpunkt, Seiten und Größe (Standard-Aufteilung).
-        self.app.date_entry = tk.Entry(tabelle, relief="flat", bd=0, font=default_font)
+        # B4e (21.11.2026): der Kalender klappt unter dieser Zelle auf. Sein Auslöser „▼“ sitzt in der Beschriftung
+        # „Datum ▼“ (unten, beschriftung_klickbar) - im Feld nahm er bei 125 % ein Drittel der Breite, „2026-07-20“
+        # wurde abgeschnitten (61 statt 100 px, Release-Check T0.16, Peter 22.11.2026)
+        self.app.datum_zelle = tk.Frame(tabelle, bg=ui_theme.FARBEN["flaeche"])
+        self.app.date_entry = tk.Entry(self.app.datum_zelle, relief="flat", bd=0, font=default_font)
+        self.app.date_entry.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        self.app.date_entry.bind("<Alt-Down>", self.app.datum_kalender)
         self.app.date_entry.bind("<Return>", self.app.save_manual_date)
         # Orange hinterlegt = nur vermutet (FALLSTRICKE #86): Ziffer in der Liste springt ins Feld,
         # Klick ins Feld markiert alles, Esc stellt den Vorschlag wieder her
@@ -552,7 +560,10 @@ class LayoutBuilder:
 
         self.app.eigenschaften_panel.setze_eingabefelder(
             feste=[("Titel", self.app.entry_title), ("Tags", self.app.entry_tags)],
-            fluss={"datum": self.app.date_entry})
+            fluss={"datum": self.app.datum_zelle})
+        self.app.btn_kalender = self.app.eigenschaften_panel.beschriftung_klickbar(
+            "datum", self.app.datum_kalender, "Kalender aufklappen (auch Alt+↓ im Feld) - ein Klick auf einen Tag "
+                                              "speichert ihn")
 
         # Knopfzeile unter der Tabelle: Speichern, Auto-Save, Details (klappt die Zone
         # „nur ausgeklappt“ der Tabelle ein/aus, siehe dokument_eigenschaften.py)

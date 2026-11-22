@@ -126,7 +126,7 @@ FESTE_EINTRAEGE = [
     Eintrag("Rechtsklick Ordner", "Umbenennen (F2)",
             "Benennt den angeklickten Ordner um; Dokumente darin bleiben, der Suchindex zieht nach.",
             "Tippfehler im Absender oder ein klarerer Name. Achtung: Aliase der Vollautomatik zeigen auf den "
-            "Ordnernamen - nach dem Umbenennen ggf. den Zielordner in der Ablage-Vorschau neu anklicken."),
+            "Ordnernamen - nach dem Umbenennen ggf. den Zielordner in der Ablage-Vorschau neu wählen (Doppelklick)."),
     Eintrag("Rechtsklick Ordner", "Zusammenführen mit…",
             "Verschiebt alle Dokumente des angeklickten Ordners in einen anderen Ordner und entfernt den leeren Ordner.",
             "Wenn zwei Ordner denselben Absender meinen („Stadtwerke“ und „Stadtwerke Musterstadt“) - aufräumen ohne "

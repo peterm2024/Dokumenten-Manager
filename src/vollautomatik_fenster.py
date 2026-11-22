@@ -207,10 +207,15 @@ class VollautomatikFenster(tk.Toplevel):
         self._zeige_zaehler()
         self._passe_groesse_an(am_mauszeiger=True, ueber_kid=ueber_kid)
         self.deiconify()
-        # Sichtbar bleiben, aber nichts blockieren: kein grab_set (nicht modal), dafür
-        # dauerhaft im Vordergrund - sonst verschwindet der Automatik-Hinweis hinter dem
-        # Hauptfenster und man glaubt, es läuft nichts (Nutzerwunsch 31.08.2026).
-        self.attributes("-topmost", True)
+        # Sichtbar bleiben, aber nichts blockieren: kein grab_set (nicht modal). Nicht hinter dem Hauptfenster
+        # verschwinden, sonst glaubt man, es läuft nichts (Nutzerwunsch 31.08.2026). Über ALLEN Programmen nur im
+        # Dienstmodus, wo es das einzige Fenster ist; mit Hauptfenster holt KID es nach vorn, sobald KID den Fokus
+        # bekommt (B1, Peter 21.11.2026: es stand sonst auch über fremden Programmen). Kein transient: dann
+        # verschwände es mit dem minimierten Hauptfenster.
+        if self._dienst:
+            self.attributes("-topmost", True)
+        else:
+            vorn_halten(app)
         self.lift()
         self._animiere()
         self._tick_countdown()
@@ -519,11 +524,34 @@ class VollautomatikFenster(tk.Toplevel):
         self.destroy()
 
 
+def vorn_halten(app):
+    """Statusfenster über dem Hauptfenster halten, ohne es über andere Programme zu legen (B1): bekommt KID den Fokus,
+    kommt das Statusfenster mit nach vorn. Einmal je App gebunden; die Bindung am Hauptfenster greift für alle seine
+    Elemente, nicht für eigene Fenster (Toplevel)."""
+    if getattr(app, "_statusfenster_vorn_gebunden", False):
+        return
+    app._statusfenster_vorn_gebunden = True
+    app.root.bind("<FocusIn>", lambda _e: nach_vorn(app), add="+")
+
+
+def nach_vorn(app):
+    """Statusfenster direkt über das Hauptfenster heben - nicht, solange das Mail-Fenster offen ist (zuruecktreten)."""
+    fenster = getattr(app, "vollautomatik_fenster", None)
+    if fenster is None or getattr(app, "_statusfenster_zurueck", False):
+        return
+    try:
+        if fenster.winfo_exists() and fenster.winfo_viewable():
+            fenster.lift(app.root)
+    except tk.TclError:
+        pass
+
+
 def zuruecktreten(app, ja):
     """Solange das Mail-Fenster offen ist, liegt das Statusfenster nicht obenauf, sonst verdeckt es dessen Knöpfe (Abnahme
-    06.11.2026). Danach wieder im Vordergrund, siehe __init__."""
+    06.11.2026): im Dienstmodus ohne -topmost, sonst ohne das Nach-vorn-Holen (B1). Danach wieder wie vorher."""
+    app._statusfenster_zurueck = bool(ja)
     fenster = getattr(app, "vollautomatik_fenster", None)
-    if fenster is not None and fenster.winfo_exists():
+    if fenster is not None and fenster.winfo_exists() and getattr(fenster, "_dienst", False):
         fenster.attributes("-topmost", not ja)
 
 

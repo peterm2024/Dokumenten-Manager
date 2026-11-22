@@ -148,5 +148,58 @@ class TestMenueUebersicht(unittest.TestCase):
             self.assertIsNone(re.search(wort, alles), "Begriff aus der privaten Liste")
 
 
+class TestErststartSchnellstartZuerst(unittest.TestCase):
+    """Peter 22.11.2026: „Wäre es nicht besser, den Schnellstart vor der Ordnerauswahl anzuzeigen?“ - beim allerersten
+    Start erst lesen, dann den Dokumentenordner einrichten; der Vollautomatik-Knopf wartet auf die Sammlung."""
+
+    def test_reihenfolge(self):
+        from gui import start_dialoge
+        self.assertEqual(start_dialoge(ohne_sammlung=True, hilfe_beim_start=True), ["hilfe", "einrichtung"])
+        self.assertEqual(start_dialoge(ohne_sammlung=True, hilfe_beim_start=False), ["einrichtung"])
+        self.assertEqual(start_dialoge(ohne_sammlung=False, hilfe_beim_start=True), ["hilfe"])
+        self.assertEqual(start_dialoge(ohne_sammlung=False, hilfe_beim_start=False), [])
+
+    def test_einrichtung_erst_nach_dem_schliessen_des_schnellstarts(self):
+        # Live-Fund 22.11.2026: open_help blockiert nicht - die Willkommens-Frage stand neben dem Schnellstart
+        from unittest.mock import MagicMock, patch
+        import gui
+        ablauf = []
+        app = MagicMock(master_folder="")
+        app.config.get.return_value = True
+        app.help_window.winfo_exists.return_value = True
+        app.help_window.wait_window.side_effect = lambda: ablauf.append("Schnellstart zu")
+        app.folder_manager.ersteinrichtung_anbieten.side_effect = lambda: ablauf.append("Einrichtung")
+        with patch("gui.open_help", side_effect=lambda *a, **k: ablauf.append("Schnellstart")):
+            gui.DokumentenVerwaltung.start_dialoge_zeigen(app)
+        self.assertEqual(ablauf, ["Schnellstart", "Schnellstart zu", "Einrichtung"])
+
+    def test_ohne_folgeschritt_wird_nicht_gewartet(self):
+        from unittest.mock import MagicMock, patch
+        import gui
+        import tempfile
+        app = MagicMock(master_folder=tempfile.gettempdir())
+        app.config.get.return_value = True
+        with patch("gui.open_help"):
+            gui.DokumentenVerwaltung.start_dialoge_zeigen(app)
+        app.help_window.wait_window.assert_not_called()
+        app.folder_manager.ersteinrichtung_anbieten.assert_not_called()
+
+    def test_vollautomatik_knopf_wartet_auf_die_sammlung(self):
+        import os
+        import tempfile
+        from unittest.mock import MagicMock
+        for ordner, erwartet in (("", ["disabled"]), (tempfile.gettempdir(), ["!disabled"]),
+                                 (os.path.join(tempfile.gettempdir(), "gibt_es_nicht_kid"), ["disabled"])):
+            fenster = MagicMock()
+            fenster.app.config.get.return_value = False
+            fenster.app.master_folder = ordner
+            help_window.HelpWindow._aktualisiere_vollautomatik_knopf(fenster)
+            fenster.btn_vollautomatik.state.assert_called_with(erwartet)
+
+    def test_schritt_1_kuendigt_die_frage_an(self):
+        text = " ".join(str(inhalt) for _art, inhalt in help_window.TAB_QUICKSTART[:4])
+        self.assertIn("nach dem Schließen dieses Fensters", text)
+
+
 if __name__ == "__main__":
     unittest.main()

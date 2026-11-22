@@ -5,7 +5,7 @@ Das deterministische Ordner-Matching (auto_pilot.finde_passenden_ordner) verglei
 Namensbestandteile - es kann prinzipiell nicht wissen, dass die "Bayerische
 Landesbrandversicherung" eine Marke der "Versicherungskasse Musterland" ist und in
 deren Ordner gehört. Solches Weltwissen trägt der Nutzer hier einmalig nach: ein
-Klick auf den Zielordner in der Ablage-Vorschau legt einen Alias
+Doppelklick auf den Zielordner in der Ablage-Vorschau legt einen Alias
 
     Absender (wie von der KI erkannt)  ->  Zielordner (relativer Pfad in der Sammlung)
 
@@ -19,7 +19,7 @@ der Alias ist nur ein Wegweiser der Automatik.
 Objekt-Aliase (11.09.2026, Eigenbelege ohne Absender): Notizen, Zählerstände, Mieter-
 listen, Verbrauchsaufstellungen haben keinen Briefkopf - im Praxislauf blieben 33 von
 84 unsicheren Dokumenten allein deshalb liegen. Was sie haben, ist ein Objekt
-("Weidenstr. 8", "Zum Alten Fass 1 Musterheim"). Ein Klick auf den Zielordner mit
+("Weidenstr. 8", "Zum Alten Fass 1 Musterheim"). Ein Doppelklick auf den Zielordner mit
 "alle Dokumente zu diesem Objekt" legt in derselben Datei einen Eintrag mit dem
 Schlüssel "Objekt: <Objekt>" an; er gilt NUR für absenderlose Dokumente (ein Brief der
 Stadtwerke über dasselbe Haus geht weiter zu den Stadtwerken) und wird von
