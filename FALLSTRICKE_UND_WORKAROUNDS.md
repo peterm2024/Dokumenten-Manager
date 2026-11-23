@@ -785,6 +785,8 @@ Bei der Nachprüfung zeigte sich derselbe Effekt auch bei echter Suche: Treffer 
 
 **Lösung:** (1) Threads melden über ein Postfach (`queue.Queue`), das das Fenster alle 100 ms im Tk-Thread leert (`_nach_tk`/`_abholen`; beim Schließen `after_cancel`, sonst „invalid command name …_abholen“) - kein Tk-Aufruf aus dem Thread, gleich in App und Test. (2) Fenstertests räumen im Haupt-Thread auf (`threads_beenden`: Daemon-Threads abwarten, `UIUtils._einzelfenster` leeren, `gc.collect()` - vor UND nach `root.destroy`). Werkzeugfenster sind jetzt `transient` zum Hauptfenster (`UIUtils.werkzeugfenster`) - in Tests mit verstecktem Hauptfenster bleiben sie damit unsichtbar (Layout-Tests patchen das weg).
 
+**Nachtrag 22.11.2026:** Wieder aufgetreten, diesmal in `test_auto_pilot_service` (Dienst-Thread), nachdem die Arzt-Regel nur den Zeitpunkt der Speicherbereinigung verschob - einzeln liefen alle Module grün, der Gesamtlauf brach reproduzierbar ab. Zweite Hälfte der Lösung: Tests, die Hintergrund-Threads starten, rufen in `setUp` selbst `gc.collect()` im Haupt-Thread - dann kann Tk-Müll früherer Fenstertests nie im Thread sterben, egal wer ihn hinterließ.
+
 ## 96. Wiki: zwei ähnlich geschriebene Straßen wurden still ein Objekt
 
 **Problem (Befund 03.11.2026, behoben 04.11.2026):** „Bergstr 3“ und „Burgstr 3“ landeten im Wiki ohne Rückfrage auf EINER Objektseite - Flächen, Verträge und Personen zweier Häuser mischten sich.
@@ -1287,3 +1289,13 @@ Im selben Zug verworfen (Etappe 11 Schritt 2, Code in `KID-Messungen/verworfen_m
 **Lösung:** `start_dialoge_zeigen` wartet mit `wait_window()` auf das Hilfe-Fenster, wenn danach noch ein Schritt folgt. Test `test_einrichtung_erst_nach_dem_schliessen_des_schnellstarts` (Rotprobe: ohne das Warten rot).
 
 **Merksatz:** „modal“ heißt bei einem eigenen Toplevel nur: nichts anderes anklickbar - nicht: der Aufrufer wartet.
+
+## 144. Datums-Marker: Leerzeichen im gescannten Datum, Monat aus dem Stempel
+
+**Problem:** Peter legte die 40 gescannten Prüfbriefe von Hand ab (22.11.2026) und meldete: bei Brief 18 kein gelber Datums-Marker, bei Brief 10 nur „Januar 2026“ im Betreff markiert statt des Briefdatums. Die Nachmessung an allen 40 Scans zeigte noch mehr: bei drei Briefen markierte der Marker zusätzlich „JAN. 2026“ bzw. „APR. 2026“ aus dem Eingangsstempel - dessen Tag ist ein anderer.
+
+**Ursache:** (1) Die Texterkennung setzt Leerzeichen ins Datum („22.01 .2026“, „31 .01.2026“), `page.search_for` ist aber nicht leerzeichen-tolerant - die zusammengeklebten Formen in `datums_suchformen` (30.08.2026) helfen nur gegen fehlende Leerzeichen, nicht gegen zusätzliche. (2) Formen ohne Tag („Januar 2026“, „Jan. 2026“) wurden immer mitgesucht, auch wenn das Tagesdatum schon gefunden war - sie treffen Betreffzeilen und Stempel.
+
+**Lösung:** `PDFHandler.datum_boxen(page, datum)`: erst die Formen mit Tag exakt; ohne Fund benachbarte Wörter derselben Zeile (bis zu vier) ohne Leerzeichen zusammensetzen und vergleichen; Formen ohne Tag nur, wenn kein Tagesdatum auf der Seite steht. An den 40 Scans: Briefdatum 40 statt 38 markiert, keine Stempel-Monate mehr. Tests `TestDatumBoxen` (Rotprobe: mit der alten Suche zwei rot).
+
+**Merksatz:** Text aus der Texterkennung hat zu viele UND zu wenige Leerzeichen - wer darin exakt sucht, braucht beide Richtungen. Und die ungenauere Form erst nehmen, wenn die genaue fehlt.

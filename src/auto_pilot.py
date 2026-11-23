@@ -100,7 +100,11 @@ def kernname(name):
 
 
 def sortierbuchstabe(name):
-    """Erster Buchstabe des Kernnamens, Umlaute aufgelöst (Ä -> A); Ziffer -> '0-9'; '' wenn unbestimmbar."""
+    """Erster Buchstabe des Kernnamens, Umlaute aufgelöst (Ä -> A); Ziffer -> '0-9'; '' wenn unbestimmbar. Die
+    Arzt-Form 'Dr. Beispiel, Eva' sortiert unter D (Peter 22.11.2026: „durch das ‚Dr.‘ am Anfang sind die meisten
+    Ärzte zusätzlich vorsortiert“) - verglichen wird weiter mit dem Kern 'Beispiel'."""
+    if ordnernamen.ist_arzt_ordnername(name):
+        return "D"
     kern = kernname(name).translate(_UMLAUT_MAP)
     for zeichen in kern:
         if zeichen.isdigit():
@@ -1330,7 +1334,7 @@ def merke_orte(orte, gelesen):
 
 def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=None, vocabulary=None, aliase=None,
                       known_tags=None, kategorien=None, ignorierte_tags=None, tag_eltern=None,
-                      synonyme=None, gedaechtnis=None, orte=None, textdaten=None, textwoerter=None):
+                      synonyme=None, gedaechtnis=None, orte=None, textdaten=None, textwoerter=None, arzt=None):
     """
     Verwandelt den KI-Vorschlag (ollama_client.suggest_filing) in eine geprüfte
     Ablage-Entscheidung - reine Funktion, kein Dateisystem-/Netzwerkzugriff.
@@ -1354,6 +1358,8 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
                       Datum eines Eingangsstempels, gilt das Briefdatum davor; None = KI-Datum unverändert
     :param textwoerter: Wörter der Textebene (ordnernamen.textwoerter, von lies_dokument) - ein Lesefehler der KI
                         im Ordnernamen bekommt die Schreibweise aus dem Text; None = Name wie von der KI
+    :param arzt: Ärztin/Arzt aus der Textebene (ordnernamen.arzt_im_text, von lies_dokument) - ein Arztbrief bekommt
+                 den Ordner „Dr. Nachname, Vorname (Fachrichtung)“ statt des Praxisnamens; None = KI-Name
     :return: Dict mit pdf_path, titel, titel_korrekturen, tags, tag_ersetzungen [(alt, neu)],
              neue_tags [(Tag, Kategorie)], tag_vorschlaege (Katalog-Tags der KI, nur zum Anklicken - B4a),
              datum, datum_stempel (das ersetzte Stempeldatum der KI oder ""),
@@ -1390,6 +1396,11 @@ def baue_entscheidung(pdf_path, ki_antwort, vorhandene_ordner, schreibschutz=Non
                           or ordnernamen.ist_firma_in_telefonbuchform(ordnername_ki, absender)):
         ordnername_ki = ""
     roh = ordnername_ki or absender
+    # Arztbrief: Ordner nach der Ärztin, nicht nach der Praxis - „Dr. Beispiel, Eva“ statt „Hausarztpraxis am Markt“
+    # (Peter 22.11.2026, ordnernamen.arzt_ordner). Der Absender bleibt der Alias-Schlüssel; verglichen wird mit beidem.
+    arzt_name = ordnernamen.arzt_ordner(ordnername_ki, absender, arzt, ki_antwort.get("empfaenger") or "")
+    if arzt_name:
+        roh = arzt_name
     # Namen neuer Ordner bleiben für Jahre (Frisch-Versuch 20./21.11.2026, ordnernamen.py): Schreibweise aus der
     # Textebene - „Haustchnik Mustergültig GmbH“ wird „Haustechnik Mustergültig GmbH“
     roh = ordnernamen.schreibweise_aus_text(roh, textwoerter)
@@ -2009,9 +2020,10 @@ def lies_dokument(pdf_path, known_tags, base_url, model, kategorien=None):
     """
     Lesemodell-Teil: Schreibschutz prüfen, Seite 1 rendern, KI befragen. Wirft Verbindungs-/
     Serverfehler des KI-Aufrufs weiter. :return: {"pdf_path", "schreibschutz", "png", "ki_antwort", "merkmale",
-    "daten", "woerter"} (png None = Seite nicht darstellbar, dann ohne KI-Aufruf; merkmale = Nummern/Adressen aus der
+    "daten", "woerter", "arzt"} (png None = Seite nicht darstellbar, dann ohne KI-Aufruf; merkmale = Nummern/Adressen aus der
     Textebene für den Ordner-Steckbrief, daten = Brief- und Stempeldaten der Textebene (eingangsstempel.textdaten),
-    woerter = Schreibweisen für den Ordnernamen (ordnernamen.textwoerter); alles leer ohne Textebene - kein OCR, das
+    woerter = Schreibweisen für den Ordnernamen (ordnernamen.textwoerter), arzt = Ärztin eines Arztbriefs
+    (ordnernamen.arzt_im_text); alles leer ohne Textebene - kein OCR, das
     kostete je Dokument Sekunden)
     """
     schreibschutz = PDFHandler.get_write_protection(pdf_path)
@@ -2024,7 +2036,7 @@ def lies_dokument(pdf_path, known_tags, base_url, model, kategorien=None):
     volltext = PDFHandler.get_fulltext(pdf_path)
     return {"pdf_path": pdf_path, "schreibschutz": schreibschutz, "png": png, "ki_antwort": ki_antwort,
             "merkmale": ordner_steckbrief.merkmale(volltext), "daten": eingangsstempel.textdaten(volltext),
-            "woerter": ordnernamen.textwoerter(volltext)}
+            "woerter": ordnernamen.textwoerter(volltext), "arzt": ordnernamen.arzt_im_text(volltext)}
 
 
 def mit_mailkopf(ki_antwort, meta):
@@ -2129,7 +2141,8 @@ def entscheide_gelesen(gelesen, vorhandene_ordner, base_url, vocabulary=None, al
                                      schreibschutz=gelesen["schreibschutz"], vocabulary=vocabulary, aliase=aliase,
                                      known_tags=known_tags, kategorien=kategorien, ignorierte_tags=ignorierte_tags,
                                      tag_eltern=tag_eltern, synonyme=synonyme, gedaechtnis=gedaechtnis, orte=orte,
-                                     textdaten=gelesen.get("daten"), textwoerter=gelesen.get("woerter"))
+                                     textdaten=gelesen.get("daten"), textwoerter=gelesen.get("woerter"),
+                                     arzt=gelesen.get("arzt"))
     if entscheidungsmodell and braucht_zweitmeinung(entscheidung):
         try:
             if rangliste is None:

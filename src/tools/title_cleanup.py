@@ -315,9 +315,16 @@ class TitleCleanupWindow(tk.Toplevel):
         # Knopfzeile ZUERST und unten packen, damit sie bei kleinem Fenster sichtbar bleibt
         bottom = tk.Frame(self)
         bottom.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
-        tk.Label(bottom, text="Klick auf eine Zeile zeigt das Dokument im Hauptfenster. Doppelklick, Rechtsklick oder F2 auf Vorschlag = "
-                              "bearbeiten, Leertaste = an/abwählen.", fg="#666").pack(side=tk.LEFT)
-        ttk.Button(bottom, text="Markierte übernehmen", command=self._apply_checked, style="Accent.TButton").pack(side=tk.RIGHT)
+        # „Übernehmen und schließen“ wie im Titel-Vorschlag (Peter 22.11.2026): vorher blieb eine leere Liste stehen.
+        # Gesperrt, solange kein Haken gesetzt ist; daneben „Abbrechen“. Knöpfe VOR dem Hinweis packen und den
+        # Hinweis umbrechen - sonst schob der lange Text die Knöpfe aus dem Fenster.
+        self.btn_uebernehmen = ttk.Button(bottom, text="Übernehmen und schließen", command=self._apply_checked,
+                                          style="Accent.TButton", state=tk.DISABLED)
+        self.btn_uebernehmen.pack(side=tk.RIGHT)
+        ttk.Button(bottom, text="Abbrechen", command=self.destroy).pack(side=tk.RIGHT, padx=(0, 5))
+        ttk.Label(bottom, text="Klick auf eine Zeile zeigt das Dokument im Hauptfenster. Doppelklick, Rechtsklick oder F2 auf "
+                               "Vorschlag = bearbeiten, Leertaste = an/abwählen.", foreground="gray40", justify=tk.LEFT,
+                  wraplength=UIUtils.px(self, 520)).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
         rahmen = tk.Frame(self)
         rahmen.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
@@ -335,7 +342,8 @@ class TitleCleanupWindow(tk.Toplevel):
         self.tree.configure(yscrollcommand=rollen.set)
         rollen.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
-        UIUtils.tabelle_bearbeitbar(self.tree, self._bearbeite, menue=lambda iid: self.MENUE, f2_spalte="suggestion")
+        UIUtils.tabelle_bearbeitbar(self.tree, self._bearbeite, menue=lambda iid: self.MENUE, f2_spalte="suggestion",
+                                    haken_spalte="check")
         self.tree.bind("<space>", self._toggle_check)
         self.tree.bind("<<TreeviewSelect>>", self._sync_hauptfenster)
 
@@ -419,6 +427,13 @@ class TitleCleanupWindow(tk.Toplevel):
             check = "☐"
         self.tree.item(iid, values=(check, os.path.relpath(row["path"], self.app.master_folder),
                                     row["old_title"], vorschlag))
+        self._knopf_pruefen()
+
+    def _knopf_pruefen(self):
+        """„Übernehmen und schließen“ nur, wenn mindestens eine Zeile einen Haken hat (alle Haken laufen über
+        _zeichne_zeile)."""
+        angehakt = any(self.tree.set(iid, "check") == "☑" for iid in self.tree.get_children())
+        self.btn_uebernehmen.config(state=tk.NORMAL if angehakt else tk.DISABLED)
 
     # --- Schritt 2b: KI-Titel (erste Seite als Bild, wie im Dateinamen-Tool) ---
     def _ki_titel(self):
@@ -482,18 +497,19 @@ class TitleCleanupWindow(tk.Toplevel):
             self.status_var.set(f"Fertig: {gesamt} KI-Titel gelesen - bitte ansehen und anhaken.")
 
     # --- Interaktion ---
-    def _toggle_check(self, event=None):
-        for iid in self.tree.selection():
-            if not self.rows[iid].get("suggestion"):
+    def _toggle_check(self, event=None, iids=None):
+        """Leertaste: die markierten Zeilen; Klick auf ☐ und Menü: `iids` (die angeklickte Zeile)."""
+        for iid in (iids if iids is not None else self.tree.selection()):
+            if iid not in self.rows or not self.rows[iid].get("suggestion"):
                 continue
             self._zeichne_zeile(iid, "☐" if self.tree.set(iid, "check") == "☑" else "☑")
 
     MENUE = [("suggestion", "Titel wählen…"), ("check", "Haken setzen/entfernen")]
 
     def _bearbeite(self, iid, spalte):
-        """Doppelklick, Rechtsklick-Menü oder F2 (UIUtils.tabelle_bearbeitbar)."""
+        """Doppelklick, Rechtsklick-Menü oder F2 (UIUtils.tabelle_bearbeitbar); der Haken schon per Einzelklick."""
         if spalte == "check":
-            self._toggle_check()
+            self._toggle_check(iids=[iid])
             return
         if spalte != "suggestion" or iid not in self.rows:
             return
@@ -505,9 +521,11 @@ class TitleCleanupWindow(tk.Toplevel):
             self._zeichne_zeile(iid, "☑")
 
     def _apply_checked(self):
+        """Schreibt die angehakten Titel und schließt das Fenster; ohne Haken schließt es nur. Scheitert eine Datei,
+        bleibt das Fenster mit den gescheiterten Zeilen offen (Peter 22.11.2026, wie im Titel-Vorschlag)."""
         to_apply = [iid for iid in self.rows if self.tree.exists(iid) and self.tree.set(iid, "check") == "☑"]
         if not to_apply:
-            messagebox.showinfo("Hinweis", "Keine Vorschläge zum Übernehmen markiert.")
+            self.destroy()
             return
         if not bestaetigung.frage("Übernehmen", f"{len(to_apply)} Titel jetzt in die PDFs schreiben?"):
             return
@@ -532,10 +550,12 @@ class TitleCleanupWindow(tk.Toplevel):
             self.app.folder_manager.on_folder_select(None)
 
         if errors:
-            messagebox.showerror("Teilweise fehlgeschlagen", "\n".join(errors))
+            messagebox.showerror("Teilweise fehlgeschlagen", "\n".join(errors), parent=self)
+            self._knopf_pruefen()
         else:
             # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
             aktivitaet.erledigt(f"{len(to_apply)} Titel geschrieben")
+            self.destroy()
 
 
 def bisheriger_titel_knopf(candidates, bisher):
@@ -578,6 +598,8 @@ class CandidatePickerDialog(tk.Toplevel):
         self.entry.insert(0, initial_value or "")
         self.entry.pack(fill=tk.X, padx=10, pady=(0, 10))
         self.entry.bind("<Return>", lambda e: self._confirm())
+        # Esc = Abbrechen wie in den anderen Dialogen (Peter 22.11.2026, Rückmeldung zu „Tags bearbeiten“)
+        self.bind("<Escape>", lambda e: self.destroy())
 
         btns = tk.Frame(self)
         btns.pack(fill=tk.X, padx=10, pady=(0, 10))

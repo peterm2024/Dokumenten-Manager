@@ -115,6 +115,7 @@ def lade_korpus(ordner=KORPUS, datei=KORPUS_DATEI):
             texte = json.load(f)
     for d in dokumente:
         d["woerter"] = ordnernamen.textwoerter(texte.get(str(d["nr"]), ""))
+        d["arzt"] = ordnernamen.arzt_im_text(texte.get(str(d["nr"]), ""))
     return dokumente
 
 
@@ -148,7 +149,8 @@ def lauf(dokumente, start_ordner, tags, kategorien, ranglisten=None, texte=None,
             continue
         auto_pilot.merke_orte(orte, {"ki_antwort": ki})
         e = auto_pilot.baue_entscheidung(d["name"], dict(ki), liste, known_tags=tags, kategorien=kategorien,
-                                         gedaechtnis=gedaechtnis, orte=orte, textwoerter=d.get("woerter"))
+                                         gedaechtnis=gedaechtnis, orte=orte, textwoerter=d.get("woerter"),
+                                         arzt=d.get("arzt"))
         rang = (ranglisten or {}).get(str(d["nr"]))
         if isinstance(rang, list) and auto_pilot.braucht_zweitmeinung(e):
             e = auto_pilot.wende_zweitmeinung_an(e, [(o, p) for o, p in rang if o in liste], liste)

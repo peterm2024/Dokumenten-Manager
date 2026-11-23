@@ -629,6 +629,13 @@ class LayoutBuilder:
         # in der Liste also aufs erste/letzte DOKUMENT, nicht auf die Seite (Peter 28.10.2026)
         self.app.tree_files.bind("<Home>", lambda e: UIUtils.baum_springen(self.app.tree_files, ende=False))
         self.app.tree_files.bind("<End>", lambda e: UIUtils.baum_springen(self.app.tree_files, ende=True))
+        # Strg+A markiert alle Dokumente der Liste (Peter 22.11.2026). Nur selection_set - on_file_select feuert
+        # Tkinter selbst (Render-Deadlock-Regel, CLAUDE.md); "break", damit <Key> (Datum tippen) nichts sieht.
+        def alle_markieren(_event=None):
+            self.app.tree_files.selection_set(self.app.tree_files.get_children())
+            return "break"
+        self.app.tree_files.bind("<Control-a>", alle_markieren)
+        self.app.tree_files.bind("<Control-A>", alle_markieren)   # mit Feststelltaste
         self.app.tree_folders.bind("<Home>", lambda e: UIUtils.baum_springen(self.app.tree_folders, ende=False))
         self.app.tree_folders.bind("<End>", lambda e: UIUtils.baum_springen(self.app.tree_folders, ende=True))
         self.app.tree_tags.bind("<Home>", lambda e: UIUtils.baum_springen(self.app.tree_tags, ende=False))

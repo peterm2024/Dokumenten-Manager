@@ -114,7 +114,14 @@ class DokumentenVerwaltung:
         # Fenstergröße und Position wiederherstellen - aber nur, wenn die gespeicherte
         # Position noch auf einem angeschlossenen Monitor liegt (Nutzerfund 06.09.2026:
         # App startete bei '+-4028+-921' unsichtbar im Nirgendwo, Titelleiste unerreichbar).
-        saved_geom = UIUtils.sichere_fenstergeometrie(self.config.get("window_geometry", "1400x900"))
+        # Mindestgröße (Peter 22.11.2026): sonst ließ sich das Fenster winzig ziehen, und eine einmal gespeicherte
+        # Zwerggröße (200x161) kam beim Herausziehen aus der Maximierung wieder - darum auch die gespeicherte
+        # Größe beim Start mindestens so groß machen
+        min_b, min_h = UIUtils.hauptfenster_mindestmass(UIUtils.skalierung(self.root), self.root.winfo_screenwidth(),
+                                                        self.root.winfo_screenheight())
+        self.root.minsize(min_b, min_h)
+        saved_geom = UIUtils.sichere_fenstergeometrie(
+            UIUtils.geometrie_mindestens(self.config.get("window_geometry", "1400x900"), min_b, min_h))
         self.root.geometry(saved_geom)
         # Gespeichert wird immer die NORMALGRÖSSE (Nutzerwunsch 06.09.2026: maximiert
         # beendet -> vorher stand die Maximiert-Geometrie in der settings.json und der

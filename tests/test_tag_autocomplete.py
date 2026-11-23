@@ -29,5 +29,33 @@ class TestPopupParent(unittest.TestCase):
         self.assertEqual(self._zeige("DIALOG"), "DIALOG")
 
 
+class TestEsc(unittest.TestCase):
+    """Peter 22.11.2026 (Tags bearbeiten): Esc schließt zuerst die Liste; erst ohne Liste läuft es zum Dialog weiter
+    (dort = Abbrechen)."""
+
+    def _ac(self, sichtbar):
+        ac = TagAutocomplete(types.SimpleNamespace(root=None), text=MagicMock())
+        ac.popup = MagicMock()
+        ac.popup.winfo_exists.return_value = True
+        ac.popup.winfo_viewable.return_value = sichtbar
+        return ac
+
+    def test_offene_liste_schliesst_und_stoppt(self):
+        ac = self._ac(True)
+        self.assertEqual(ac._on_escape(None), "break")
+        ac.popup.withdraw.assert_called_once()
+
+    def test_ohne_liste_geht_esc_weiter(self):
+        self.assertIsNone(self._ac(False)._on_escape(None))
+
+    def test_beide_bearbeiten_dialoge_brechen_mit_esc_ab(self):
+        import inspect
+        from tools.ai_title_suggest import TagSuggestionDialog
+        from tools.title_cleanup import CandidatePickerDialog
+        for klasse in (TagSuggestionDialog, CandidatePickerDialog):
+            self.assertIn('self.bind("<Escape>", lambda e: self.destroy())', inspect.getsource(klasse.__init__),
+                          klasse.__name__)
+
+
 if __name__ == "__main__":
     unittest.main()

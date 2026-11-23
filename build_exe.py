@@ -40,6 +40,7 @@ DATEN = [
     ("tags_default.json", "."),            # ausgelieferte Vorlage für den Tag-Katalog
     ("folder_default.json", "."),          # ausgelieferte Vorlage für die Ordnerstruktur
     ("tessdata", "tessdata"),              # OCR-Sprachdaten (FALLSTRICKE #37)
+    ("pruefsatz", "pruefsatz"),            # eingebauter Satz Prüfbriefe für den Benchmark (Etappe 13 Schritt 4)
     ("build_stempel.txt", "."),            # Build-Zeitpunkt für die Titelleiste (EXE-mtime = Download-Zeit!)
     ("icon/app.ico", "icon"),              # Fenstersymbol zur Laufzeit (gui.py iconbitmap)
 ]

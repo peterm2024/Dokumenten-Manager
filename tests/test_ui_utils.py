@@ -98,6 +98,32 @@ class TestSchriftfaktor(unittest.TestCase):
             self.assertEqual(UIUtils.schriftfaktor(None), 1.0)
 
 
+class TestHauptfensterMindestgroesse(unittest.TestCase):
+    """Peter 22.11.2026: Das Hauptfenster ließ sich auf 200x161 ziehen; die Größe kam nach dem Maximieren wieder."""
+
+    def test_mindestmass_skaliert_mit(self):
+        self.assertEqual(UIUtils.hauptfenster_mindestmass(1.0, 1920, 1080), (960, 640))
+        self.assertEqual(UIUtils.hauptfenster_mindestmass(1.25, 1920, 1080), (1200, 800))
+
+    def test_kleiner_bildschirm_deckelt(self):
+        self.assertEqual(UIUtils.hauptfenster_mindestmass(1.25, 1366, 768), (1092, 614))
+
+    def test_gespeicherte_zwerggroesse_wird_vergroessert_position_bleibt(self):
+        self.assertEqual(UIUtils.geometrie_mindestens("200x161+-1618+320", 960, 640), "960x640+-1618+320")
+        self.assertEqual(UIUtils.geometrie_mindestens("1400x500", 960, 640), "1400x640")
+        self.assertEqual(UIUtils.geometrie_mindestens("1400x900+10+10", 960, 640), "1400x900+10+10")
+
+    def test_unbekanntes_format_bleibt(self):
+        for geometry in ("", None, "kaputt"):
+            self.assertEqual(UIUtils.geometrie_mindestens(geometry, 960, 640), geometry)
+
+    def test_hauptfenster_setzt_beides(self):
+        import os
+        quelle = open(os.path.join(os.path.dirname(__file__), "..", "src", "gui.py"), encoding="utf-8").read()
+        self.assertIn("self.root.minsize(min_b, min_h)", quelle)
+        self.assertIn("UIUtils.geometrie_mindestens(self.config.get(\"window_geometry\"", quelle)
+
+
 class TestSichereFenstergeometrie(unittest.TestCase):
     """Nutzerfund 06.09.2026: App startete bei '+-4028+-921' unsichtbar im Nirgendwo."""
 
@@ -517,6 +543,22 @@ class TestTabelleBearbeitbar(unittest.TestCase):
         with patch("ui_utils.tk.Menu") as menue:
             bindungen["<Button-3>"](self._ereignis())
         menue.assert_not_called()
+
+    def test_einzelklick_in_der_haken_spalte_schaltet_die_angeklickte_zeile(self):
+        """Peter 22.11.2026: „Doppelklick Haken ist Mist“ - in Titel vorschlagen und Titel aufräumen."""
+        self.tree.column.side_effect = lambda c, opt: {"#1": "check", "#4": "vorschlag"}[c]
+        self.tree.identify_column.return_value = "#1"
+        self._binde(haken_spalte="check")["<Button-1>"](self._ereignis())
+        self.assertEqual(self.bearbeitet, [("i1", "check")])   # die angeklickte, nicht die markierten i2/i3
+
+    def test_einzelklick_in_anderen_spalten_waehlt_nur_aus(self):
+        bindungen = self._binde(haken_spalte="check")
+        bindungen["<Button-1>"](self._ereignis())   # Spalte #4 = vorschlag
+        self.tree.identify_region.return_value = "heading"
+        self.tree.identify_column.return_value = "#1"
+        self.tree.column.side_effect = lambda c, opt: {"#1": "check"}[c]
+        bindungen["<Button-1>"](self._ereignis())
+        self.assertEqual(self.bearbeitet, [])
 
 
 class TestDatumEingabeDialog(unittest.TestCase):

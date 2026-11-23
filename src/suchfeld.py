@@ -69,6 +69,7 @@ class SuchFeld(tk.Text):
         # Suche gebunden; hier nur der Schutz gegen "\n" durch Einfügen (Strg+V).
         self.bind("<<Paste>>", self._nach_einfuegen, add="+")
         self.bind("<KeyRelease>", lambda e: self.markiere_tags(), add="+")
+        self.bind("<<Selection>>", self._auswahl_ohne_zeilenende, add="+")
 
         self.platzhalter = None
         if platzhalter:
@@ -95,6 +96,14 @@ class SuchFeld(tk.Text):
         else:
             rand = int(self.cget("padx") or 0) + int(self.cget("borderwidth") or 0) + 1
             self.platzhalter.place(x=rand, rely=0.5, anchor="w")
+
+    def _auswahl_ohne_zeilenende(self, _event=None):
+        """Die Auswahl endet am letzten Zeichen, nie auf dem unsichtbaren Zeilenende des tk.Text: Das färbte bei
+        Doppelklick oder Strg+A die Zeile bis zum rechten Rand blau, im leeren Feld neben dem weißen Kasten des
+        Platzhalters (Peter 22.11.2026, Rückmeldung). Im leeren Feld gibt es so gar keine Auswahl mehr."""
+        auswahl = self.tag_ranges("sel")
+        if auswahl and self.compare(auswahl[-1], ">", "end-1c"):
+            self.tag_remove("sel", "end-1c", "end")
 
     def _platzhalter_klick(self, _event=None):
         self.focus_set()

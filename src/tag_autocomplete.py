@@ -194,6 +194,8 @@ class TagAutocomplete:
                                       selectbackground="#0078D7", selectforeground="white")
             self.listbox.pack(fill=tk.BOTH, expand=True)
             self.listbox.bind("<ButtonRelease-1>", self._on_click)
+            # Liegt der Fokus nach einem Mausklick in der Liste, schließt Esc sie trotzdem (Peter 22.11.2026)
+            self.listbox.bind("<Escape>", lambda e: (self._hide(), self.text.focus_set(), "break")[2])
 
         self.listbox.delete(0, tk.END)
         for match in self._matches:

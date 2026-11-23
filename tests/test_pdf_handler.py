@@ -637,6 +637,46 @@ class TestDatumsSuchformen(unittest.TestCase):
         self.assertEqual(treffer, ["Februar2020"])
 
 
+class TestDatumBoxen(unittest.TestCase):
+    """Peters Rückmeldung 22.11.2026 (Ablage von Hand, gescannte Prüfbriefe 18 und 10): Datum nicht bzw. nur
+    „Januar 2026“ markiert."""
+
+    def _seite(self, *zeilen):
+        import fitz
+        doc = fitz.open()
+        page = doc.new_page()
+        for i, text in enumerate(zeilen):
+            page.insert_text((72, 100 + 40 * i), text)
+        return doc, page
+
+    def test_leerzeichen_im_gescannten_datum(self):
+        # Brief 18: die Texterkennung las „22.01 .2026“
+        doc, page = self._seite("Kundennummer: TM-778899", "Datum: 22.01 .2026")
+        boxen = PDFHandler.datum_boxen(page, "2026-01-22")
+        self.assertEqual(len(boxen), 1)
+        self.assertEqual(page.get_textbox(boxen[0]).replace(" ", ""), "22.01.2026")
+        doc.close()
+
+    def test_tagesdatum_vor_monat_im_betreff(self):
+        # Brief 10: „31 .01.2026“ im Kopf, „Januar 2026“ im Betreff - markiert wurde nur der Betreff
+        doc, page = self._seite("Datum: 31 .01.2026,", "Entgeltabrechnung Januar 2026")
+        boxen = PDFHandler.datum_boxen(page, "2026-01-31")
+        self.assertEqual([page.get_textbox(b).replace(" ", "").strip(",") for b in boxen], ["31.01.2026"])
+        doc.close()
+
+    def test_ohne_tagesdatum_bleibt_der_monat(self):
+        doc, page = self._seite("Seite 1 3:*Februar2020 Ihre Stromrechnung")
+        self.assertEqual(len(PDFHandler.datum_boxen(page, "2020-02-03")), 1)
+        doc.close()
+
+    def test_nur_innerhalb_einer_zeile_und_kein_falscher_tag(self):
+        # „31“ am Zeilenende und „.01.2026“ in der nächsten Zeile gehören nicht zusammen; 13.01. ist nicht 31.01.
+        doc, page = self._seite("Seite 31", ".01.2026 Rest", "13.01.2026")
+        self.assertEqual(PDFHandler.datum_boxen(page, "2026-01-31"), [])
+        self.assertEqual(PDFHandler.datum_boxen(page, "kein Datum"), [])
+        doc.close()
+
+
 class TestMarkerBoxenBereinigen(unittest.TestCase):
     """T4.9: 'Mai 2026' liegt in '12. Mai 2026' - nur ein Marker, nicht zwei übereinander."""
 

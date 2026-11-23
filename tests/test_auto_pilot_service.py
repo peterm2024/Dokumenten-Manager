@@ -4,6 +4,7 @@ Der Dienst wird ohne Thread über eine_runde() geprüft; KI-Aufruf und Ausführu
 gepatcht, das Dateisystem ist ein echter Temp-Ordner.
 """
 
+import gc
 import os
 import shutil
 import tempfile
@@ -60,6 +61,10 @@ class _analyse:
 
 class TestAutoPilotService(unittest.TestCase):
     def setUp(self):
+        # Liegengebliebene Tk-Objekte früherer Fenstertests JETZT im Haupt-Thread abräumen: Lief der Garbage Collector
+        # zufällig im Dienst-Thread, brach „Tcl_AsyncDelete: async handler deleted by the wrong thread“ die ganze Suite
+        # ab (FALLSTRICKE #95; wieder aufgetreten 22.11.2026, als die Arzt-Regel den Zeitpunkt der Bereinigung verschob)
+        gc.collect()
         self.tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, self.tmp, ignore_errors=True)
         self.master = os.path.join(self.tmp, "KID")

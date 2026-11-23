@@ -37,6 +37,7 @@ BEREICHE = {
         _e("← / → / Bild↑ / Bild↓", "Vorschau blättern"),   # Bindung in einer Schleife (layout_builder)
         _e("Pos1 / Ende", "erstes / letztes Dokument", ("tree_files", "<Home>")),
         _e("Strg / Shift + Klick", "mehrere Dokumente markieren"),
+        _e("Strg+A", "alle Dokumente markieren", ("tree_files", "<Control-a>")),
         _e("0 – 9", "oranges (vermutetes) Datum überschreiben", ("tree_files", "<Key>")),
         _e("F2", "Datei umbenennen", ("tree_files", "<F2>")),
         _e("Entf", "in den Papierkorb", ("tree_files", "<Delete>")),

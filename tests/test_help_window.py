@@ -127,6 +127,9 @@ class TestMenueUebersicht(unittest.TestCase):
         self.assertIn("Pruefdokumente_Benchmark.zip", inhalt)
         self.assertIn("Pruefdokumente_Benchmark_gescannt_hoch.zip", inhalt)
         self.assertIn("Pruefdokumente_Benchmark_gescannt_niedrig.zip", inhalt)
+        # Etappe 13 Schritt 4 (22.11.2026): Firmen-Karte, Qualität, eingebauter Satz
+        for stelle in ("48 GB (Quadro RTX 8000)", "Liste je Brief", "Anderer Satz (Zip)", "still im falschen"):
+            self.assertIn(stelle, inhalt, stelle)
         fenster.destroy()
 
     def test_hilfetexte_ohne_persoenliche_angaben(self):

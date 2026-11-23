@@ -37,6 +37,7 @@ FARBEN = {
     "akzent_hover": "#1975c5",
     "knopf": "#f5f5f5",          # leicht grau, damit Knöpfe sich vom Weiß abheben
     "knopf_hover": "#ebebeb",
+    "gesperrt": "#a0a0a0",       # Schrift gesperrter Knöpfe
     "kopf": "#ffffff",           # Spaltenköpfe
     "reiter": "#f0f0f0",         # nicht gewählte Reiter
     "balken": "#cdcdcd",         # Bildlaufleisten
@@ -122,7 +123,11 @@ def _ttk_stile(root):
     # Speichern & Co.: gefüllter Akzentknopf
     s.configure("Accent.TButton", background=f["akzent"], foreground="#ffffff", font=fett,
                 lightcolor=f["akzent"], darkcolor=f["akzent"], bordercolor=f["akzent"])
-    s.map("Accent.TButton", background=[("active", f["akzent_hover"])])
+    # Gesperrt grau wie jeder andere Knopf: vorher blieb er blau mit hellblauer Schrift und sah fast bedienbar
+    # aus (Peter 22.11.2026, „Übernehmen und schließen“ gesperrt, solange nichts ansteht)
+    s.map("Accent.TButton", background=[("disabled", f["knopf"]), ("active", f["akzent_hover"])],
+          foreground=[("disabled", f["gesperrt"])], bordercolor=[("disabled", f["rand"])],
+          lightcolor=[("disabled", f["knopf"])], darkcolor=[("disabled", f["knopf"])])
     # Reset-„✖“ neben dem Suchfeld: flacher Symbol-Knopf auf Leistenfarbe, nur beim Darüberfahren hinterlegt
     # (Peter 17.11.2026: vorher ein eigenes Grau, weder Feld noch Leiste)
     s.configure("Danger.TButton", foreground=f["gefahr"], font=fett, padding=(UIUtils.px(root, 1), 0),

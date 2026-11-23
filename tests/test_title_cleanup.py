@@ -1,4 +1,6 @@
+import tkinter as tk
 import unittest
+from unittest.mock import MagicMock, patch
 
 import fitz
 
@@ -10,6 +12,7 @@ from tools.title_cleanup import (
     find_subject_line_rect,
     find_subject_candidates,
     find_top_line_rect,
+    TitleCleanupWindow,
 )
 
 
@@ -213,6 +216,71 @@ class TestBisherigerTitelWaehlbar(unittest.TestCase):
         with patch("tools.title_cleanup.CandidatePickerDialog.ask", return_value=None) as ask:
             TitleCleanupWindow._bearbeite(fenster, "z1", "suggestion")
         self.assertEqual(ask.call_args.kwargs.get("bisher"), "Jahresabrechnung Strom")
+
+
+
+class TestUebernehmenUndSchliessen(unittest.TestCase):
+    """Peter 22.11.2026: wie im Titel-Vorschlag „Übernehmen und schließen“ statt „Markierte übernehmen“, das eine
+    leere Liste stehen ließ."""
+
+    def _fenster(self, root, haken="☑"):
+        app = MagicMock()
+        app.master_folder = None
+        fenster = TitleCleanupWindow(root, app)
+        for i in range(3):
+            iid = fenster.tree.insert("", "end", values=(haken, f"Scan_{i}.pdf", "alt", f"Titel {i}"))
+            fenster.rows[iid] = {"path": f"x{i}.pdf", "old_title": "alt", "keywords": ""}
+        return fenster
+
+    def test_schliesst_nach_erfolg_ohne_haken_und_bleibt_bei_fehler_offen(self):
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            with patch("tools.title_cleanup.bestaetigung.frage", return_value=True),                     patch("tools.title_cleanup.aktivitaet.erledigt"),                     patch("tools.title_cleanup.PDFHandler.save_metadata", return_value=(True, "")):
+                fenster = self._fenster(root)
+                fenster._apply_checked()
+                self.assertFalse(fenster.winfo_exists())
+            with patch("tools.title_cleanup.messagebox.showinfo"):
+                fenster = self._fenster(root, haken="☐")
+                fenster._apply_checked()
+                self.assertFalse(fenster.winfo_exists())
+            with patch("tools.title_cleanup.bestaetigung.frage", return_value=True),                     patch("tools.title_cleanup.messagebox.showerror"),                     patch("tools.title_cleanup.PDFHandler.save_metadata", return_value=(False, "gesperrt")):
+                fenster = self._fenster(root)
+                fenster._apply_checked()
+                self.assertTrue(fenster.winfo_exists())
+                self.assertEqual(len(fenster.tree.get_children()), 3)
+                fenster.destroy()
+        finally:
+            root.destroy()
+
+    def test_knopf_gesperrt_bis_ein_haken_steht(self):
+        """Peter 22.11.2026: „Übernehmen und schließen“ nur, wenn eine Änderung ansteht."""
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            app = MagicMock()
+            app.master_folder = "C:\\Sammlung"
+            with patch("tools.title_cleanup.os.path.isdir", return_value=False):
+                fenster = TitleCleanupWindow(root, app)
+            iid = fenster.tree.insert("", "end", values=("☐", "a.pdf", "alt", ""))
+            fenster.rows[iid] = {"path": "C:\\Sammlung\\a.pdf", "old_title": "alt", "keywords": ""}
+            self.assertEqual(str(fenster.btn_uebernehmen.cget("state")), "disabled")
+            fenster.rows[iid]["suggestion"] = "Neuer Titel"
+            fenster._zeichne_zeile(iid, "☑")
+            self.assertEqual(str(fenster.btn_uebernehmen.cget("state")), "normal")
+            fenster.tree.selection_set(iid)
+            fenster._toggle_check()
+            self.assertEqual(str(fenster.btn_uebernehmen.cget("state")), "disabled")
+            # Einzelklick auf ☐ (Peter 22.11.2026) schaltet die angeklickte Zeile, nicht die markierte
+            self.assertTrue(fenster.tree.bind("<Button-1>"))
+            andere = fenster.tree.insert("", "end", values=("☐", "b.pdf", "alt", ""))
+            fenster.rows[andere] = {"path": "C:\\Sammlung\\b.pdf", "old_title": "alt", "keywords": ""}
+            fenster.tree.selection_set(andere)
+            fenster._bearbeite(iid, "check")
+            self.assertEqual(fenster.tree.set(iid, "check"), "☑")
+            fenster.destroy()
+        finally:
+            root.destroy()
 
 
 if __name__ == "__main__":

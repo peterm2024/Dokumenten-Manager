@@ -2,7 +2,7 @@ import os
 import tempfile
 import tkinter as tk
 import unittest
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import fitz
 
@@ -171,6 +171,113 @@ class TestVorschlaegeNurZumAnklicken(unittest.TestCase):
             self.assertEqual(fenster.tree.set(iid, "tags"), "Versicherung  [+2 Vorschläge: Doppelklick]")
             fenster._stop = True
             fenster.destroy()
+        finally:
+            root.destroy()
+
+
+class TestUebernehmenUndSchliessen(unittest.TestCase):
+    """Peter 22.11.2026 (Rückmeldungen beim Sortieren von Hand): bei 40 Dokumenten fehlte die Bildlaufleiste, und
+    „Markierte übernehmen“ ließ eine leere Liste stehen - jetzt „Übernehmen und schließen“."""
+
+    def _fenster(self, root):
+        fenster = AiTitleSuggestWindow(root, MagicMock(), [])
+        for i in range(40):
+            iid = fenster.tree.insert("", "end", values=("☑", f"Scan_{i:04d}", f"Titel {i}", ""))
+            fenster.rows[iid] = {"path": f"x{i}.pdf", "old_title": "alt", "keywords": "", "datum": "2026-01-01"}
+        return fenster
+
+    def test_bildlaufleiste_haengt_an_der_tabelle(self):
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            fenster = self._fenster(root)
+            self.assertTrue(str(fenster.tree.cget("yscrollcommand")))
+            self.assertTrue(str(fenster.rollen.cget("command")).endswith("yview"))
+            fenster._schliessen()
+        finally:
+            root.destroy()
+
+    def test_schliesst_nach_erfolg_und_bleibt_bei_fehler_offen(self):
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            with patch("tools.ai_title_suggest.bestaetigung.frage", return_value=True), \
+                    patch("tools.ai_title_suggest.aktivitaet.erledigt"), \
+                    patch("tools.ai_title_suggest.PDFHandler.save_metadata", return_value=(True, "")):
+                fenster = self._fenster(root)
+                fenster._apply_checked()
+                self.assertFalse(fenster.winfo_exists())
+            with patch("tools.ai_title_suggest.bestaetigung.frage", return_value=True), \
+                    patch("tools.ai_title_suggest.messagebox.showerror"), \
+                    patch("tools.ai_title_suggest.PDFHandler.save_metadata", return_value=(False, "gesperrt")):
+                fenster = self._fenster(root)
+                fenster._apply_checked()
+                self.assertTrue(fenster.winfo_exists())
+                self.assertEqual(len(fenster.tree.get_children()), 40)   # die gescheiterten bleiben zum Nachsehen
+                fenster._schliessen()
+        finally:
+            root.destroy()
+
+
+class TestUebernehmenNurMitAenderung(unittest.TestCase):
+    """Peter 22.11.2026: „Abbrechen“ dazu, „Übernehmen und schließen“ gesperrt, solange nichts ansteht - „verunsichernd,
+    wenn man was übernehmen kann, ohne dass man was geändert hat“."""
+
+    def _fenster(self, root):
+        app = MagicMock()
+        app.tag_manager.get_known_tags.return_value = []
+        fenster = AiTitleSuggestWindow(root, app, [])
+        iid = fenster.tree.insert("", "end", values=("☐", "Alter Titel", "", ""))
+        fenster.rows[iid] = {"path": "x.pdf", "old_title": "Alter Titel", "pdf_titel": "Alter Titel",
+                             "keywords": "", "datum": "2026-01-01"}
+        return fenster, iid
+
+    def test_knopf_folgt_den_haken(self):
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            fenster, iid = self._fenster(root)
+            self.assertEqual(str(fenster.btn_uebernehmen.cget("state")), "disabled")
+            fenster._on_suggestion_ready(iid, {"title": "Neuer Titel", "tags": []}, set(), 1, 1)
+            self.assertEqual(str(fenster.btn_uebernehmen.cget("state")), "normal")
+            fenster.tree.selection_set(iid)
+            fenster._toggle_check()
+            self.assertEqual(str(fenster.btn_uebernehmen.cget("state")), "disabled")
+            fenster._schliessen()
+        finally:
+            root.destroy()
+
+    def test_haken_per_einzelklick_auf_die_angeklickte_zeile(self):
+        """Peter 22.11.2026: „Doppelklick Haken ist Mist“ - Klick auf ☐ schaltet genau diese Zeile."""
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            fenster, iid = self._fenster(root)
+            self.assertTrue(fenster.tree.bind("<Button-1>"))
+            fenster._on_suggestion_ready(iid, {"title": "Neuer Titel", "tags": []}, set(), 1, 1)
+            andere = fenster.tree.insert("", "end", values=("☐", "x", "", ""))
+            fenster.tree.selection_set(andere)   # markiert ist eine andere Zeile
+            fenster._bearbeite(iid, "check")
+            self.assertEqual(fenster.tree.set(iid, "check"), "☐")
+            fenster._schliessen()
+        finally:
+            root.destroy()
+
+    def test_nur_tags_geaendert_setzt_haken_und_behaelt_den_titel(self):
+        """Vorher gingen geänderte Tags ohne Haken still verloren."""
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            fenster, iid = self._fenster(root)
+            with patch("tools.ai_title_suggest.TagSuggestionDialog.ask", return_value="Kfz"):
+                fenster._edit_tags(iid)
+            self.assertEqual(fenster.tree.set(iid, "check"), "☑")
+            self.assertEqual(str(fenster.btn_uebernehmen.cget("state")), "normal")
+            with patch("tools.ai_title_suggest.bestaetigung.frage", return_value=True), \
+                    patch("tools.ai_title_suggest.aktivitaet.erledigt"), \
+                    patch("tools.ai_title_suggest.PDFHandler.save_metadata", return_value=(True, "")) as speichern:
+                fenster._apply_checked()
+            self.assertEqual(speichern.call_args.args[1:3], ("Alter Titel", "Kfz"))
         finally:
             root.destroy()
 

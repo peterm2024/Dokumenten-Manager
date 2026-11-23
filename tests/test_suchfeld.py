@@ -104,6 +104,18 @@ class TestPlatzhalter(unittest.TestCase):
         self.feld.configure(background="#fff6cc")          # search_manager färbt je Suchzustand
         self.assertEqual(self.feld.platzhalter.cget("background"), "#fff6cc")
 
+    def test_auswahl_endet_vor_dem_zeilenende(self):
+        """Peter 22.11.2026: Doppelklick ins leere Feld färbte die Zeile blau, der Platzhalter blieb ein weißer Kasten."""
+        # <<Selection>> feuert Tk nur bei sichtbarem Feld - darum Bindung prüfen und den Handler direkt rufen
+        self.assertIn("_auswahl_ohne_zeilenende", self.feld.bind("<<Selection>>"))
+        tk.Text.tag_add(self.feld, "sel", "1.0", "end")       # wie Doppelklick/Strg+A im leeren Feld
+        self.feld._auswahl_ohne_zeilenende()
+        self.assertEqual(self.feld.tag_ranges("sel"), ())
+        self.feld.setze_text("Gas")
+        tk.Text.tag_add(self.feld, "sel", "1.0", "end")
+        self.feld._auswahl_ohne_zeilenende()
+        self.assertEqual([str(i) for i in self.feld.tag_ranges("sel")], ["1.0", "1.3"])   # nur der Text
+
     def test_ohne_platzhalter_unveraendert(self):
         ohne = SuchFeld(self.root, lambda: [])
         self.assertIsNone(ohne.platzhalter)

@@ -246,8 +246,33 @@ class TestBaueEntscheidung(unittest.TestCase):
         e = auto_pilot.baue_entscheidung("dok.pdf", _ki_antwort(
             absender="Dr. Emil Carius Dr. Maximilian Carius", ordnername="Carius, Dr. Emil (Zahnarzt)"), struktur)
         self.assertTrue(e["sicher"], e["probleme"])
-        self.assertEqual(e["zielordner"], os.path.join("A - B - C - D - E - F", "Carius, Dr. Emil (Zahnarzt)"))
+        # Arzt-Form seit 22.11.2026 (Peter): „Dr. Nachname, Vorname (Fachrichtung)“, sortiert unter D
+        self.assertEqual(e["zielordner"], os.path.join("A - B - C - D - E - F", "Dr. Carius, Emil (Zahnarzt)"))
         self.assertTrue(e["ordner_neu"])
+
+    def test_arztbrief_nach_der_aerztin_statt_der_praxis(self):
+        """Peter 22.11.2026 (Dreifach-Vergleich): die KI nannte die Arztbriefe „Hausarztpraxis am Markt“ und legte im
+        Benchmark neben dem vorhandenen „Dr. Beispiel“ einen zweiten Ordner an."""
+        arzt = {"vorname": "Eva", "nachname": "Beispiel", "fach": ""}
+        ki = _ki_antwort(absender="Hausarztpraxis am Markt", ordnername="Hausarztpraxis am Markt")
+        struktur = ["A - B - C - D - E", "F - G - H - I - J", "K - L - M - N - O", "P - Q - R - S - T"]
+        frisch = auto_pilot.baue_entscheidung("dok.pdf", dict(ki), struktur, arzt=arzt)
+        self.assertEqual(frisch["zielordner"], os.path.join("A - B - C - D - E", "Dr. Beispiel, Eva"))
+        bestand = auto_pilot.baue_entscheidung("dok.pdf", dict(ki), struktur + [os.path.join("A - B - C - D - E",
+                                                                                              "Dr. Beispiel")], arzt=arzt)
+        self.assertEqual(bestand["zielordner"], os.path.join("A - B - C - D - E", "Dr. Beispiel"))
+        self.assertFalse(bestand["ordner_neu"])
+        tier = auto_pilot.baue_entscheidung("dok.pdf", _ki_antwort(absender="Tierarztpraxis am Musterbach"), struktur,
+                                            arzt={"vorname": "Jana", "nachname": "Probst", "fach": "Tierarzt"})
+        self.assertEqual(tier["zielordner"], os.path.join("A - B - C - D - E", "Dr. Probst, Jana (Tierarzt)"))
+
+    def test_kein_arzt_ordner_ohne_praxis_oder_fuer_den_empfaenger(self):
+        arzt = {"vorname": "Max", "nachname": "Mustermann", "fach": ""}
+        brief_an_arzt = auto_pilot.baue_entscheidung("dok.pdf", _ki_antwort(
+            absender="Hausarztpraxis am Markt", empfaenger="Max Mustermann"), [], arzt=arzt)
+        self.assertNotIn("Mustermann", brief_an_arzt["zielordner"])
+        firma = auto_pilot.baue_entscheidung("dok.pdf", _ki_antwort(absender="Telenetz"), [], arzt=arzt)
+        self.assertEqual(firma["zielordner"], "Telenetz")
 
     def test_empfaenger_als_ordnername_wird_verworfen(self):
         """

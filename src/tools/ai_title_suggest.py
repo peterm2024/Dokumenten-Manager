@@ -205,8 +205,29 @@ class AiTitleSuggestWindow(tk.Toplevel):
         self.btn_suggest = ttk.Button(top, text="Vorschläge laden (KI)", command=self._load_suggestions)
         self.btn_suggest.pack(side=tk.RIGHT, padx=(5, 0))
 
+        # Knopfleiste VOR der dehnbaren Tabelle (side=BOTTOM), sonst schiebt eine lange Liste sie aus dem Fenster
+        bottom = tk.Frame(self)
+        bottom.pack(side=tk.BOTTOM, fill=tk.X, padx=10, pady=(0, 10))
+        # Knopf zuerst: pack verteilt den Platz in Aufrufreihenfolge - mit der breiteren Windows-11-Schrift nahm
+        # der lange Hinweis dem Knopf sonst ein Drittel weg (Etappe 11 Schritt 3). „Übernehmen und schließen“ statt
+        # „Markierte übernehmen“: Peter 22.11.2026 („schaut gewohnter aus“), danach blieb nur eine leere Liste stehen.
+        # Dazu „Abbrechen“, und „Übernehmen“ ist gesperrt, solange kein Haken gesetzt ist (Peter: „verunsichernd,
+        # wenn man was übernehmen kann, ohne dass man was geändert hat“).
+        self.btn_uebernehmen = ttk.Button(bottom, text="Übernehmen und schließen", command=self._apply_checked,
+                                          style="Accent.TButton", state=tk.DISABLED)
+        self.btn_uebernehmen.pack(side=tk.RIGHT)
+        ttk.Button(bottom, text="Abbrechen", command=self._schliessen).pack(side=tk.RIGHT, padx=(0, 5))
+        ttk.Label(bottom, text="Doppelklick, Rechtsklick oder F2 auf Titel/Tags = bearbeiten, Leertaste = an/abwählen. Tag-Vorschläge kommen nur aus dem Katalog und erst per Klick ins Dokument.", foreground="gray40", justify=tk.LEFT,
+                  wraplength=UIUtils.px(self, 560)).pack(side=tk.LEFT, fill=tk.X, expand=True)
+
+        # Tabelle mit Bildlaufleiste (Peter 22.11.2026: bei 40 Dokumenten fehlte sie, die Liste war abgeschnitten)
+        tabelle = tk.Frame(self)
+        tabelle.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
         columns = ("check", "old_title", "suggestion", "tags")
-        self.tree = ttk.Treeview(self, columns=columns, show="headings", selectmode="extended")
+        self.tree = ttk.Treeview(tabelle, columns=columns, show="headings", selectmode="extended")
+        self.rollen = ttk.Scrollbar(tabelle, orient=tk.VERTICAL, command=self.tree.yview)
+        self.tree.configure(yscrollcommand=self.rollen.set)
+        self.rollen.pack(side=tk.RIGHT, fill=tk.Y)
         self.tree.heading("check", text="✓")
         self.tree.heading("old_title", text="Aktueller Titel")
         self.tree.heading("suggestion", text="KI-Vorschlag (Titel)")
@@ -217,18 +238,11 @@ class AiTitleSuggestWindow(tk.Toplevel):
         self.tree.column("old_title", width=UIUtils.px(self, 280), stretch=False)
         self.tree.column("suggestion", width=UIUtils.px(self, 280), stretch=False)
         self.tree.column("tags", width=UIUtils.px(self, 280), stretch=True)
-        self.tree.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
-        UIUtils.tabelle_bearbeitbar(self.tree, self._bearbeite, menue=lambda iid: self.MENUE, f2_spalte="suggestion")
+        self.tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
+        UIUtils.tabelle_bearbeitbar(self.tree, self._bearbeite, menue=lambda iid: self.MENUE, f2_spalte="suggestion",
+                                    haken_spalte="check")
         self.tree.bind("<space>", self._toggle_check)
         self.tree.bind("<<TreeviewSelect>>", self._sync_main_selection)
-
-        bottom = tk.Frame(self)
-        bottom.pack(fill=tk.X, padx=10, pady=(0, 10))
-        # Knopf zuerst: pack verteilt den Platz in Aufrufreihenfolge - mit der breiteren Windows-11-Schrift nahm
-        # der lange Hinweis dem Knopf sonst ein Drittel weg (Etappe 11 Schritt 3)
-        ttk.Button(bottom, text="Markierte übernehmen", command=self._apply_checked, style="Accent.TButton").pack(side=tk.RIGHT)
-        ttk.Label(bottom, text="Doppelklick, Rechtsklick oder F2 auf Titel/Tags = bearbeiten, Leertaste = an/abwählen. Tag-Vorschläge kommen nur aus dem Katalog und erst per Klick ins Dokument.", foreground="gray40", justify=tk.LEFT,
-                  wraplength=UIUtils.px(self, 680)).pack(side=tk.LEFT, fill=tk.X, expand=True)
 
     def _populate(self, paths):
         if not HAS_FITZ:
@@ -241,7 +255,8 @@ class AiTitleSuggestWindow(tk.Toplevel):
             meta = PDFHandler.get_metadata(path)
             old_title = current_title_or_filename(path, meta)
             iid = self.tree.insert("", "end", values=("☐", old_title, "", ""))
-            self.rows[iid] = {"path": path, "old_title": old_title, "keywords": meta.get("keywords", ""),
+            self.rows[iid] = {"path": path, "old_title": old_title, "pdf_titel": meta.get("title", ""),
+                              "keywords": meta.get("keywords", ""),
                               "datum": meta.get("KID_DokumentenDatum", "")}
         self.status_var.set(f"{len(self.rows)} Dokument(e) bereit.")
         self._autosize_columns(("old_title", "suggestion"))
@@ -314,6 +329,13 @@ class AiTitleSuggestWindow(tk.Toplevel):
         self._stop = True
         self.destroy()
 
+    def _knopf_pruefen(self):
+        """„Übernehmen und schließen“ nur, wenn mindestens eine Zeile einen Haken hat."""
+        if not self.winfo_exists():
+            return
+        angehakt = any(self.tree.set(iid, "check") == "☑" for iid in self.tree.get_children())
+        self.btn_uebernehmen.config(state=tk.NORMAL if angehakt else tk.DISABLED)
+
     def _on_suggestion_ready(self, iid, result, known_tags_lower, done, total):
         # Fenster während der Analyse geschlossen: die Antwort kommt trotzdem noch an (FALLSTRICKE #85)
         if not (self.winfo_exists() and self.tree.exists(iid)):
@@ -331,6 +353,7 @@ class AiTitleSuggestWindow(tk.Toplevel):
         check = "☑" if title else "☐"
         self.tree.item(iid, values=(check, old_title, title or "(kein Vorschlag)",
                                     format_tags_preview(vorhanden, known_tags_lower) + vorschlag_hinweis(len(suggested_tags))))
+        self._knopf_pruefen()
         self.status_var.set(f"KI: {done}/{total} verarbeitet...")
         if done == total:
             self.status_var.set(f"Fertig: {total} Dokument(e) verarbeitet.")
@@ -366,24 +389,26 @@ class AiTitleSuggestWindow(tk.Toplevel):
                     tree_files.see(item)
                 break
 
-    def _toggle_check(self, event=None):
-        for iid in self.tree.selection():
+    def _toggle_check(self, event=None, iids=None):
+        """Leertaste: die markierten Zeilen; Klick auf ☐ und Menü: `iids` (die angeklickte Zeile)."""
+        for iid in (iids if iids is not None else self.tree.selection()):
             check, old_title, suggestion, tags = self.tree.item(iid, "values")
             if not suggestion or suggestion == "(kein Vorschlag)":
                 continue
             new_check = "☐" if check == "☑" else "☑"
             self.tree.item(iid, values=(new_check, old_title, suggestion, tags))
+        self._knopf_pruefen()
 
     MENUE = [("suggestion", "Titel bearbeiten…"), ("tags", "Tags bearbeiten…"), ("check", "Haken setzen/entfernen")]
 
     def _bearbeite(self, iid, spalte):
-        """Doppelklick, Rechtsklick-Menü oder F2 (UIUtils.tabelle_bearbeitbar)."""
+        """Doppelklick, Rechtsklick-Menü oder F2 (UIUtils.tabelle_bearbeitbar); der Haken schon per Einzelklick."""
         if spalte == "suggestion":
             self._edit_title(iid)
         elif spalte == "tags":
             self._edit_tags(iid)
         elif spalte == "check":
-            self._toggle_check()
+            self._toggle_check(iids=[iid])
 
     def _edit_title(self, iid):
         check, old_title, suggestion, tags = self.tree.item(iid, "values")
@@ -393,6 +418,7 @@ class AiTitleSuggestWindow(tk.Toplevel):
         if new_value and new_value.strip():
             self.rows[iid]["suggestion"] = new_value.strip()
             self.tree.item(iid, values=("☑", old_title, new_value.strip(), tags))
+            self._knopf_pruefen()
 
     def _edit_tags(self, iid):
         known_tags = self.app.tag_manager.get_known_tags() if hasattr(self.app, "tag_manager") else []
@@ -404,14 +430,21 @@ class AiTitleSuggestWindow(tk.Toplevel):
                                             app=self.app)
         if new_value is not None:
             tags_list = [t.strip() for t in new_value.split(",") if t.strip()]
+            geaendert = ", ".join(tags_list) != current_csv
             row["tags_csv"] = ", ".join(tags_list)
             check, old_title, suggestion, _old_tags = self.tree.item(iid, "values")
+            # Geänderte Tags sind eine anstehende Änderung: Haken setzen, sonst gingen sie beim Übernehmen verloren
+            if geaendert:
+                check = "☑"
             self.tree.item(iid, values=(check, old_title, suggestion, format_tags_preview(tags_list, known_tags_lower)))
+            self._knopf_pruefen()
 
     def _apply_checked(self):
+        """„Übernehmen und schließen“: markierte Vorschläge schreiben, dann zu. Nichts markiert = nichts zu übernehmen,
+        also nur schließen; ging etwas schief, bleibt das Fenster mit den gescheiterten Zeilen offen."""
         to_apply = [iid for iid in self.rows if self.tree.exists(iid) and self.tree.set(iid, "check") == "☑"]
         if not to_apply:
-            messagebox.showinfo("Hinweis", "Keine Vorschläge zum Übernehmen markiert.")
+            self._schliessen()
             return
         if not bestaetigung.frage("Übernehmen", f"{len(to_apply)} Titel/Tags jetzt in die PDFs schreiben?"):
             return
@@ -423,6 +456,8 @@ class AiTitleSuggestWindow(tk.Toplevel):
         for iid in to_apply:
             row = self.rows[iid]
             new_title = self.tree.set(iid, "suggestion")
+            if not new_title or new_title == "(kein Vorschlag)":
+                new_title = row.get("pdf_titel", "")   # nur die Tags geändert: bisheriger Titel bleibt
             new_keywords = row.get("tags_csv", row["keywords"])
             # Noch kein Dokumentdatum im PDF: das aus dem Text gelesene mitspeichern - sonst zeigt die
             # Liste weiter den Download-Tag (Peter 28.10.2026, Kontoauszüge; FALLSTRICKE #86)
@@ -453,10 +488,12 @@ class AiTitleSuggestWindow(tk.Toplevel):
             self.app.folder_manager.on_folder_select(None)
 
         if errors:
-            messagebox.showerror("Teilweise fehlgeschlagen", "\n".join(errors))
+            messagebox.showerror("Teilweise fehlgeschlagen", "\n".join(errors), parent=self)
+            self._knopf_pruefen()
         else:
             # Erfolg ohne Meldungsfenster: Leiste + Log (Fenster-Durchsicht A2, Peter 21.11.2026)
             aktivitaet.erledigt(f"{len(to_apply)} Titel geschrieben")
+            self._schliessen()
 
 
 class TagSuggestionDialog(tk.Toplevel):
@@ -521,6 +558,9 @@ class TagSuggestionDialog(tk.Toplevel):
             self.autocomplete = TagAutocomplete(app, text=self.text, ausschluss_fn=self._current_list,
                                                 nach_uebernahme=self._sync_checks_from_text, popup_parent=self)
         self.text.bind("<Return>", lambda e: self._confirm() or "break", add="+")
+        # Esc = Abbrechen wie in den anderen Dialogen (Peter 22.11.2026: „lässt sich nicht über ESC schließen“).
+        # Ist die Vorschlagsliste offen, schließt das erste Esc nur sie: ihre Bindung am Textfeld stoppt mit "break".
+        self.bind("<Escape>", lambda e: self.destroy())
 
         btns = tk.Frame(self)
         btns.pack(fill=tk.X, padx=10, pady=(0, 10))

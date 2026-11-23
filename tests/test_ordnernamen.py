@@ -94,5 +94,54 @@ class TestNeuerOrdnerInDerEntscheidung(unittest.TestCase):
         self.assertEqual(e["zielordner"].replace("\\", "/"), "F - G - H - I - J/Haustechnik Mustergültig")
 
 
+
+class TestArztOrdner(unittest.TestCase):
+    """Peter 22.11.2026: Arztbriefe in „Dr. Nachname, Vorname (Fachrichtung)“; Hausarzt ohne Fachrichtung, das „Dr.“
+    nur bei Ärzten vorn. Texte nachgebaut nach den Musterbriefen des Prüfsatzes (gescannt niedrig)."""
+
+    HAUSARZT = "\n".join(["Hausarztpraxis am Markt", "Allgemeinmedizin", "Dr. med. Eva Beispiel", "Herrn",
+                          "Max Mustermann", "Dr. med. Eva Beispiel", "Fachärztin für Allgemeinmedizin",
+                          "Mit freundlichen Grüßen", "Ihre Hausarztpraxis am Markt", "Dr. med. Eva Beispiel",
+                          "Fachärztin für Allgemeinmedizin", "Dr. m"])
+    TIERARZT = "\n".join(["Tierarztpraxis am Musterbach", "Dr. med. vet. Jana Probst", "Tierarztpraxis am Musterbach",
+                          "Dr. med. vet. Jana Probst", "Tierärztin", "Dr, med. vet Jana Probst"])
+
+    def test_aerztin_aus_dem_text(self):
+        self.assertEqual(o.arzt_im_text(self.HAUSARZT), {"vorname": "Eva", "nachname": "Beispiel", "fach": ""})
+        self.assertEqual(o.arzt_im_text(self.TIERARZT), {"vorname": "Jana", "nachname": "Probst", "fach": "Tierarzt"})
+
+    def test_facharzt_und_zahnarzt(self):
+        self.assertEqual(o.arzt_im_text("Dr. med. Max Muster\nFacharzt für Dermatologie")["fach"], "Dermatologie")
+        self.assertEqual(o.arzt_im_text("Dr. med. dent. Emil Carius")["fach"], "Zahnarzt")
+        # ein „Zahnarzt“ im Brieftext macht die Hausärztin nicht zur Zahnärztin
+        self.assertEqual(o.arzt_im_text(self.HAUSARZT + "\nBitte gehen Sie zum Zahnarzt.")["fach"], "")
+
+    def test_ohne_med_kein_arzt_und_gleichstand_keiner(self):
+        self.assertIsNone(o.arzt_im_text("Kanzlei Dr. Anna Kehr\nDr. jur. Anna Kehr"))
+        self.assertIsNone(o.arzt_im_text("Dr. med. Eva Beispiel\nDr. med. Max Muster"))   # Gemeinschaftspraxis
+        self.assertEqual(o.arzt_im_text("Dr. med. Eva Beispiel\nDr. med. Max Muster\nDr. med. Eva Beispiel")
+                         ["nachname"], "Beispiel")                                            # Unterschrift zählt
+        self.assertIsNone(o.arzt_im_text(""))
+
+    def test_fachrichtung(self):
+        for ein, aus in (("Hausärztin", ""), ("Allgemeinmedizin", ""), ("Fachärztin für Allgemeinmedizin", ""),
+                         ("Tierärztin", "Tierarzt"), ("Zahnarzt", "Zahnarzt"), ("Kinderärztin", "Kinderarzt"),
+                         ("Facharzt für Innere Medizin", "Innere Medizin"),
+                         ("Fachärztin für Allgemeinmedizin Telefon 0123", "")):   # Zeile ohne Umbruch im Scan
+            self.assertEqual(o.fachrichtung(ein), aus, ein)
+
+    def test_telefonbuch_form_der_ki_nur_fuer_aerzte(self):
+        self.assertEqual(o.arzt_aus_telefonbuch("Carius, Dr. Emil (Zahnarzt)"), "Dr. Carius, Emil (Zahnarzt)")
+        self.assertEqual(o.arzt_aus_telefonbuch("Beispiel, Dr. Eva (Hausärztin)"), "Dr. Beispiel, Eva")
+        self.assertIsNone(o.arzt_aus_telefonbuch("Kehr, Dr. Anna (Rechtsanwältin)"))
+        self.assertIsNone(o.arzt_aus_telefonbuch("Kehrmann, Fritz (Kaminkehrer)"))
+        self.assertIsNone(o.arzt_aus_telefonbuch("Beispiel, Dr. Eva"))   # ohne Beruf nicht zu entscheiden
+
+    def test_sortiert_unter_d_verglichen_wird_der_kern(self):
+        self.assertEqual(auto_pilot.sortierbuchstabe("Dr. Probst, Jana (Tierarzt)"), "D")
+        self.assertEqual(auto_pilot.sortierbuchstabe("Kehr, Dr. Anna (Rechtsanwältin)"), "K")
+        self.assertEqual(auto_pilot.kernname("Dr. Beispiel, Eva"), "Beispiel")
+
+
 if __name__ == "__main__":
     unittest.main()

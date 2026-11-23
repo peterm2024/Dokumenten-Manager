@@ -2,6 +2,18 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.37 — 2026-11-23
+
+- Hintergrund-Automatik: Arztbriefe kommen in einen Ordner nach der Ärztin oder dem Arzt statt nach der Praxis - „Dr. Beispiel, Eva“ statt „Hausarztpraxis am Markt“, bei Fachärzten, Zahn- und Tierärzten mit Fachrichtung („Dr. Probst, Jana (Tierarzt)“). Das „Dr.“ steht vorn, die Ordner sortieren unter D. Der Name kommt aus dem Text des Briefs; ein vorhandener Ordner der Ärztin wird weiter gefunden, auch in der bisherigen Form „Beispiel, Dr. Eva (Hausärztin)“.
+- Vorschau: Das Datum eines gescannten Briefs wird auch markiert, wenn die Texterkennung Leerzeichen hineingesetzt hat („07. 02. 2026“), und ein Tagesdatum geht einem bloßen Monat aus dem Betreff oder Eingangsstempel vor.
+- Titel vorschlagen und Titel aufräumen: Die Liste hat eine Bildlaufleiste, unten stehen „Abbrechen“ und „Übernehmen und schließen“ (gesperrt, solange nichts angehakt ist), ein Klick auf das Kästchen hakt an. Geänderte Tags setzen den Haken selbst und gehen beim Übernehmen nicht mehr verloren.
+- Tags bearbeiten und Titel bearbeiten: Esc schließt zuerst die Vorschlagsliste, ein weiteres Esc bricht den Dialog ab.
+- Dokumentenliste: Strg+A markiert alle Dokumente.
+- Das Hauptfenster hat eine Mindestgröße und lässt sich nicht mehr winzig ziehen; eine früher gespeicherte Zwerggröße wird beim Start vergrößert.
+- Suchfeld: Ein Doppelklick ins leere Feld färbt es nicht mehr blau; markiert wird nur noch der Text.
+- Gesperrte blaue Knöpfe sind grau statt fast unverändert blau.
+- Benchmark: fester Satz mit 40 eingescannten Prüfbriefen eingebaut, weitere Sätze als Zip wählbar; das Ergebnis zeigt, wie viele Briefe sicher richtig, zum Prüfen oder still falsch abgelegt wurden, und eine Liste je Brief (Doppelklick öffnet den Brief).
+
 ## v0.9.36 — 2026-11-22
 
 - Erster Start: Zuerst erscheint der Schnellstart mit den fünf Schritten, erst danach die Frage nach dem Dokumentenordner - der erste Schritt des Schnellstarts erklärt genau diese Frage. Der Knopf „Vollautomatik einschalten“ darin wartet, bis eine Sammlung eingerichtet ist.

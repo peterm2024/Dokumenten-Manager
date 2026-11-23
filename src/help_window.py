@@ -9,7 +9,7 @@ import menue_hilfe
 
 APP_NAME = "Dokumenten-Manager (KI Edition)"
 # Release-Version (Git-Tag "v<Version>", GitHub-Release mit der gebauten EXE, siehe README "Release bauen")
-APP_VERSION = "0.9.36"
+APP_VERSION = "0.9.37"
 
 
 def build_stempel():
@@ -264,14 +264,20 @@ TAB_FEATURES = [
     ("p", "Tools → KI-Helfer → „Benchmark (KI-Modelle messen)…“ legt 40 erfundene Prüfbriefe (Musterdaten) so ab "
           "wie die Hintergrund-Automatik, aber in einem Wegwerf-Ordner - die eigene Sammlung bleibt unberührt. Gemessen "
           "werden die Sekunden je Dokument, das Laden der Modelle und der Modellwechsel, und ob die Modelle ganz auf der "
-          "Grafikkarte liegen. Während der Messung pausiert die Hintergrund-Automatik. „Ergebnis kopieren“ legt die "
+          "Grafikkarte liegen - und wie gut abgelegt wurde: richtig, zum Prüfen (Rückfrage) oder still im falschen "
+          "Ordner, dazu Datum und Absender. „Liste je Brief“ zeigt jeden Brief einzeln mit richtigem und gewähltem "
+          "Ordner (ein Ordner, den es vorher nicht gab, mit „neu angelegt“); ein Doppelklick öffnet den Prüfbrief. Während der Messung pausiert die Hintergrund-Automatik. „Ergebnis kopieren“ legt die "
           "Zahlen in die Zwischenablage (nur Zahlen, keine Inhalte) - gut für eine Rückmeldung oder den Vergleich "
           "zweier Rechner."),
     ("p", "Vergleichswerte (gemessen am 20.11.2026, Ollama 0.40, Sekunden je Dokument mit der Zweitmeinung "
-          "clef-flash:9b, in Klammern ohne):"),
-    ("tabelle", [('Lese-Modell', '16 GB (5060 Ti)', '8 GB (3060 Ti)'),
-                 ('qwen3.5:9b (Standard)', '8,5 s (5,1 s)', '9,7 bis 11 s (5,8 s)'),
-                 ('qwen3-vl:4b-instruct', '6,4 s (3,1 s)', '6,7 s (3,0 s)')]),
+          "clef-flash:9b, in Klammern ohne; „-“ = nicht gemessen):"),
+    ("tabelle", [('Grafikkarte', 'qwen3.5:9b (Standard)', 'qwen3-vl:4b-instruct'),
+                 ('16 GB (5060 Ti)', '8,5 s (5,1 s)', '6,4 s (3,1 s)'),
+                 ('8 GB (3060 Ti)', '9,7 bis 11 s (5,8 s)', '6,7 s (3,0 s)'),
+                 ('48 GB (Quadro RTX 8000)', '10,2 s (-)', '-')]),
+    ("p", "Die 48-GB-Karte hält beide Modelle zugleich, der Modellwechsel entfällt; jeder einzelne Aufruf ist auf "
+          "der älteren Karte aber langsamer. Läuft der KI-Server in einer virtuellen Maschine, braucht sie mehr "
+          "Arbeitsspeicher als beide Modelle zusammen (gut 20 GB) - mit 8 GB scheiterte dort jeder Lauf."),
     ("p", "qwen3-vl:4b-instruct ist schneller und legte die Prüfbriefe gleich gut ab, an 403 echten Dokumenten "
           "aber öfter still im falschen Ordner - darum bleibt qwen3.5:9b der Standard. Ohne Zweitmeinung geht es "
           "fast doppelt so schnell, dafür landen etwas mehr Dokumente still im falschen Ordner. Als Zweitmeinung taugen nur "
@@ -281,8 +287,9 @@ TAB_FEATURES = [
           "eingescannt, wie echte Post auf Papier - in höchster Auflösung "
           "(„Pruefdokumente_Benchmark_gescannt_hoch.zip“) und in niedrigster "
           "(„Pruefdokumente_Benchmark_gescannt_niedrig.zip“). Der Satz ändert sich "
-          "nie; der Benchmark misst mit genau diesen Briefen, Ergebnisse bleiben so über Versionen vergleichbar. "
-          "Selbst ausdrucken muss niemand."),
+          "nie, Ergebnisse bleiben so über Versionen vergleichbar. Eingebaut ist die eingescannte Fassung in niedriger "
+          "Auflösung - sie kommt echter Post am nächsten; mit „Anderer Satz (Zip)…“ misst der Benchmark eine der "
+          "anderen. Vergleichbar sind nur Läufe mit demselben Satz (Zeile „Satz“). Selbst ausdrucken muss niemand."),
     ("link", "https://github.com/peterm2024/Dokumenten-Manager/releases"),
 
     ("h2", "🌐\tKI-Server aus der Ferne (Tailscale)"),

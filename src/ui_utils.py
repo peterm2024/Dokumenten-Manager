@@ -28,6 +28,9 @@ ERFOLG_BLINK_MS = 500
 # B5 (Peter 21.11.2026): Fenster und Dialoge lassen sich nicht kleiner ziehen als ihr Inhalt verlangt - höchstens
 # auf diesen Anteil des Bildschirms gedeckelt, damit große Tabellen-Fenster trotzdem nebeneinander passen
 MINDEST_DECKEL = 0.6
+# Hauptfenster (hauptfenster_mindestmass): bei 100 %, höchstens dieser Anteil des Bildschirms
+HAUPTFENSTER_MINDEST = (960, 640)
+HAUPTFENSTER_DECKEL = 0.8
 
 
 def _win_rahmen(fenster):
@@ -97,10 +100,12 @@ class UIUtils:
     _einzelfenster = {}     # Schlüssel -> offenes Werkzeugfenster (einzelfenster)
 
     @staticmethod
-    def tabelle_bearbeitbar(tree, bearbeite, menue=None, f2_spalte=None):
+    def tabelle_bearbeitbar(tree, bearbeite, menue=None, f2_spalte=None, haken_spalte=None):
         """
         Einheitliche Auslöser für Tabellen mit bearbeitbaren Zellen (Fenster-Durchsicht B4c, 21.11.2026):
-        Einzelklick wählt nur aus, Doppelklick auf eine Zelle ruft `bearbeite(iid, spalte)`, Rechtsklick zeigt
+        Einzelklick wählt nur aus - außer in `haken_spalte`: dort ruft schon der Einzelklick
+        `bearbeite(iid, haken_spalte)` (Peter 22.11.2026: „Doppelklick Haken ist Mist“; ein Doppelklick ist dann
+        zwei Klicks, wie bei jedem Kästchen). Doppelklick auf eine Zelle ruft `bearbeite(iid, spalte)`, Rechtsklick zeigt
         `menue(iid)` -> [(spalte, Beschriftung)] als Menü (wählt die Zeile vorher aus; None/leer = kein Menü),
         F2 bearbeitet `f2_spalte` der ersten markierten Zeile. Spalten immer über ihre ID, nie über „#3“: eine
         neue Spalte verschob in „Dateinamen aufräumen“ unbemerkt das Ziel des Doppelklicks (FALLSTRICKE #140).
@@ -136,6 +141,17 @@ class UIUtils:
             return "break"
 
         tree.bind("<Double-1>", doppelklick)
+        if haken_spalte:
+            def klick(event):
+                # Läuft VOR der Klassenbindung, die die Zeile auswählt - darum das Ziel über die Mausposition
+                if tree.identify_region(event.x, event.y) != "cell":
+                    return
+                if tree.column(tree.identify_column(event.x), "id") != haken_spalte:
+                    return
+                iid = tree.identify_row(event.y)
+                if iid:
+                    bearbeite(iid, haken_spalte)
+            tree.bind("<Button-1>", klick, add="+")
         if menue is not None:
             tree.bind("<Button-3>", rechtsklick)
         if f2_spalte:
@@ -419,6 +435,28 @@ class UIUtils:
             if pruefer(punkt_x, titelleiste_y):
                 return geometry
         return f"{breite}x{hoehe}"
+
+    @staticmethod
+    def hauptfenster_mindestmass(skalierung, bildschirm_b, bildschirm_h):
+        """
+        Mindestgröße des Hauptfensters (Peter 22.11.2026: „wir brauchen eine sinnvolle Minimalgröße für das
+        Hauptfenster“ - es ließ sich auf 200×161 ziehen, und diese Größe kam nach dem Maximieren beim Herausziehen
+        wieder). HAUPTFENSTER_MINDEST bei 100 %, mitskaliert, aber höchstens HAUPTFENSTER_DECKEL des Bildschirms.
+        Die automatische Mindestgröße (`mindestgroesse_ueberall`) trifft das Hauptfenster nicht (Klasse „Tk“), und
+        sein Inhalt verlangt mehr, als ein kleiner Bildschirm hat. Rein. :return: (Breite, Höhe)
+        """
+        breite = min(int(round(HAUPTFENSTER_MINDEST[0] * skalierung)), int(bildschirm_b * HAUPTFENSTER_DECKEL))
+        hoehe = min(int(round(HAUPTFENSTER_MINDEST[1] * skalierung)), int(bildschirm_h * HAUPTFENSTER_DECKEL))
+        return breite, hoehe
+
+    @staticmethod
+    def geometrie_mindestens(geometry, min_b, min_h):
+        """Vergrößert eine gespeicherte Geometrie ('BxH' oder 'BxH+X+Y') auf mindestens min_b × min_h; die Position
+        bleibt. Unbekanntes Format bleibt unverändert. Rein."""
+        m = re.match(r"^(\d+)x(\d+)(.*)$", geometry or "")
+        if not m:
+            return geometry
+        return f"{max(int(m.group(1)), min_b)}x{max(int(m.group(2)), min_h)}{m.group(3)}"
 
     @staticmethod
     def fensterrahmen():

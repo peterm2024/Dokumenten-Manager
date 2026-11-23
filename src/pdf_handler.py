@@ -638,6 +638,47 @@ class PDFHandler:
                 behalten.append(box)
         return behalten
 
+    _RAND_ZEICHEN = "()[]{},;:\"'„“"   # hängt die Texterkennung gern an ein Datum („31.01.2026,“)
+
+    @staticmethod
+    def datum_boxen(page, kid_date):
+        """
+        Wo steht das Datum ('JJJJ-MM-TT') auf der Seite? Rechtecke für den gelben Datums-Marker.
+        Zwei Lehren aus Peters Ablage von Hand (Rückmeldung 22.11.2026):
+        1. Gescannte Briefe tragen Leerzeichen ins Datum („22.01 .2026“, „31 .01.2026“) - die Suche der Textebene
+           ist nicht leerzeichen-tolerant. Ohne exakten Fund werden darum bis zu vier benachbarte Wörter derselben
+           Zeile ohne Leerzeichen zusammengesetzt und mit den Formen verglichen.
+        2. Formen mit Tag zuerst: Formen ohne Tag („Januar 2026“) nur, wenn das Tagesdatum nirgends steht - sonst
+           wurde der Betreff „Entgeltabrechnung Januar 2026“ markiert statt des Briefdatums.
+        Überlappende Rechtecke werden eingedampft (marker_boxen_bereinigen).
+        """
+        formen = PDFHandler.datums_suchformen(kid_date)
+        if not formen:
+            return []
+        try:
+            tag = kid_date.split("-")[2]
+        except (AttributeError, IndexError):
+            return []
+        mit_tag = [f for f in formen if f.startswith((tag, str(int(tag)) + "."))]
+        ohne_tag = [f for f in formen if f not in mit_tag]
+        boxen = [r for f in mit_tag for r in page.search_for(f)]
+        if not boxen:
+            gesucht = {f.replace(" ", "").lower() for f in mit_tag}
+            woerter = page.get_text("words")   # (x0, y0, x1, y1, Wort, Block, Zeile, Wortnummer)
+            for i in range(len(woerter)):
+                text, rechteck = "", None
+                for w in woerter[i:i + 4]:
+                    if w[5:7] != woerter[i][5:7]:   # nur innerhalb derselben Zeile
+                        break
+                    text += w[4]
+                    rechteck = fitz.Rect(w[:4]) if rechteck is None else rechteck | fitz.Rect(w[:4])
+                    if text.strip(PDFHandler._RAND_ZEICHEN).lower() in gesucht:
+                        boxen.append(rechteck)
+                        break
+        if not boxen:
+            boxen = [r for f in ohne_tag for r in page.search_for(f)]
+        return PDFHandler.marker_boxen_bereinigen(boxen)
+
     # Suchtreffer-Marker: hellblau statt gelb, blauer statt roter Rahmen - auf einen Blick
     # vom Datums-Marker unterscheidbar (Nutzerwunsch 11.09.2026: „wo steht das im Dokument?").
     TREFFER_FUELLUNG = (0.55, 0.85, 1.0)
@@ -756,13 +797,10 @@ class PDFHandler:
                 kid_date, _ = PDFHandler.parse_kid_subject(doc.metadata.get("subject", ""))
             if kid_date:
                 try:
-                    search_terms = PDFHandler.datums_suchformen(kid_date)
-                    # Auf der aktuellen Seite nach allen Begriffen suchen; überlappende
-                    # Treffer (z.B. "Mai 2026" innerhalb von "12. Mai 2026") werden auf
-                    # die größte Box eingedampft - sonst liegen zwei Marker samt zwei
-                    # roten Rahmen übereinander (T4.9, 11.09.2026).
-                    boxen = [rect_box for term in search_terms for rect_box in page.search_for(term)]
-                    for rect_box in PDFHandler.marker_boxen_bereinigen(boxen):
+                    # Überlappende Treffer (z.B. "Mai 2026" innerhalb von "12. Mai 2026") werden auf die
+                    # größte Box eingedampft (T4.9, 11.09.2026); Leerzeichen im gescannten Datum und
+                    # Vorrang des Tagesdatums siehe datum_boxen (22.11.2026).
+                    for rect_box in PDFHandler.datum_boxen(page, kid_date):
                         marker = page.add_highlight_annot(rect_box)
                         marker.update() # Zeichnet das Gelb in den RAM
                         # Roter Rahmen zusätzlich zur gelben Füllung: macht auf einen Blick

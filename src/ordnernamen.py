@@ -11,6 +11,8 @@ Mustergültig“ oder „… GmbH“, „TSV Musterstadt 1890 e.V“ (Windows ve
 - `schreibweise_aus_text`: Ein Wort des Namens, das nicht in der Textebene steht, bekommt die Schreibweise eines
   fast gleichen Worts aus dem Text (eindeutig, gleicher Anfangsbuchstabe); zerrissene Wörter werden zusammengefügt.
 
+Dazu seit 22.11.2026 die Arzt-Ordner „Dr. Nachname, Vorname (Fachrichtung)“ (`arzt_im_text`, `arzt_ordner`, unten).
+
 Nur Standardbibliothek plus `personen_namen` (selbst nur Standardbibliothek), GUI-frei (tests/test_modulgrenzen.py).
 """
 import re
@@ -143,3 +145,123 @@ def schreibweise_aus_text(name, woerter):
         aus.append(teile[i])
         i += 1
     return " ".join(aus)
+
+
+# ---------------------------------------------------------------------------------------------------------------------
+# Arzt-Ordner (Peter 22.11.2026, Dreifach-Vergleich Etappe 13): „Dr. Nachname, Vorname (Fachrichtung)“. „Gerade die
+# Ärzte, die man selten besucht, findet man so schneller … normalerweise sucht kein Mensch nach ‚Hausarztpraxis am
+# Markt‘, sondern geht gleich nach dem Namen oder der Fachrichtung. Durch das ‚Dr.‘ am Anfang sind die meisten Ärzte
+# zusätzlich vorsortiert.“ Die KI nannte alle drei Arztbriefe des Prüfsatzes nach der Praxis. Entscheidungen Peter:
+# Hausarzt ohne Fachrichtung, Fachärzte, Zahn- und Tierärzte mit; das „Dr.“ nur bei Ärzten nach vorn (andere Personen
+# bleiben in Telefonbuch-Form „Kehr, Dr. Anna (Rechtsanwältin)“).
+
+# „Dr. med. Eva Beispiel“, „Dr. med. vet. Jana Probst“, „Dr. med. dent. …“; im Scan auch „Dr, med. vet Jana“. Nur mit
+# „med.“ - erst das macht den Doktor zum Arzt (Dr. jur., Dr. rer. nat. und ein bloßes „Dr.“ bleiben außen vor).
+_NAME_TEIL = r"[A-ZÄÖÜ][a-zäöüß]+(?:-[A-ZÄÖÜ][a-zäöüß]+)?"
+_ARZT_IM_TEXT = re.compile(r"\bDr[.,]?\s*med[.,]?\s*(?:(vet|dent)[.,]?\s*)?(?:univ[.,]?\s*)?(" + _NAME_TEIL + r")[ \t]+("
+                           + _NAME_TEIL + r")\b")
+# „Fachärztin für Innere Medizin und Kardiologie“: bis zum Zeilenende bzw. Satzzeichen, höchstens vier Wörter
+_FACHARZT_FUER = re.compile(r"Fach(?:ärztin|arzt)[ \t]+für[ \t]+([A-ZÄÖÜ][A-Za-zÄÖÜäöüß-]*"
+                            r"(?:[ \t]+[A-Za-zÄÖÜäöüß-]+){0,3})")
+# Allgemeinmedizin am Anfang der Fachrichtung = Hausarzt, auch wenn auf derselben Zeile noch etwas folgt
+_ALLGEMEIN_VORN = re.compile(r"^(?:innere\s+(?:medizin\s+)?und\s+)?allgemeinmedizin\b", re.IGNORECASE)
+# Hausarzt = ohne Fachrichtung (Peter: „Dr. Beispiel, Eva“)
+_HAUSARZT = re.compile(r"^(?:haus(?:arzt|ärztin)|allgemein(?:medizin|arzt|ärztin)|praktische[rn]?\s+(?:arzt|ärztin)"
+                       r"|(?:fach)?(?:arzt|ärztin)\s+für\s+(?:innere\s+(?:medizin\s+)?und\s+)?allgemeinmedizin"
+                       r"|innere\s+(?:medizin\s+)?und\s+allgemeinmedizin)$", re.IGNORECASE)
+_TIERARZT = re.compile(r"tier(?:arzt|ärzt)", re.IGNORECASE)
+_ZAHNARZT = re.compile(r"zahn(?:arzt|ärzt)", re.IGNORECASE)
+_ARZTWORT = re.compile(r"arzt|ärzt|praxis|medizin", re.IGNORECASE)
+_TELEFONBUCH_ARZT = re.compile(r"^\s*([^,()]+?)\s*,\s*Dr[.,]?\s*(?:med[.,]?\s*)?(?:(?:vet|dent)[.,]?\s*)?([^,()]+?)\s*"
+                               r"\(([^()]+)\)\s*$")
+
+
+def fachrichtung(beschreibung):
+    """'Fachärztin für Dermatologie' -> 'Dermatologie', 'Tierärztin' -> 'Tierarzt', 'Zahnärztin' -> 'Zahnarzt',
+    'Hausärztin'/'Allgemeinmedizin' -> '' (Hausarzt ohne Klammer), sonst die Beschreibung mit männlicher Berufsform
+    ('Kinderärztin' -> 'Kinderarzt'). Rein."""
+    text = " ".join((beschreibung or "").split())
+    if not text or _HAUSARZT.match(text):
+        return ""
+    if _TIERARZT.search(text):
+        return "Tierarzt"
+    if _ZAHNARZT.search(text):
+        return "Zahnarzt"
+    m = _FACHARZT_FUER.search(text)
+    if m:
+        return "" if _ALLGEMEIN_VORN.match(m.group(1)) else m.group(1)
+    return re.sub(r"ärztin\b", "arzt", text)
+
+
+def arzt_im_text(text):
+    """
+    Die Ärztin/der Arzt eines Arztbriefs aus der Textebene: {"vorname", "nachname", "fach"} oder None. Gezählt werden
+    alle „Dr. med. Vorname Nachname“; es gilt der häufigste Name (Briefkopf + Unterschrift schlagen den Kollegen der
+    Gemeinschaftspraxis), bei Gleichstand keiner - dann bleibt der Praxisname. Fach: „med. vet.“ -> Tierarzt,
+    „med. dent.“ -> Zahnarzt, sonst „Facharzt/Fachärztin für …“ bzw. Tierärztin/Zahnarzt im Text (siehe fachrichtung).
+    JSON-fähig, reist wie `textwoerter` in `gelesen` mit. Rein.
+    """
+    zaehler, art = {}, {}
+    for m in _ARZT_IM_TEXT.finditer(text or ""):
+        name = (m.group(2), m.group(3))
+        zaehler[name] = zaehler.get(name, 0) + 1
+        if m.group(1):
+            art[name] = m.group(1).lower()
+    if not zaehler:
+        return None
+    rang = sorted(zaehler.items(), key=lambda kv: -kv[1])
+    if len(rang) > 1 and rang[0][1] == rang[1][1]:
+        return None
+    (vorname, nachname), _ = rang[0]
+    # Reihenfolge: Titel („med. vet.“) vor „Facharzt für …“ vor einem bloßen Berufswort - ein „Zahnarzt“ im Brieftext
+    # eines Hausarztes (Überweisung) macht ihn nicht zum Zahnarzt
+    facharzt = _FACHARZT_FUER.search(text)
+    if art.get((vorname, nachname)) == "vet":
+        fach = "Tierarzt"
+    elif art.get((vorname, nachname)) == "dent":
+        fach = "Zahnarzt"
+    elif facharzt:
+        fach = fachrichtung(facharzt.group(0))
+    elif _TIERARZT.search(text):
+        fach = "Tierarzt"
+    elif _ZAHNARZT.search(text):
+        fach = "Zahnarzt"
+    else:
+        fach = ""
+    return {"vorname": vorname, "nachname": nachname, "fach": fach}
+
+
+def arzt_ordnername(nachname, vorname, fach=""):
+    """'Dr. Beispiel, Eva' bzw. 'Dr. Probst, Jana (Tierarzt)'. Rein."""
+    return f"Dr. {nachname}, {vorname}" + (f" ({fach})" if fach else "")
+
+
+def arzt_aus_telefonbuch(ordnername):
+    """Die Telefonbuch-Form der KI für eine Ärztin ('Carius, Dr. Emil (Zahnarzt)', 'Beispiel, Dr. Eva (Hausärztin)')
+    in die Arzt-Form ('Dr. Carius, Emil (Zahnarzt)', 'Dr. Beispiel, Eva'). Nur mit „Dr.“ und einem Arzt-Beruf in der
+    Klammer - 'Kehr, Dr. Anna (Rechtsanwältin)' und 'Kehrmann, Fritz (Kaminkehrer)' bleiben. Sonst None. Rein."""
+    m = _TELEFONBUCH_ARZT.match(ordnername or "")
+    if not m or not _ARZTWORT.search(m.group(3)):
+        return None
+    return arzt_ordnername(m.group(1), m.group(2), fachrichtung(m.group(3)))
+
+
+def arzt_ordner(ordnername_ki, absender, arzt, empfaenger=""):
+    """
+    Ordnername für einen Arztbrief oder None (dann gilt der bisherige Weg). Aus der Textebene (`arzt`, siehe
+    arzt_im_text), wenn der Absender oder der KI-Name nach Arzt/Praxis klingt oder schon die Ärztin nennt - aber nie
+    die Empfängerin (ein angeschriebener Arzt steht auch als „Dr. med.“ im Text). Ohne Textebene aus der
+    Telefonbuch-Form der KI (arzt_aus_telefonbuch). Rein.
+    """
+    if arzt:
+        nachname = arzt.get("nachname", "")
+        genannt = nachname and (nachname.casefold() in (ordnername_ki or "").casefold())
+        if (nachname and nachname.casefold() not in (empfaenger or "").casefold()
+                and (genannt or _ARZTWORT.search(absender or "") or _ARZTWORT.search(ordnername_ki or ""))):
+            return arzt_ordnername(nachname, arzt.get("vorname", ""), arzt.get("fach", ""))
+    return arzt_aus_telefonbuch(ordnername_ki)
+
+
+def ist_arzt_ordnername(name):
+    """'Dr. Beispiel, Eva (…)' - die Arzt-Form; sie sortiert unter D (auto_pilot.sortierbuchstabe). Rein."""
+    return bool(re.match(r"^\s*Dr\.\s+[^,]+,", name or ""))
