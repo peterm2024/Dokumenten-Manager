@@ -18,7 +18,7 @@ nur Zahlen. `--details` schreibt jede Entscheidung in eine Datei neben den Korpu
     python ablage_messlauf.py                        # messen, mit ablage_vergleich.json vergleichen
     python ablage_messlauf.py --vergleich-speichern  # heutigen Stand als Vergleich festhalten
     python ablage_messlauf.py --details              # zusätzlich Einzelfälle in die private Datei
-    python ablage_messlauf.py --korpus=korpus.json      # andere Aufnahme (26.10.2026), ohne Vergleich
+    python ablage_messlauf.py --korpus=korpus_20261114.json   # andere Aufnahme (bis 24.11.2026, Temperatur 1), ohne Vergleich
     python ablage_messlauf.py --zweitmeinung=zweitmeinung_clef-flash_9b.json   # zusätzlich mit Ordnerwahl-Modell
     python ablage_messlauf.py --volltext=volltext.json   # zusätzlich mit Ordner-Steckbrief (beides kombinierbar)
 
@@ -44,7 +44,7 @@ import ordner_steckbrief  # noqa: E402
 import ordnernamen  # noqa: E402
 
 KORPUS = os.path.join(os.path.expanduser("~"), "KID-Messungen", "betatest")
-KORPUS_DATEI = "korpus_20261114.json"   # die Aufnahme, gegen die ablage_vergleich.json gilt (Prompt und Modell vom 14.11.2026)
+KORPUS_DATEI = "korpus_20261124.json"   # die Aufnahme, gegen die ablage_vergleich.json gilt (Temperatur 0, Etappe 15)
 VERGLEICH = os.path.join(HIER, "ablage_vergleich.json")
 
 # Je Ausgangslage: welche Zahlen bei Zunahme (+1) bzw. Abnahme (-1) ein Rückschritt sind

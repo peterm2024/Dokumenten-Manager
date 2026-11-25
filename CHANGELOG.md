@@ -2,6 +2,17 @@
 
 Kurzfassung je Version, neueste zuerst. Die vollständigen Release-Texte (samt EXE-Download) stehen bei den [GitHub-Releases](https://github.com/peterm2024/Dokumenten-Manager/releases); Angaben wie „FALLSTRICKE #69“ verweisen auf die interne Entwickler-Dokumentation.
 
+## v0.9.38 — 2026-11-25
+
+- Wiki: „Dokumente lesen…“ zeigt je Ordner, welche Dokumente die KI schon gelesen hat, und liest von dort weiter - im Wiki-Fenster und per Rechtsklick auf einen Ordner im Hauptfenster. Importierte Mails nur mit Haken, Posteingang und 0_Unsicher nie.
+- Wiki: „Übersicht…“ zeigt die Einträge einer Schublade als Tabelle mit ihren Merkmalen als Spalten (etwa alle Versicherungen mit Nummer und Beitrag); die Spaltenwahl bleibt gemerkt.
+- Wiki, Lesen mit der KI: Merkmal, Wert, Zitat und Dokument in eigenen Spalten. Was schon im Wiki steht, bekommt nur das Dokument als weiteren Beleg; Einträge ohne Neues erscheinen nicht mehr. Ohne Haken lässt sich „Nichts davon übernehmen“ wählen, das Dokument gilt dann als gelesen.
+- Wiki: strengere Regeln gegen Lesefehler und gegen Rollen, die nur für ein Dokument gelten. Abgelehntes wird auch bei Dokumenten ohne Dokument-ID gemerkt.
+- Wiki: Beim Übernehmen konnte in seltenen Fällen „database is locked“ kommen.
+- Hintergrund-Automatik, Ablage-Vorschau, Begleitet erfassen: Die KI liest ohne Zufall, derselbe Brief ergibt immer dasselbe Ergebnis. Eine Grenze für die Antwortlänge verhindert, dass ein Dokument in einer Endlosschleife hängen bleibt.
+- Einstellungen und Benchmark: Hinter dem empfohlenen Modell steht „← empfohlen“. „Verbindung testen“ nennt fehlende Modelle samt Befehl zum Laden. Ein leeres Feld „Modell“ bedeutet das empfohlene Modell.
+- Alle Fenster zeigen das Programmsymbol.
+
 ## v0.9.37 — 2026-11-23
 
 - Hintergrund-Automatik: Arztbriefe kommen in einen Ordner nach der Ärztin oder dem Arzt statt nach der Praxis - „Dr. Beispiel, Eva“ statt „Hausarztpraxis am Markt“, bei Fachärzten, Zahn- und Tierärzten mit Fachrichtung („Dr. Probst, Jana (Tierarzt)“). Das „Dr.“ steht vorn, die Ordner sortieren unter D. Der Name kommt aus dem Text des Briefs; ein vorhandener Ordner der Ärztin wird weiter gefunden, auch in der bisherigen Form „Beispiel, Dr. Eva (Hausärztin)“.

@@ -9,7 +9,7 @@ import menue_hilfe
 
 APP_NAME = "Dokumenten-Manager (KI Edition)"
 # Release-Version (Git-Tag "v<Version>", GitHub-Release mit der gebauten EXE, siehe README "Release bauen")
-APP_VERSION = "0.9.37"
+APP_VERSION = "0.9.38"
 
 
 def build_stempel():
@@ -222,7 +222,9 @@ TAB_FEATURES = [
           "und Dokumente als Belege. Mit Rechtsklick auf ein Dokument → „Wiki“ → „Von der KI lesen "
           "lassen…“ listet die KI auf, wer und was darin vorkommt; ins Wiki kommt nur, was du "
           "anhakst. Die KI kann sich irren, deshalb steht bei jeder Angabe das Zitat aus dem "
-          "Dokument. Die PDF-Dateien bleiben dabei unverändert."),
+          "Dokument. „Dokumente lesen…“ im Wiki-Fenster (oder per Rechtsklick auf einen Ordner) zeigt, "
+          "was schon gelesen ist, und liest dort weiter. An den PDF-Dateien ändert sich dabei nichts, außer dass ein gelesenes "
+          "Dokument eine Dokument-ID bekommt, falls es noch keine hat."),
 
     ("h2", "🛠️\tPraktische Werkzeuge"),
     ("p", "Im Tools-Menü findest du Helfer für besondere Fälle, nach Themen sortiert: "

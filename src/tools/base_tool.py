@@ -14,7 +14,11 @@ class BaseTool(ABC):
 
     Optional (12.11.2026): Wer `fuelle_kontextmenue(self, menu, context)` definiert, bekommt im Rechtsklick der
     Dokumentenliste statt eines Eintrags ein Untermenü „🛠 name“, das der ToolManager vor jedem Öffnen leert und von
-    dieser Methode füllen lässt (tk.Menu; Unter-Untermenüs als Kinder von `menu`). Vorbild: tools/wiki.py."""
+    dieser Methode füllen lässt (tk.Menu; Unter-Untermenüs als Kinder von `menu`). Vorbild: tools/wiki.py.
+
+    Mit "folder_menu" in `menu_hooks` (25.11.2026) steht das Tool auch im Rechtsklick des Ordnerbaums. Es braucht dann
+    `ordner_label` (Menütext), `ordner_hilfe` (Erklärung für die Menü-Hilfe), `ordner_moeglich(app, pfad)` (sonst ist der
+    Eintrag grau) und `oeffne_ordner(app, pfad)` (Ordner als absoluter Pfad). Vorbild: tools/wiki.py."""
 
     @property
     @abstractmethod
@@ -31,7 +35,7 @@ class BaseTool(ABC):
     @property
     @abstractmethod
     def menu_hooks(self) -> List[str]:
-        """Legt fest, wo das Tool auftaucht: Teilmenge von ["context_menu", "main_menu"]."""
+        """Legt fest, wo das Tool auftaucht: Teilmenge von ["context_menu", "main_menu", "folder_menu"]."""
         pass
 
     @property

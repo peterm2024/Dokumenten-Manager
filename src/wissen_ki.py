@@ -227,8 +227,18 @@ ROLLE = re.compile(r"\bdokument|\bim kopf (der|des) " + _PAPIER + r"\b|"
                    r"rechnungs(empfänger|steller)(in)?)\b.{0,25}\b(der|des|dieser|dieses) " + _PAPIER + r"\b|"
                    r"\b(hat|haben|erhielt|erhält|bekam|bekommt)\b.{0,25}\b" + _PAPIER + r"\b.{0,25}\b"
                    r"(erhalten|bekommen|gestellt|ausgestellt|geschickt|geschrieben|verfasst|erstellt)\b", re.I)
-# Beschriftung ohne den Wert („Telefonnummer der Praxis.“, „Anschrift des Kunden.“): Wer so anfängt, muss eine
-# Ziffer, eine E-Mail- oder eine Internetadresse nennen.
+# Als „Rolle“ oder „Funktion“ nur die Seite eines Vertrags oder Schreibens (KI-Lauf 23.11.2026: „Rolle:
+# Versicherungsnehmer“) - „Funktion: Leiter Kundenservice“ bleibt, „Beruf: Verkäufer“ auch (anderes Merkmal).
+NUR_ROLLE = re.compile(r"^(versicherungsnehmer|versicherungsgeber|versicherer|versicherte[rn]?|kund(e|in)|auftrag(geber|nehmer)|"
+                       r"vertragspartner|käufer|verkäufer|empfänger|rechnungsempfänger|adressat|absender|"
+                       r"unterzeichner|antragsteller|patient)(in)?$", re.I)
+# Lesefehler der Texterkennung in E-Mail und Webseite („servtce@musterversicheru ng.example“): mit Leerzeichen oder ohne
+# Endung ist es keine Adresse und stünde neben der richtigen als zweiter Wert. Mehrere durch Komma oder Strichpunkt gehen.
+_EMAIL = re.compile(r"^[^\s@]+@[^\s@]+\.[a-zäöü]{2,}$", re.I)
+_WEB = re.compile(r"^(https?://)?[^\s/@]+\.[a-zäöü]{2,}(/\S*)?$", re.I)
+_ADRESSFORM = {"e-mail": _EMAIL, "webseite": _WEB}
+# Beschriftung ohne den Wert („Telefon: Zentrale“, „Adresse: <ein Name>“): Wer so heißt, muss eine Ziffer, eine E-Mail-
+# oder eine Internetadresse nennen.
 ETIKETT = re.compile(r"^(die |der |das |seine |ihre )?(\w*anschrift|\w*adresse|telefon\w*|fax\w*|\w+nummer|e-mail\S*|"
                      r"webseite|website|internet\w*)\b", re.I)
 _WERT = re.compile(r"\d|@|www\.|\.(de|com|net|org|eu|ch|at)\b", re.I)
@@ -236,7 +246,7 @@ GRUENDE = {"leer": "ohne Text oder Zitat", "zugang": "Zugangsdaten", "zitat": "Z
            "zahl": "Zahl nicht im Zitat", "impressum": "Impressum oder Bankdaten", "lang": "zu lang",
            "dokument": "das Dokument selbst", "name": "Name nicht im Dokument", "ohne": "ohne brauchbare Angabe",
            "ueber": "Satz über das Dokument", "rolle": "gilt nur für dieses Dokument",
-           "etikett": "Beschriftung ohne Wert", "merkmal": "Merkmal fehlt oder ist zu lang",
+           "etikett": "Beschriftung ohne Wert", "schreibweise": "E-Mail oder Webseite unlesbar", "merkmal": "Merkmal fehlt oder ist zu lang",
            "satz": "Satz statt Wert", "wert": "Wert nicht im Zitat", "bezeichnung": "wiederholt die Bezeichnung",
            "verbindung": "nennt ein anderes Ding (Verbinden)", "aufsicht": "Aufsichtsbehörde",
            "kunde": "Kundennummer ohne eindeutige Firma"}
@@ -301,10 +311,17 @@ def _pruefe_angabe(angabe, text, bezeichnung=""):
         return merkmal, wert, zitat, "impressum"
     if UEBER_DAS_DOKUMENT.search(wert) or ROLLE.search(satz) or ROLLE.search(wert) or EINMALIG.search(merkmal):
         return merkmal, wert, zitat, "rolle"
+    if wissen.merkmal_kern(merkmal) == "funktion" and NUR_ROLLE.match(wert):
+        return merkmal, wert, zitat, "rolle"
     if not (zitat_im_text(zitat, text) or beleg_nahe(zitat, text)):
         return merkmal, wert, zitat, "zitat"
     if not wert_im_zitat(wert, zitat):
         return merkmal, wert, zitat, "wert"
+    if ETIKETT.search(merkmal) and not _WERT.search(wert):
+        return merkmal, wert, zitat, "etikett"
+    form = _ADRESSFORM.get(wissen.merkmal_kern(merkmal))
+    if form and not all(form.match(t.strip(" .")) for t in re.split(r"[,;]", wert)):
+        return merkmal, wert, zitat, "schreibweise"
     k = kern(wert)
     if k and k <= kern(bezeichnung):
         return merkmal, wert, zitat, "bezeichnung"
@@ -463,6 +480,16 @@ def ist_abgelehnt(angabe, abgelehnte):
     zitat = " ".join(str(angabe.get("zitat") or "").split()).casefold()
     return any((zitat and zitat == " ".join(a["zitat"].split()).casefold()) or gleiche_angabe(angabe["text"], a["text"])
                for a in abgelehnte)
+
+
+def bekannte_angabe(angabe, eintrag):
+    """Die Angabe des Eintrags mit demselben Merkmal und Wert (`wissen.angabe_schluessel`) oder None. Nur dann ist ein
+    weiteres Dokument eine weitere Quelle - „sinngleich“ (`gleiche_angabe`) reicht nicht: Zwei Merkmale mit denselben
+    vier Ziffern (Baujahr 1998, Einzug 1998) sind verschiedene Angaben."""
+    if "wert" not in angabe:
+        return None
+    schluessel = wissen.angabe_schluessel(angabe["merkmal"], angabe["wert"])
+    return next((x for x in eintrag["angaben"] if wissen.angabe_schluessel(x["merkmal"], x["wert"]) == schluessel), None)
 
 
 def neue_angaben(angaben, eintrag):

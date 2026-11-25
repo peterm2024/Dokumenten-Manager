@@ -6,11 +6,14 @@ funktioniert die App auch ganz ohne KI-Server, degradiert dieses Feature nur
 (kein Vorschlag), der Rest der App bleibt unberührt.
 """
 import json
+import logging
 import aktivitaet
 import re
 import base64
 import urllib.request
 import urllib.error
+
+logger = logging.getLogger("DocManager")
 
 DEFAULT_URL = "http://localhost:11434"
 # Standardmodell = das Modell, das auf dem gemeinsamen KI-Server tatsächlich liegt (Projekte-Wiki,
@@ -63,6 +66,15 @@ def wirksamer_timeout(timeout):
 BILD_TOKEN_PUFFER = 3500
 ZEICHEN_PRO_TOKEN = 3.5
 STANDARD_NUM_CTX = 4096
+
+
+# Ablesen statt frei schreiben (Etappe 15, 24.11.2026): Ohne diese Angabe gelten die Vorgaben des Modells, bei
+# qwen3.5:9b Temperatur 1 - zwei Läufe über dieselben 403 Dokumente stimmten nur bei 2 in allen Feldern überein, das
+# Datum wich bei 58 ab. Mit 0 ist jeder Lauf gleich und die Ablage eher vorsichtiger (Bestand still falsch 20 statt 24).
+# Die `presence_penalty` 1,5 des Modells bleibt bewusst: Mit 0 trug die KI in 249 statt 141 Dokumenten ein „Objekt“ ein.
+# num_predict: Die längste echte Antwort hat rund 500 Zeichen (keine 200 Token). Ohne Grenze liefe eine Endlosschleife in
+# den Timeout, und mit Temperatur 0 bei jedem Versuch wieder - das Dokument käme nie aus dem Posteingang.
+ABLESEN_OPTIONEN = {"temperature": 0, "num_predict": 1000}
 
 
 def _geschaetzter_num_ctx(prompt_text, bilder=1):
@@ -155,6 +167,26 @@ def _generate(payload, base_url, timeout):
             raise urllib.error.HTTPError(e.url, e.code, f"{e.reason} — {detail}", e.headers, None) from e
 
 
+def _ablesen(payload, base_url, timeout):
+    """
+    _generate mit ABLESEN_OPTIONEN. Einzelne Modelle denken trotz "think": false (qwen3-vl:8b, Tausende Token) und
+    verbrauchen die Antwortgrenze, bevor sie antworten - dann ist die Antwort leer und abgeschnitten, und es wird
+    einmal ohne Grenze gefragt, wie vor Etappe 15. Eine abgeschnittene Antwort MIT Text bleibt, wie sie ist: ohne
+    gültiges JSON werden alle Felder leer, das Dokument kommt in die Rückfrage.
+    """
+    payload = dict(payload)
+    payload["options"] = {**payload.get("options", {}), **ABLESEN_OPTIONEN}
+    data = _generate(payload, base_url, timeout)
+    if data.get("done_reason") == "length":
+        leer = not (data.get("response") or "").strip()
+        logger.warning("KI-Antwort nach %d Token abgeschnitten (%s)", ABLESEN_OPTIONEN["num_predict"],
+                       "ohne Text, neuer Versuch ohne Grenze" if leer else "mit Text")
+        if leer:
+            payload["options"] = {k: v for k, v in payload["options"].items() if k != "num_predict"}
+            data = _generate(payload, base_url, timeout)
+    return data
+
+
 def is_reachable(base_url=DEFAULT_URL, timeout=1.5):
     """Schneller Erreichbarkeits-Check, z.B. für einen 'Verbindung testen'-Button."""
     try:
@@ -226,6 +258,21 @@ def geladene_modelle(base_url=DEFAULT_URL, timeout=5):
 
 def _passt_modellname(name, model):
     return name == model or (":" not in model and name.startswith(model + ":"))
+
+
+def eingestelltes_modell(config):
+    """
+    Lese-Modell aus den Einstellungen. Ein leerer Wert gilt als DEFAULT_MODEL: Das Feld „Modell“ ließ sich leeren und
+    wurde so gespeichert - jeder KI-Aufruf ging dann an ein Modell ohne Namen (FALLSTRICKE #145).
+    :param config: hat get(key, default) wie config.Config
+    """
+    wert = config.get("ollama_model", DEFAULT_MODEL)
+    return (wert.strip() if isinstance(wert, str) else "") or DEFAULT_MODEL
+
+
+def hat_modell(namen, model):
+    """Liegt das Modell in dieser Modellliste des Servers (list_models)?"""
+    return any(_passt_modellname(n, model) for n in namen)
 
 
 def gpu_status(base_url=DEFAULT_URL, model=DEFAULT_MODEL, timeout=DEFAULT_TIMEOUT):
@@ -431,7 +478,7 @@ def suggest_filing(image_bytes, known_tags=None, base_url=DEFAULT_URL,
         "format": "json",
         "options": {"num_ctx": _geschaetzter_num_ctx(prompt)},
     }
-    data = _generate(payload, base_url, timeout)
+    data = _ablesen(payload, base_url, timeout)
     return _parse_filing(data.get("response", ""))
 
 

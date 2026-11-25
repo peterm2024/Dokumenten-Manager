@@ -448,7 +448,7 @@ class TitleCleanupWindow(tk.Toplevel):
             messagebox.showinfo("KI-Titel vorschlagen", "Keine Zeilen markiert und alle haben schon einen KI-Titel.", parent=self)
             return
         base_url = self.app.config.get("ollama_url", ollama_client.DEFAULT_URL)
-        model = self.app.config.get("ollama_model", ollama_client.DEFAULT_MODEL)
+        model = ollama_client.eingestelltes_modell(self.app.config)
         if not ollama_client.is_reachable(base_url):
             messagebox.showwarning("Ollama nicht erreichbar",
                                    f"Der KI-Server unter {base_url} antwortet nicht.\n"

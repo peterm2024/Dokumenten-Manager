@@ -19,7 +19,7 @@ GUI_FREI = {
     "index_manager", "mail_import", "mail_lesen", "mail_pst", "mail_quellen", "menue_hilfe", "ollama_client", "ordner_aliase", "papierkorb_herkunft", "scan_date", "server_wecken",
     "spell_correct", "suchsyntax", "tag_ignorierliste", "text_quality",
     "wissen", "wissen_ki", "zuletzt_benutzt", "ordner_steckbrief", "tag_katalog", "posteingang_sperre", "pruefdokumente",
-    "benchmark", "eingangsstempel", "ordnernamen",
+    "benchmark", "eingangsstempel", "ordnernamen", "ordner_finden", "titel_datum", "tag_regeln", "ablage_ausfuehren",
 }
 
 # PyMuPDF nur über pdf_handler; file_operations prüft nur, ob es installiert ist (CLAUDE.md, ruff-Abschnitt).
@@ -41,6 +41,10 @@ VERBOTEN = [
     ("auto_pilot", "auto_pilot_service", "die Logik kennt den Dienst nicht, nur umgekehrt"),
     ("index_manager", "search_manager", "search_manager benutzt den Index, nicht umgekehrt"),
 ]
+# Etappe 14 (23.11.2026): aus auto_pilot ausgelagert, von unten nach oben - jedes darf nur die vor ihm stehenden kennen
+AUS_AUTO_PILOT = ("titel_datum", "ordner_finden", "tag_regeln", "ablage_ausfuehren", "auto_pilot")
+VERBOTEN += [(unten, oben, "Etappe 14: auto_pilot ruft die ausgelagerten Module, nie umgekehrt")
+             for i, unten in enumerate(AUS_AUTO_PILOT) for oben in AUS_AUTO_PILOT[i + 1:]]
 
 
 def _importe(modul):

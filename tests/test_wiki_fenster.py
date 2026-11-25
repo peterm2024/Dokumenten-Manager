@@ -15,6 +15,7 @@ from pdf_handler import PDFHandler
 from tests.test_begleitet_erfassen import Einstellungen, threads_beenden
 from tests.test_mail_import import pdf_bytes
 from tools import wiki as wf
+from tools import wiki_uebersicht as wu
 
 
 class TestWikiFenster(unittest.TestCase):
@@ -406,6 +407,85 @@ class TestWikiFenster(unittest.TestCase):
         self.assertEqual(f.tree_angaben.selection(), (f"a:{telefon}",))       # die passende Angabe ist markiert
         f.var_filter.set("")
         self.assertEqual(len(zeilen()), 4)
+
+    def test_uebersicht_je_schublade(self):
+        hausrat = self.w.speichere("Versicherung", "Hausrat Musterversicherung")
+        kfz = self.w.speichere("Versicherung", "Kfz Musterversicherung")
+        self.w.speichere("Firma", "Muster GmbH")
+        kid = PDFHandler.ensure_kid_id(self.pdfs[0])
+        self.w.angabe_hinzu(hausrat, ("Beitrag", "140,86 €"), "AAAA-0001", "alt", "140,86 €", "2023-01-10")
+        self.w.angabe_hinzu(hausrat, ("Beitrag", "148,20 €"), kid, "neu", "148,20 €", "2024-01-10")
+        self.w.angabe_hinzu(hausrat, ("Versicherungsnummer", "V-4711"))
+        self.w.angabe_hinzu(kfz, ("Beitrag", "312,00 €"))
+        self.w.angabe_hinzu(kfz, "Schlüssel liegt beim Nachbarn")                  # freie Zeile: keine Spalte
+        f = self.fenster()
+        with patch("tools.wiki_uebersicht.UIUtils.werkzeugfenster"):
+            u = f._uebersicht()
+            self.addCleanup(lambda: u.winfo_exists() and u.destroy())
+            self.assertIs(f._uebersicht(), u)                                       # höchstens eines
+        self.assertEqual(u.cmb_art.get(), "Versicherung (2)")                       # die mit den meisten Einträgen
+        self.assertEqual([u.tree.heading(s, "text") for s in u.tree.cget("columns")],
+                         ["Eintrag", "Beitrag", "Versicherungsnummer"])            # häufigste zuerst
+        self.assertEqual([u.tree.item(i, "values") for i in u.tree.get_children()],
+                         [("Hausrat Musterversicherung", "148,20 €", "V-4711"), ("Kfz Musterversicherung", "312,00 €", "")])
+        self.assertEqual(u.lbl_stand.cget("text"), "2 Einträge, 2 von 2 Merkmalen gezeigt")
+        # Doppelklick: Wert mit Dokument → Dokument; Bezeichnung, von Hand eingetragen oder leer → Eintrag
+        u.oeffne(hausrat, "beitrag")
+        self.folder_manager.zeige_dokument.assert_called_once_with(self.pdfs[0])
+        for eintrag, spalte in ((kfz, "beitrag"), (hausrat, None), (kfz, "versicherungsnummer")):
+            u.oeffne(eintrag, spalte)
+            self.assertEqual(f.eintrag["id"], eintrag)
+        self.folder_manager.zeige_dokument.assert_called_once()
+        menue = u.baue_menue(kfz, "beitrag")
+        self.assertEqual([(menue.entrycget(n, "label"), str(menue.entrycget(n, "state"))) for n in range(3)],
+                         [("Eintrag zeigen", "normal"), ("Dokument zeigen", "disabled"), ("Wert kopieren", "normal")])
+        menue.invoke(2)
+        self.assertEqual(u.clipboard_get(), "312,00 €")
+        self.assertEqual(str(u.baue_menue(kfz, None).entrycget(2, "state")), "disabled")
+        # Spalten wählen: gilt für diese Schublade, auch nach einem Wechsel und nach neuen Angaben
+        u._haken["beitrag"].set(False)
+        u._spalten_gewaehlt()
+        self.assertEqual(list(u.tree.cget("columns")), ["bezeichnung", "m:versicherungsnummer"])
+        u.cmb_art.current(next(i for i, a in enumerate(u.arten) if a["name"] == "Firma"))
+        u._fuelle()
+        self.assertEqual(([u.tree.item(i, "values") for i in u.tree.get_children()], str(u.btn_spalten.cget("state"))),
+                         ([("Muster GmbH",)], "disabled"))
+        self.w.angabe_hinzu(kfz, ("Kennzeichen", "M-XY 123"))
+        u.aktualisiere(self.w.lade(kfz)["art"])
+        self.assertEqual(list(u.tree.cget("columns")), ["bezeichnung", "m:versicherungsnummer"])
+        u.destroy()                                                                # die Wahl steht im Wiki
+        self.root.update()
+        with patch("tools.wiki_uebersicht.UIUtils.werkzeugfenster"):
+            u = f._uebersicht()
+        self.addCleanup(lambda: u.winfo_exists() and u.destroy())
+        self.assertEqual(list(u.tree.cget("columns")), ["bezeichnung", "m:versicherungsnummer"])
+        u._haken["versicherungsnummer"].set(False)                                 # alles abgewählt gilt auch
+        u._spalten_gewaehlt()
+        u.aktualisiere()
+        self.assertEqual(list(u.tree.cget("columns")), ["bezeichnung"])
+        u._spalten_zurueck()
+        self.assertEqual(list(u.tree.cget("columns")),
+                         ["bezeichnung", "m:beitrag", "m:versicherungsnummer", "m:kennzeichen"])
+
+    def test_uebersicht_leer_und_viele_merkmale(self):
+        f = self.fenster()
+        with patch("tools.wiki_uebersicht.UIUtils.werkzeugfenster"):
+            u = f._uebersicht()
+        self.assertEqual((u.lbl_stand.cget("text"), u.schublade()), ("Noch keine Einträge im Wiki.", None))
+        u.destroy()
+        self.assertFalse(os.path.exists(self.w.pfad))                              # Ansehen legt nichts an
+
+        def a(merkmal, wert, aktuell=True):
+            return {"merkmal": merkmal, "wert": wert, "aktuell": aktuell}
+        eintraege = [{"id": 1, "bezeichnung": "A", "angaben": [a(f"Merkmal {n}", "x") for n in range(8)] + [a("", "frei")]},
+                     {"id": 2, "bezeichnung": "B", "angaben": [a("Telefonnummer", "2"), a("Tel.:", "1", False),
+                                                               a("Merkmal 7", "y")]}]
+        merkmale = wu.merkmale_der_schublade(eintraege)
+        self.assertEqual([(s, n) for s, _name, n in merkmale][:2], [("merkmal 7", 2), ("merkmal 0", 1)])
+        self.assertEqual([m for m in merkmale if m[0] == "telefon"], [("telefon", "Telefonnummer", 1)])   # zählt je Eintrag einmal
+        self.assertEqual(len(wu.start_spalten(merkmale)), wu.SPALTEN_START)
+        self.assertEqual(wu.zeilen(eintraege)[1]["zellen"]["telefon"]["wert"], "2")               # der jüngste Wert
+        self.assertNotIn("", wu.zeilen(eintraege)[0]["zellen"])
 
 
 class TestWikiWerkzeug(unittest.TestCase):

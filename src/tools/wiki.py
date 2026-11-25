@@ -26,7 +26,10 @@ Dokumente Beleg sind (öffnet sie hier), „Neuer Eintrag aus dem Dokument“ (b
 Eintrag hinzufügen“. Inhalt als reine Liste in `wiki_menue`.
 
 „Ablageordner…“ links unter der Liste (15.11.2026, KONZEPT_ORDNER_STECKBRIEF.md Schritt 3) öffnet die Steckbriefe der
-Ablageordner mit „Merkmal ausschließen“ (tools/wiki_ablageordner.py).
+Ablageordner mit „Merkmal ausschließen“ (tools/wiki_ablageordner.py). „Übersicht…“ (23.11.2026, W5) zeigt die Einträge
+einer Schublade als Tabelle, ihre Merkmale als Spalten (tools/wiki_uebersicht.py). „Dokumente lesen…“ (25.11.2026, W7b)
+zeigt je Ordner, was die KI schon gelesen hat, und liest weiter (tools/wiki_lesen.py) - auch im Rechtsklick eines Ordners
+im Hauptfenster.
 
 KI (Schritt N3): „Von der KI lesen lassen…“ - im Rechtsklick für die markierten Dokumente, bei den Belegen für die
 Belege des Eintrags - öffnet das Fenster „Aus dem Dokument“ (tools/wiki_dinge.py): Die KI listet auf, wer und was in
@@ -44,8 +47,10 @@ from pdf_handler import PDFHandler
 from tools.base_tool import BaseTool, ToolContext
 from tools.wiki_ablageordner import AblageordnerFenster
 from tools.wiki_dinge import DingeFenster, dokumente_aus_belegen
+from tools.wiki_lesen import LesenFenster, ordner_gehoert_dazu
 from tools.wiki_schubladen import SchubladenFenster
 from tools.wiki_suche import BelegSuche
+from tools.wiki_uebersicht import UebersichtFenster
 from ui_utils import Tooltip, UIUtils
 
 KID_IDS_HOECHSTENS = 50                                   # so viele markierte Dokumente liest der Rechtsklick an
@@ -230,6 +235,8 @@ class WikiFenster(tk.Toplevel):
         self._stand = None                                # Formularinhalt beim Laden (ungespeichert?)
         self.suche = None                                 # offenes Fenster „Belege suchen“ (BelegSuche) oder None
         self.dinge = None                                 # offenes Fenster „Aus dem Dokument“ (DingeFenster) oder None
+        self.lesen = None                                 # Fenster „Dokumente lesen“ (LesenFenster) oder None
+        self.zuletzt_lesen = set()                        # rel_paths, die beim Lesen nicht gingen: kommen zuletzt dran
         self._mitbringen = None                           # Rechtsklick „Neuer Eintrag aus …“: Pfade, die beim Speichern
                                                           # Belege werden
         self._ziele = {}                                  # Auswahl „Verbinden“: Text → Eintrags-Id
@@ -269,6 +276,13 @@ class WikiFenster(tk.Toplevel):
         btn_ordner.pack(side=tk.BOTTOM, fill=tk.X, pady=(6, 0))
         Tooltip(btn_ordner, "Je Ablageordner die Nummern, IBANs und Adressen, an denen die Vollautomatik seine "
                             "Dokumente wiedererkennt (Ordner-Steckbrief) - falsche lassen sich ausschließen.")
+        btn_uebersicht = ttk.Button(links, text="Übersicht…", command=self._uebersicht)
+        btn_uebersicht.pack(side=tk.BOTTOM, fill=tk.X, pady=(6, 0))
+        Tooltip(btn_uebersicht, "Die Einträge einer Schublade als Tabelle, ihre Merkmale als Spalten - etwa alle "
+                                "Versicherungen mit Nummer und Beitrag.")
+        btn_lesen = ttk.Button(links, text="Dokumente lesen…", command=self._dokumente_lesen)
+        btn_lesen.pack(side=tk.BOTTOM, fill=tk.X, pady=(6, 0))
+        Tooltip(btn_lesen, "Je Ordner, welche Dokumente die KI fürs Wiki schon gelesen hat - und von dort weiterlesen.")
         self.btn_neu = ttk.Button(links, text="Neuer Eintrag…", command=self._neu)
         self.btn_neu.pack(side=tk.BOTTOM, fill=tk.X, pady=(6, 0))
         self.var_filter = tk.StringVar()
@@ -625,6 +639,26 @@ class WikiFenster(tk.Toplevel):
         ein Fenster je Sammlung."""
         return UIUtils.einzelfenster(("ablageordner", self.app.master_folder), lambda: AblageordnerFenster(self))
 
+    def _uebersicht(self):
+        """„Übersicht…“: die Einträge einer Schublade als Tabelle (tools/wiki_uebersicht.py), höchstens ein Fenster je
+        Sammlung."""
+        return UIUtils.einzelfenster(("wiki_uebersicht", self.app.master_folder), lambda: UebersichtFenster(self))
+
+    def _dokumente_lesen(self, ordner=None):
+        """„Dokumente lesen…“: was die KI schon gelesen hat, je Ordner (tools/wiki_lesen.py), höchstens ein Fenster je
+        Sammlung. :param ordner: diesen Ordner gleich markieren (relativ, "" = die Sammlung)"""
+        self.lesen = UIUtils.einzelfenster(("wiki_lesen", self.app.master_folder), lambda: LesenFenster(self))
+        if ordner is not None:
+            self.lesen.zeige_ordner(ordner)
+        return self.lesen
+
+    def nach_lesen(self, ids, ohne_text, zuletzt):
+        """Vom KI-Lesefenster nach einem Lauf. :param ids: {rel_path: Dokument-ID} der jetzt gelesenen Dokumente
+        :param ohne_text: rel_paths ohne erkannten Text; zuletzt: rel_paths, die nicht gingen"""
+        self.zuletzt_lesen = (self.zuletzt_lesen | set(zuletzt)) - set(ids)
+        if self.lesen is not None and self.lesen.winfo_exists():
+            self.lesen.gelesen_gemeldet(ids, ohne_text)
+
     def schubladen_geaendert(self):
         """Eine Schublade wurde umbenannt, zusammengelegt, angelegt oder gelöscht: Liste und Eintrag neu zeigen. Ein
         noch nicht gespeicherter neuer Eintrag behält seine Eingaben und bekommt nur die neue Auswahl."""
@@ -948,7 +982,21 @@ class WikiTool(BaseTool):
 
     @property
     def menu_hooks(self) -> list:
-        return ["main_menu", "context_menu"]
+        return ["main_menu", "context_menu", "folder_menu"]
+
+    ordner_label = "Wiki: Dokumente lesen…"
+    ordner_hilfe = ("Zeigt, welche Dokumente des Ordners (samt Unterordnern) die KI fürs Wiki schon gelesen hat, und liest "
+                    "von dort weiter. Ins Wiki kommt nur, was du anhakst.")
+
+    def ordner_moeglich(self, app, pfad):
+        """Nicht im Papierkorb, Posteingang und in 0_Unsicher - dort liest das Wiki nicht."""
+        return not app_paths.is_trash_path(pfad, app.master_folder) and ordner_gehoert_dazu(
+            os.path.relpath(pfad, app.master_folder))
+
+    def oeffne_ordner(self, app, pfad):
+        ordner = os.path.relpath(pfad, app.master_folder)
+        fenster = UIUtils.einzelfenster(self.fenster_schluessel, lambda: WikiFenster(app))
+        fenster._dokumente_lesen("" if ordner == os.curdir else ordner)
 
     @property
     def required_input(self) -> str:

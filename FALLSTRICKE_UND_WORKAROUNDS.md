@@ -787,6 +787,8 @@ Bei der Nachprüfung zeigte sich derselbe Effekt auch bei echter Suche: Treffer 
 
 **Nachtrag 22.11.2026:** Wieder aufgetreten, diesmal in `test_auto_pilot_service` (Dienst-Thread), nachdem die Arzt-Regel nur den Zeitpunkt der Speicherbereinigung verschob - einzeln liefen alle Module grün, der Gesamtlauf brach reproduzierbar ab. Zweite Hälfte der Lösung: Tests, die Hintergrund-Threads starten, rufen in `setUp` selbst `gc.collect()` im Haupt-Thread - dann kann Tk-Müll früherer Fenstertests nie im Thread sterben, egal wer ihn hinterließ.
 
+**Nachtrag 25.11.2026:** Zum dritten Mal, wieder im Fehlerfänger-Test, reproduzierbar nach einem unbeteiligten Umbau. Jetzt zentral in `tests/__init__.py`: Die automatische Speicherbereinigung ist in der Suite aus und läuft nur noch zwischen den Tests im Haupt-Thread. Neue Tests brauchen dafür nichts mehr zu tun. Und in der App: Ein Thread bekommt nie `self` des Fensters in seine Closure, nur Postfach und Daten - sonst sterben dessen Tk-Objekte im Thread, wenn der Nutzer es vorher schließt.
+
 ## 96. Wiki: zwei ähnlich geschriebene Straßen wurden still ein Objekt
 
 **Problem (Befund 03.11.2026, behoben 04.11.2026):** „Bergstr 3“ und „Burgstr 3“ landeten im Wiki ohne Rückfrage auf EINER Objektseite - Flächen, Verträge und Personen zweier Häuser mischten sich.
@@ -1299,3 +1301,37 @@ Im selben Zug verworfen (Etappe 11 Schritt 2, Code in `KID-Messungen/verworfen_m
 **Lösung:** `PDFHandler.datum_boxen(page, datum)`: erst die Formen mit Tag exakt; ohne Fund benachbarte Wörter derselben Zeile (bis zu vier) ohne Leerzeichen zusammensetzen und vergleichen; Formen ohne Tag nur, wenn kein Tagesdatum auf der Seite steht. An den 40 Scans: Briefdatum 40 statt 38 markiert, keine Stempel-Monate mehr. Tests `TestDatumBoxen` (Rotprobe: mit der alten Suche zwei rot).
 
 **Merksatz:** Text aus der Texterkennung hat zu viele UND zu wenige Leerzeichen - wer darin exakt sucht, braucht beide Richtungen. Und die ungenauere Form erst nehmen, wenn die genaue fehlt.
+
+## 145. Leeres Feld „Modell“: KI-Aufrufe ohne Modellnamen, der Verbindungstest meldet Erfolg
+
+**Problem:** Beim Test der Einstellungen (Peter 23.11.2026) waren die Felder „Modell“ und „Ordnerwahl“ geleert; gespeichert wurde `"ollama_model": ""`. Alle KI-Werkzeuge und die Vollautomatik hätten den Server nach einem Modell ohne Namen gefragt. „Verbindung testen“ meldete dabei Erfolg.
+
+**Ursache:** `config.get("ollama_model", DEFAULT_MODEL)` liefert den Standard nur, wenn der Eintrag FEHLT - ein leerer Text ist ein Eintrag. Der Verbindungstest rechnete dagegen mit `… or DEFAULT_MODEL` und prüfte so ein anderes Modell, als die Werkzeuge benutzten.
+
+**Lösung:** Alle lesen das Modell über `ollama_client.eingestelltes_modell(config)` (leer = empfohlenes Modell, ein Test verbietet das Lesen daran vorbei); ein leeres Feld „Modell“ springt beim Verlassen auf das empfohlene. „Ordnerwahl“ darf leer bleiben, dort heißt leer „aus“. Tests `TestLeeresModell`.
+
+**Merksatz:** Ein Standardwert im `get()` fängt nur den fehlenden Eintrag ab, nicht den leeren - und eine Prüfung muss denselben Weg gehen wie das, was sie prüft.
+
+## 146. Derselbe Brief ergibt bei jedem KI-Aufruf etwas anderes
+
+**Problem:** Zwei Aufzeichnungen derselben 403 Dokumente mit gleichem Modell, Prompt und Tag-Katalog stimmten nur bei 2 Dokumenten in allen Feldern überein (Datum 58-mal, Absender 107-mal verschieden). Vergleiche zwischen Modellen oder Aufzeichnungen maßen dadurch auch den Zufall mit: in der gefüllten Sammlung einmal 130, einmal 120 von 202 richtig.
+
+**Ursache:** `suggest_filing` schickte nur `num_ctx` mit. Alles andere sind die Vorgaben des Modells (`POST /api/show`, Feld `parameters`), bei `qwen3.5:9b` Temperatur 1, `top_p` 0,95, `top_k` 20, `presence_penalty` 1,5.
+
+**Lösung:** `ABLESEN_OPTIONEN` (Temperatur 0, höchstens 1000 Token) über `ollama_client._ablesen`. Wiederholte Läufe sind damit byte-gleich.
+
+**Falle 1:** Die `presence_penalty` gehört NICHT auf 0, so naheliegend das beim Abschreiben klingt: Die KI trug dann in 249 statt 141 Dokumenten ein „Objekt“ ein, der häufigste Wert stieg von 54 auf 124.
+
+**Falle 2:** Mit Temperatur 0 wiederholt sich auch jeder Fehler. Eine Endlosschleife des Modells liefe bei jedem Versuch in den Timeout, das Dokument käme nie aus dem Posteingang - darum die Antwortgrenze. Ein Modell, das trotz `"think": false` denkt (`qwen3-vl:8b`, knapp 3000 Token), verbraucht die Grenze vor der Antwort: leer und `done_reason` „length“ → einmal ohne Grenze.
+
+**Falle 3:** Wer Modelle oder Prompts vergleicht, misst zuerst die Streuung eines einzelnen: zwei Läufe mit derselben Einstellung.
+
+## 147. „database is locked“ beim Übernehmen ins Wiki, obwohl niemand sonst die Datei benutzt
+
+**Problem:** „Übernehmen“ im KI-Lesefenster scheiterte nach 5 Sekunden mit `OperationalError: database is locked` (25.11.2026, KID unter dem VS-Code-Debugger). Beim Lauf davor ging es, danach war die Datei wieder frei. Die Fehlerzeile war das `with con:` in `wissen._mit`, also das COMMIT.
+
+**Ursache:** `_gleiche_angabe` holt den ersten Treffer mit `next(...)` aus einer laufenden Abfrage. War es nicht die letzte Zeile, ist die Abfrage halb gelesen. `con.close()` gibt die Datei dann nicht frei: SQLite hält die geschlossene Verbindung samt Lesesperre, bis der Cursor verschwindet. Normalerweise räumt Python ihn sofort weg; unter dem Debugger blieb er liegen, und das nächste COMMIT (hier `verbinde`) bekam seine Schreibsperre nicht. Ob es klappte, hing davon ab, an welcher Stelle im Eintrag die Angabe stand. Dass der Debugger den Cursor hält, ist nicht unmittelbar beobachtet; mit einem absichtlich festgehaltenen Cursor entsteht genau dieser Fehler an genau dieser Zeile.
+
+**Lösung:** `wissen._Verbindung` (Factory für `sqlite3.connect`) merkt sich ihre Cursor und schließt sie vor der Verbindung. Der Test hält alle Cursor absichtlich fest.
+
+**Merksatz:** Eine kurzlebige SQLite-Verbindung ist erst zu, wenn auch ihre Cursor zu sind. Wer nach dem ersten Treffer aufhört, liest mit `fetchall()` zu Ende oder schließt den Cursor.

@@ -3,10 +3,12 @@
 # und legt src/ in den Suchpfad. Die Tests importieren die App-Module dadurch
 # weiterhin flach (`import auto_pilot`), alle @patch("modul.name")-Strings bleiben gültig.
 import atexit
+import gc
 import os
 import shutil
 import sys
 import tempfile
+import unittest
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "src"))
 
@@ -14,6 +16,24 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(
 # (2.825 tmp* und 885 kid_tq_* in %TEMP%), weil nicht jeder Test hinter sich aufräumt.
 tempfile.tempdir = tempfile.mkdtemp(prefix="kid_tests_")
 atexit.register(shutil.rmtree, tempfile.tempdir, True)
+
+# Speicherbereinigung nur zwischen den Tests, im Haupt-Thread (25.11.2026): Lief sie zufällig in einem Thread, den ein Test
+# gestartet hat, starb dort das Tk-Hauptfenster eines früheren Tests, und „Tcl_AsyncDelete: async handler deleted by the
+# wrong thread“ brach die ganze Suite ab (dreimal in einem unbeteiligten Test, FALLSTRICKE #95). Nach jedem Test wäre es zu
+# langsam: gesammelt wird, wenn genug angefallen ist (die übliche Zählung läuft auch abgeschaltet weiter).
+gc.disable()
+_run = unittest.TestCase.run
+
+
+def _run_und_sammle(self, result=None):
+    try:
+        return _run(self, result)
+    finally:
+        if gc.get_count()[0] > 20000:
+            gc.collect()
+
+
+unittest.TestCase.run = _run_und_sammle
 
 
 

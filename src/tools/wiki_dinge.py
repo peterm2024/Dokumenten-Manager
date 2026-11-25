@@ -9,14 +9,25 @@ prüfen (wissen_ki.pruefe_dinge). Die Vollautomatik pausiert solange. Höchstens
 Die Liste zeigt je „Ding“ eine Zeile (Schublade: Bezeichnung) und darunter seine Angaben mit Zitat und Dokument:
 - Was es im Wiki schon gibt, ist als „schon im Wiki“ markiert: Es bekommt nur die neuen Angaben und das Dokument als
   Beleg, kein zweiter Eintrag entsteht. Erkannt wird es an denselben Zitaten aus demselben Dokument (auch nach einer
-  Umbenennung, `wissen_ki.finde_ueber_zitate`), sonst am Namen in beliebiger Schreibweise (`finde_eintrag`). Angaben,
-  die dort schon stehen (gleiches Zitat oder sinngleich), erscheinen nicht noch einmal (`neue_angaben`).
+  Umbenennung, `wissen_ki.finde_ueber_zitate`), sonst am Namen in beliebiger Schreibweise (`finde_eintrag`).
+- Seit W4 (23.11.2026) sind die Angaben Zeilen Merkmal | Wert | Zitat. Steht eine Angabe mit demselben Merkmal und Wert
+  schon im Eintrag (`wissen_ki.bekannte_angabe`), erscheint sie grau ohne Haken als „schon im Wiki“ und das Dokument
+  wird beim Übernehmen nur eine weitere Quelle; ist es das schon, erscheint sie gar nicht. Was dort sonst sinngleich
+  oder mit demselben Zitat steht, erscheint wie bisher nicht noch einmal (`neue_angaben`). Nennen mehrere Dokumente
+  desselben Laufs dieselbe Angabe, werden sie alle ihre Quellen (`quellen`). Ein Dokument, das nur Angaben mit schon
+  vielen Quellen trägt (die eigene Adresse), wird nicht Beleg des Eintrags.
+- Was nichts Neues bringt (Eintrag, alle Angaben und das Dokument als Beleg stehen schon im Wiki), erscheint seit
+  24.11.2026 gar nicht mehr, die Statuszeile zählt es (`_ohne_neues`). Neue Einträge aus demselben Dokument werden
+  trotzdem mit ihm verbunden.
 - „Zuordnen…“ ändert das von Hand: ein anderer vorhandener Eintrag, oder ein neuer Eintrag in einer Schublade nach Wahl.
 - Was der Mensch beim Übernehmen abgehakt lässt, merkt sich das Wiki je Dokument als abgelehnt (`wissen.ablehnen`,
   ebenso „Entfernen“ einer Angabe aus einem Dokument im Wiki-Fenster). Ein neuer Lauf über dasselbe Dokument zeigt es
   nicht wieder (`wissen_ki.ist_abgelehnt`); ein Eintrag, von dem nur Abgelehntes käme, fällt ganz weg. Schlecht
   erkannte Einträge, die der Mensch gar nicht angehakt hatte, gelten nicht als abgelehnt.
 - Eine Schublade, die es noch nicht gibt, ist als „neue Schublade“ markiert und entsteht erst mit dem Übernehmen.
+- Seit 25.11.2026 (W7b) merkt sich das Wiki, welche Dokumente gelesen sind (`wissen.merke_gelesen`, dabei bekommen sie
+  ihre Dokument-ID): beim Übernehmen - ohne Haken heißt der Knopf „Nichts davon übernehmen“ - oder gleich, wenn es nichts zu
+  übernehmen gibt. Nicht beim bloßen Schließen und nicht, was nicht gelesen werden konnte.
 - Dinge aus schlecht erkanntem Text (`wissen_ki.text_guete`) sind markiert und nicht vorgehakt.
 - Ein Klick in die erste Spalte hakt an oder ab; die Bezeichnung lässt sich vor dem Übernehmen ändern (Doppelklick
   auf den Eintrag). Ein Doppelklick auf eine Angabe zeigt ihr Dokument im Hauptfenster.
@@ -67,8 +78,9 @@ def _schluessel(angabe):
 def lege_zusammen(je_dokument):
     """Dinge aus mehreren Dokumenten zusammenlegen: gleiche Bezeichnung (Schreibweise egal) = ein Ding.
     :param je_dokument: [(dokument, [Dinge aus wissen_ki.pruefe_dinge], schlecht_erkannt)]
-    :return: [{schublade, bezeichnung, angaben: [{merkmal, wert, text, zitat, dok}], doks: [dokument], schlecht}] - `schlecht`, wenn
-             alle Quellen schlecht erkannt sind. Reine Funktion."""
+    :return: [{schublade, bezeichnung, angaben: [{merkmal, wert, text, zitat, dok, weitere}], doks: [dokument], schlecht}] -
+             `schlecht`, wenn alle Quellen schlecht erkannt sind; `weitere` [(dokument, zitat)] = andere Dokumente mit
+             derselben Angabe. Reine Funktion."""
     gruppen = collections.OrderedDict()
     for dok, dinge, schlecht in je_dokument:
         for d in dinge:
@@ -80,9 +92,22 @@ def lege_zusammen(je_dokument):
             if dok not in g["doks"]:
                 g["doks"].append(dok)
             for a in d["angaben"]:                   # gleich wie in pruefe_dinge: Merkmal und Wert, Schreibweise egal
-                if all(_schluessel(a) != _schluessel(x) for x in g["angaben"]):
-                    g["angaben"].append(dict(a, dok=dok))
+                da = next((x for x in g["angaben"] if _schluessel(a) == _schluessel(x)), None)
+                if da is None:
+                    g["angaben"].append(dict(a, dok=dok, weitere=[]))
+                elif all(d2 != dok for d2, _z in quellen(da)):
+                    da["weitere"].append((dok, a["zitat"]))
     return list(gruppen.values())
+
+
+def quellen(angabe):
+    """Alle Quellen einer Angabe des Laufs: [(dokument, zitat)], je Dokument eine."""
+    return [(angabe["dok"], angabe["zitat"])] + list(angabe.get("weitere", ()))
+
+
+def mit_quellen(angabe, auswahl):
+    """Dieselbe Angabe nur mit diesen Quellen ([(dokument, zitat)], nicht leer)."""
+    return dict(angabe, dok=auswahl[0][0], zitat=auswahl[0][1], weitere=list(auswahl[1:]))
 
 
 class Lauf:
@@ -102,6 +127,7 @@ class Lauf:
     def arbeite(self):
         index = getattr(self.app, "index_manager", None)
         je_dokument, verworfen, zahlen = [], collections.Counter(), collections.Counter()
+        ohne_text, gescheitert = [], []
         start = time.time()
         for n, dok in enumerate(self.dokumente):
             if self.abbrechen.is_set():
@@ -114,6 +140,7 @@ class Lauf:
                 text = ""
             if len(text.strip()) < wissen_ki.MIN_TEXT:
                 zahlen["ohne_text"] += 1
+                ohne_text.append(dok)
                 continue
             schlecht = wissen_ki.text_guete(text) < wissen_ki.GUETE_MIN
             prompt = wissen_ki.baue_prompt(text, dok["titel"], self.schubladen, self.bekannte, self.merkmale)
@@ -124,9 +151,11 @@ class Lauf:
                 return
             except wissen_ki.UnbrauchbareAntwort:
                 zahlen["unbrauchbar"] += 1
+                gescheitert.append(dok)
                 continue
             except Exception:                                 # noqa: BLE001 - ein Dokument darf den Lauf nicht beenden
                 zahlen["fehler"] += 1
+                gescheitert.append(dok)
                 continue
             dinge, weg = wissen_ki.pruefe_dinge(antwort, text)
             wissen_ki.einheitliche_merkmale(dinge, self.merkmale)
@@ -136,7 +165,9 @@ class Lauf:
             zahlen["schlecht"] += schlecht
             je_dokument.append((dok, dinge, schlecht))
         zahlen["sekunden"] = round(time.time() - start)
-        self.postfach.put(("fertig", {"dinge": lege_zusammen(je_dokument), "verworfen": verworfen, "zahlen": zahlen}))
+        self.postfach.put(("fertig", {"dinge": lege_zusammen(je_dokument), "verworfen": verworfen, "zahlen": zahlen,
+                                      "gelesen": [dok for dok, _dinge, _schlecht in je_dokument],
+                                      "ohne_text": ohne_text, "gescheitert": gescheitert}))
 
 
 class DingeFenster(tk.Toplevel):
@@ -149,6 +180,8 @@ class DingeFenster(tk.Toplevel):
         self.wiki, self.app = wiki, wiki.app
         self.title("Aus dem Dokument" if len(dokumente) == 1 else f"Aus {len(dokumente)} Dokumenten")
         self.dinge, self.ziel = [], {}                    # Dinge des Laufs; Nr. → vorhandener Eintrag (schon im Wiki)
+        self._gelesen = []                                # Dokumente, die die KI in diesem Lauf gelesen hat
+        self.ausgeblendet = []                            # ohne Neues: [(Dokumente, Id des Eintrags, vorgehakt)]
         self.dinge_an, self.angaben_an = set(), set()     # angehakt: Nr. des Dings bzw. (Nr., Nr. der Angabe)
         self._dienst = getattr(self.app, "auto_pilot_service", None)
         self._pausiert = False
@@ -159,7 +192,7 @@ class DingeFenster(tk.Toplevel):
         self.deiconify()
         config = self.app.config
         self.lauf = Lauf(self.app, dokumente, config.get("ollama_url", ollama_client.DEFAULT_URL),
-                         config.get("ollama_model", ollama_client.DEFAULT_MODEL),
+                         ollama_client.eingestelltes_modell(config),
                          [a["name"] for a in wiki.wissen.arten()], [e["bezeichnung"] for e in wiki.wissen.liste()],
                          wiki.wissen.merkmale())
         weg = len(dokumente) - len(self.lauf.dokumente)
@@ -202,13 +235,13 @@ class DingeFenster(tk.Toplevel):
         self.balken.pack(fill=tk.X, padx=rand, pady=(0, 4))
         rahmen = ttk.Frame(self)
         rahmen.pack(fill=tk.BOTH, expand=True, padx=rand)
-        self.tree = ttk.Treeview(rahmen, columns=("zitat", "quelle"), selectmode="browse")
-        self.tree.heading("#0", text="Eintrag und Angaben", anchor="w")
+        self.tree = ttk.Treeview(rahmen, columns=("wert", "zitat", "quelle"), selectmode="browse")
+        self.tree.heading("#0", text="Eintrag und Merkmal", anchor="w")
+        self.tree.heading("wert", text="Wert", anchor="w")
         self.tree.heading("zitat", text="im Dokument", anchor="w")
         self.tree.heading("quelle", text="Dokument", anchor="w")
-        self.tree.column("#0", width=UIUtils.px(self, 470), anchor="w")
-        self.tree.column("zitat", width=UIUtils.px(self, 380), anchor="w")
-        self.tree.column("quelle", width=UIUtils.px(self, 100), anchor="w")
+        for spalte, breite in (("#0", 340), ("wert", 240), ("zitat", 270), ("quelle", 110)):
+            self.tree.column(spalte, width=UIUtils.px(self, breite), anchor="w")
         self.tree.tag_configure("ding", font=("", UIUtils.schriftgroesse(self, 0), "bold"))
         self.tree.tag_configure("aus", foreground="gray55")
         rolle = ttk.Scrollbar(rahmen, orient=tk.VERTICAL, command=self.tree.yview)
@@ -262,15 +295,29 @@ class DingeFenster(tk.Toplevel):
     def _fertig(self, ergebnis):
         self._lauf_ende()
         z, verworfen = ergebnis["zahlen"], ergebnis["verworfen"]
-        self.dinge, n_abgelehnt = self._ohne_abgelehnte(ergebnis["dinge"])
-        for i, d in enumerate(self.dinge):
+        self._gelesen = ergebnis["gelesen"]
+        self.wiki.nach_lesen({}, [d["rel_path"] for d in ergebnis["ohne_text"]],
+                             [d["rel_path"] for d in ergebnis["gescheitert"]])
+        dinge, n_abgelehnt = self._ohne_abgelehnte(ergebnis["dinge"])
+        for d in dinge:
+            i, vorgehakt = len(self.dinge), not d["schlecht"] and not d["aufgezaehlt"]
             d["alle"] = list(d["angaben"])                # wie die KI sie nannte; „angaben“ = was davon neu ist
+            self.dinge.append(d)
             self._ordne_zu(i, self._finde_ziel(d))
-            if not d["schlecht"] and not d["aufgezaehlt"]:
+            if self._ohne_neues(i):
+                self.dinge.pop()
+                self.ausgeblendet.append((d["doks"], self.ziel.pop(i)["id"], vorgehakt))
+            elif vorgehakt:
                 self.dinge_an.add(i)
+        n_ohne = len(self.ausgeblendet)
         n_angaben = sum(len(d["angaben"]) for d in self.dinge)
+        n_bekannt = sum(len(d["bekannt"]) for d in self.dinge)
         teile = [f"{z['gelesen']} Dokument{'' if z['gelesen'] == 1 else 'e'} gelesen in {z['sekunden']} s",
                  f"{len(self.dinge)} Eintr{'ag' if len(self.dinge) == 1 else 'äge'} mit {n_angaben} Angaben"]
+        if n_bekannt:
+            teile.append(f"{n_bekannt} Angabe{'' if n_bekannt == 1 else 'n'} schon im Wiki (nur weiterer Beleg)")
+        if n_ohne:
+            teile.append(f"{n_ohne} Eintr{'ag' if n_ohne == 1 else 'äge'} ohne Neues ausgeblendet")
         if n_abgelehnt:
             teile.append(f"{n_abgelehnt} früher abgelehnte Angabe{'' if n_abgelehnt == 1 else 'n'} ausgeblendet")
         if sum(verworfen.values()):
@@ -283,13 +330,18 @@ class DingeFenster(tk.Toplevel):
         if z.get("abgebrochen"):
             teile.append("abgebrochen")
         self.lbl_status.config(text=" · ".join(teile) + (". Bitte prüfen und abwählen, was nicht ins Wiki soll."
-                                                         if self.dinge else ". Nichts gefunden, das sich belegen lässt."))
+                                                         if self.dinge else ". Alles davon steht schon im Wiki." if n_ohne
+                                                         else ". Nichts gefunden, das sich belegen lässt."))
         self._log(f"Wiki-KI: {z['gelesen']} gelesen in {z['sekunden']} s, {len(self.dinge)} Dinge, {n_angaben} Angaben, "
-                  f"{len(self.ziel)} schon im Wiki, {n_abgelehnt} früher abgelehnt, "
+                  f"{len(self.ziel)} schon im Wiki, {n_ohne} ohne Neues, {n_bekannt} Angaben schon im Wiki, "
+                  f"{n_abgelehnt} früher abgelehnt, "
                   f"{sum(verworfen.values())} aussortiert ({dict(verworfen)}), "
                   f"{z.get('ohne_text', 0)} ohne Text, {z.get('schlecht', 0)} schlecht erkannt, "
                   f"{z.get('unbrauchbar', 0)} unbrauchbar, {z.get('fehler', 0)} Fehler")
         self._fuelle()
+        if not self.dinge:                                # nichts zu entscheiden: gelesen
+            self._vergib_ids()
+            self._merke_gelesen()
 
     def _kid_id(self, dok):
         """Dokument-ID eines Dokuments des Laufs, nur gelesen (vergibt keine). "" ohne ID."""
@@ -299,16 +351,44 @@ class DingeFenster(tk.Toplevel):
                                      .get("KID_ID") or "").strip()
         return merk[dok["rel_path"]]
 
+    def _vergib_id(self, dok):
+        """Dokument-ID lesen oder vergeben, "" wenn die Datei nicht schreibbar ist. Der erkannte Text gilt weiter."""
+        if not self._kid_id(dok):
+            pfad, index = os.path.join(self.app.master_folder, dok["rel_path"]), getattr(self.app, "index_manager", None)
+            try:
+                vorher = os.stat(pfad)
+                self._kids[dok["rel_path"]] = PDFHandler.ensure_kid_id(pfad)
+                if self._kids[dok["rel_path"]] and index is not None:
+                    index.text_gilt_weiter(dok["rel_path"], vorher)
+            except Exception as e:                        # noqa: BLE001 - Datei weg oder Index gesperrt: ohne ID/Text weiter
+                self._log(f"Wiki-KI: Dokument-ID nicht vergeben oder Text nicht übernommen ({type(e).__name__})", "warning")
+        return self._kid_id(dok)
+
+    def _vergib_ids(self):
+        for dok in self._gelesen:
+            self._vergib_id(dok)
+
+    def _merke_gelesen(self):
+        """Das Wiki merkt sich die Dokumente des Laufs; ohne Dokument-ID geht es nicht, die kommen später zuletzt dran."""
+        ids = {dok["rel_path"]: self._kid_id(dok) for dok in self._gelesen}
+        self.wiki.wissen.merke_gelesen(ids.values())
+        self.wiki.nach_lesen({p: k for p, k in ids.items() if k}, (), [p for p, k in ids.items() if not k])
+
     def _ohne_abgelehnte(self, dinge):
-        """Früher Abgelehntes herausnehmen. :return: (Dinge, Zahl ausgeblendeter Angaben) - ein Ding, von dem nur
-        Abgelehntes käme, fällt ganz weg."""
+        """Früher Abgelehntes herausnehmen, je Dokument. :return: (Dinge, Zahl ausgeblendeter Angaben) - ein Ding, von
+        dem nur Abgelehntes käme, fällt ganz weg; eine Angabe bleibt mit den Dokumenten, aus denen sie nicht abgelehnt
+        wurde."""
         abgelehnte = self.wiki.wissen.abgelehnte([self._kid_id(dok) for d in dinge for dok in d["doks"]])
         if not abgelehnte:
             return dinge, 0
         bleiben, weg = [], 0
         for d in dinge:
-            rest = [a for a in d["angaben"]
-                    if not wissen_ki.ist_abgelehnt(a, abgelehnte.get(self._kid_id(a["dok"]), []))]
+            rest = []
+            for a in d["angaben"]:
+                offen = [(dok, zitat) for dok, zitat in quellen(a) if not wissen_ki.ist_abgelehnt(
+                    dict(a, zitat=zitat), abgelehnte.get(self._kid_id(dok), []))]
+                if offen:
+                    rest.append(mit_quellen(a, offen))
             weg += len(d["angaben"]) - len(rest)
             if rest or not d["angaben"]:
                 bleiben.append(dict(d, angaben=rest))
@@ -321,21 +401,41 @@ class DingeFenster(tk.Toplevel):
         w = self.wiki.wissen
         kid_ids = [self._kid_id(dok) for dok in d["doks"]]
         kandidaten = [w.lade(e["id"]) for e in w.eintraege_mit_beleg(kid_ids)]
-        ziel = wissen_ki.finde_ueber_zitate([a["zitat"] for a in d["alle"]], [k for k in kandidaten if k])
+        ziel = wissen_ki.finde_ueber_zitate([z for a in d["alle"] for _dok, z in quellen(a)], [k for k in kandidaten if k])
         return ziel or wissen_ki.finde_eintrag(d["bezeichnung"], w.liste())
 
     def _ordne_zu(self, i, ziel):
-        """Ding `i` gehört zu diesem vorhandenen Eintrag (oder None = neuer Eintrag): nur noch Angaben zeigen, die dort
-        fehlen; alle gezeigten sind angehakt."""
+        """Ding `i` gehört zu diesem vorhandenen Eintrag (oder None = neuer Eintrag): `angaben` = was dort fehlt (alle
+        angehakt), `bekannt` = was dort mit demselben Merkmal und Wert schon steht, mit den Dokumenten, die noch keine
+        Quelle davon sind."""
         d = self.dinge[i]
         self.ziel.pop(i, None)
         geladen = self.wiki.wissen.lade(ziel["id"]) if ziel else None
         if geladen is not None:
             self.ziel[i] = geladen
-            d["angaben"] = wissen_ki.neue_angaben(d["alle"], geladen)
+            rest, d["bekannt"] = [], []
+            for a in d["alle"]:
+                da = wissen_ki.bekannte_angabe(a, geladen)
+                if da is None:
+                    rest.append(a)
+                    continue
+                schon = {q["kid_id"] for q in da["quellen"]}
+                dazu = [(dok, zitat) for dok, zitat in quellen(a) if not self._kid_id(dok) or self._kid_id(dok) not in schon]
+                if dazu:
+                    d["bekannt"].append(mit_quellen(a, dazu))
+            d["angaben"] = wissen_ki.neue_angaben(rest, geladen)
         else:
-            d["angaben"] = list(d["alle"])
+            d["angaben"], d["bekannt"] = list(d["alle"]), []
         self.angaben_an = {(a, b) for a, b in self.angaben_an if a != i} | {(i, j) for j in range(len(d["angaben"]))}
+
+    def _ohne_neues(self, i):
+        """Brächte das Übernehmen von Ding `i` nichts? Es steht schon im Wiki, jede Angabe auch mit allen Dokumenten des
+        Laufs als Quelle, und jedes Dokument ist Beleg (oder würde keiner, `_nur_viele`)."""
+        d, ziel = self.dinge[i], self.ziel.get(i)
+        if ziel is None or d["angaben"] or d["bekannt"]:
+            return False
+        belege = {b["kid_id"] for b in ziel["belege"]}
+        return all((self._kid_id(dok) and self._kid_id(dok) in belege) or self._nur_viele(d, dok, ziel) for dok in d["doks"])
 
     def _zuordnen_menue(self):
         """„Zuordnen…“: Menü am Knopf - neuer Eintrag in einer Schublade oder ein vorhandener Eintrag."""
@@ -378,23 +478,31 @@ class DingeFenster(tk.Toplevel):
     # ---------------------------------------------------------------- Liste
     def _ding_text(self, i):
         d = self.dinge[i]
-        vorhanden = {a["name"].casefold() for a in self.wiki.wissen.arten()}
-        text = f"{HAKEN if i in self.dinge_an else OHNE_HAKEN} {d['schublade']}: {d['bezeichnung']}"
+        return f"{HAKEN if i in self.dinge_an else OHNE_HAKEN} {d['schublade']}: {d['bezeichnung']}"
+
+    def _ding_hinweise(self, i):
+        """Was es mit dem Eintrag auf sich hat (Spalte „Wert“ seiner Zeile), "" = neuer Eintrag ohne Besonderheit."""
+        d, hinweise = self.dinge[i], []
         if i in self.ziel:
             z = self.ziel[i]
             anders = "" if wissen_ki.kern(z["bezeichnung"]) == wissen_ki.kern(d["bezeichnung"]) else f" als „{z['bezeichnung']}“"
-            text += f"   - schon im Wiki{anders}, wird ergänzt"
-        elif d["schublade"].casefold() not in vorhanden:
-            text += "   - neue Schublade"
+            hinweise.append(f"schon im Wiki{anders}, " + ("wird ergänzt" if d["angaben"] else "nur weiterer Beleg"))
+        elif d["schublade"].casefold() not in {a["name"].casefold() for a in self.wiki.wissen.arten()}:
+            hinweise.append("neue Schublade")
         if d["schlecht"]:
-            text += "   - Text schlecht erkannt"
+            hinweise.append("Text schlecht erkannt")
         elif d["aufgezaehlt"]:
-            text += "   - aus einer Aufzählung (z.B. Briefkopf)"
-        return text
+            hinweise.append("aus einer Aufzählung (z.B. Briefkopf)")
+        return ", ".join(hinweise)
+
+    @staticmethod
+    def _merkmal_und_wert(a):
+        return (a["merkmal"], a["wert"]) if "wert" in a else ("", a["text"])
 
     def _ids(self, doks):
-        """Dokument-IDs statt Titel in der Spalte „Dokument“ (Peter 19.11.2026: kurz und eindeutig)."""
-        return ", ".join(self._kid_id(dok) or "(noch ohne ID)" for dok in doks)
+        """Dokument-ID statt Titel in der Spalte „Dokument“ (Peter 19.11.2026: kurz und eindeutig); bei mehreren die
+        erste und die Zahl der übrigen - mehr passt nicht in die Spalte, alle stehen im Rechtsklick-Menü."""
+        return (self._kid_id(doks[0]) or "(noch ohne ID)") + (f" +{len(doks) - 1}" if len(doks) > 1 else "")
 
     def _fuelle(self):
         self.tree.delete(*self.tree.get_children())
@@ -402,20 +510,29 @@ class DingeFenster(tk.Toplevel):
             an = i in self.dinge_an
             self.tree.insert("", tk.END, iid=f"d:{i}", text=self._ding_text(i), open=True,
                              tags=("ding",) if an else ("ding", "aus"),
-                             values=("", self._ids(d["doks"])))
+                             values=(self._ding_hinweise(i), "", self._ids(d["doks"])))
+
+            def ids(a, d=d):
+                return self._ids([dok for dok, _z in quellen(a)]) if len(d["doks"]) > 1 else ""
             for j, a in enumerate(d["angaben"]):
                 hakt = (i, j) in self.angaben_an
+                merkmal, wert = self._merkmal_und_wert(a)
                 self.tree.insert(f"d:{i}", tk.END, iid=f"a:{i}:{j}", tags=() if an and hakt else ("aus",),
-                                 text=f"{HAKEN if hakt else OHNE_HAKEN} {a['text']}",
-                                 values=(f"„{a['zitat']}“", self._ids([a["dok"]]) if len(d["doks"]) > 1 else ""))
+                                 text=f"{HAKEN if hakt else OHNE_HAKEN} {merkmal}",
+                                 values=(wert, f"„{a['zitat']}“", ids(a)))
+            for j, a in enumerate(d["bekannt"]):              # kein Haken: geht mit dem Eintrag als weiterer Beleg
+                self.tree.insert(f"d:{i}", tk.END, iid=f"b:{i}:{j}", tags=("aus",), text=f"✓ {a['merkmal']} (schon im Wiki)",
+                                 values=(a["wert"], f"„{a['zitat']}“", ids(a)))
         self._summe()
 
     def _schalte(self, iid):
         teile = iid.split(":")
         if teile[0] == "d":
             self.dinge_an ^= {int(teile[1])}
-        else:
+        elif teile[0] == "a":
             self.angaben_an ^= {(int(teile[1]), int(teile[2]))}
+        else:
+            return                                        # „schon im Wiki“ hat keinen Haken
         markiert = self.tree.selection()
         self._fuelle()
         if markiert and self.tree.exists(markiert[0]):
@@ -438,8 +555,9 @@ class DingeFenster(tk.Toplevel):
 
     def _summe(self):
         n = len(self.dinge_an)
-        self.btn_uebernehmen.config(text=f"{n} Eintr{'ag' if n == 1 else 'äge'} übernehmen" if n else "Übernehmen",
-                                    state=tk.NORMAL if n and not self._laeuft else tk.DISABLED,
+        ohne = "Nichts davon übernehmen" if self.dinge else "Übernehmen"
+        self.btn_uebernehmen.config(text=f"{n} Eintr{'ag' if n == 1 else 'äge'} übernehmen" if n else ohne,
+                                    state=tk.NORMAL if self.dinge and not self._laeuft else tk.DISABLED,
                                     style="Accent.TButton" if n else "TButton")
         markiert = self.tree.selection()
         for knopf in (self.btn_name, self.btn_ziel):
@@ -460,7 +578,9 @@ class DingeFenster(tk.Toplevel):
         """Die Dokumente einer Zeile: bei einer Angabe ihres, bei einem Eintrag alle, aus denen er stammt."""
         teile = iid.split(":")
         d = self.dinge[int(teile[1])]
-        return [d["angaben"][int(teile[2])]["dok"]] if teile[0] == "a" else list(d["doks"])
+        if teile[0] == "d":
+            return list(d["doks"])
+        return [dok for dok, _z in quellen(d["angaben" if teile[0] == "a" else "bekannt"][int(teile[2])])]
 
     def _zeige(self, dok):
         """Das Dokument im Hauptfenster zeigen, zum Vergleichen mit dem Zitat."""
@@ -516,18 +636,26 @@ class DingeFenster(tk.Toplevel):
         self.tree.selection_set(f"d:{i}")
 
     # ---------------------------------------------------------------- Übernehmen
+    def _nur_viele(self, d, dok, ziel):
+        """Trägt das Dokument nur Angaben, die der Eintrag schon aus vielen Dokumenten kennt (die eigene Adresse)? Dann
+        wird es nicht Beleg des Eintrags (wie `wissen.angabe_hinzu`, Peter 19.11.2026)."""
+        seine = [a for a in d["alle"] if any(x == dok for x, _z in quellen(a))]
+        da = [wissen_ki.bekannte_angabe(a, ziel) for a in seine]
+        return bool(da) and all(x is not None and len(x["quellen"]) >= wissen.MAX_BELEG_QUELLEN for x in da)
+
     def _uebernehmen(self):
-        if not self.dinge_an or self._laeuft:
+        if not self.dinge or self._laeuft:
             return
         w = self.wiki
         if not w._weiter_trotz_aenderung():               # ungespeicherte Eingaben im Wiki: Nutzer hat abgebrochen
             return
         kid_ids, je_dok, erster = {}, collections.defaultdict(list), None
         zahlen = collections.Counter()
+        self._vergib_ids()                                # auch für Abgelehntes und „gelesen“
 
         def kid_id(dok):
             if dok["rel_path"] not in kid_ids:
-                kid_ids[dok["rel_path"]] = PDFHandler.ensure_kid_id(os.path.join(self.app.master_folder, dok["rel_path"]))
+                kid_ids[dok["rel_path"]] = self._vergib_id(dok)
                 zahlen["ohne_id"] += not kid_ids[dok["rel_path"]]
             return kid_ids[dok["rel_path"]]
 
@@ -543,23 +671,25 @@ class DingeFenster(tk.Toplevel):
             d = self.dinge[i]
             try:
                 ziel = self.ziel.get(i)
-                if ziel is not None and w.wissen.lade(ziel["id"]) is not None:
+                jetzt = w.wissen.lade(ziel["id"]) if ziel is not None else None
+                if jetzt is not None:
                     eintrag_id = ziel["id"]
                     zahlen["ergaenzt"] += 1
                 else:
                     eintrag_id = w.wissen.speichere(d["schublade"], d["bezeichnung"])
                     zahlen["neu"] += 1
                 for dok in d["doks"]:
-                    if kid_id(dok):
+                    if kid_id(dok) and not (jetzt is not None and self._nur_viele(d, dok, jetzt)):
                         zahlen["belege"] += w.wissen.beleg_hinzu(eintrag_id, kid_id(dok), dok["titel"])
                     je_dok[dok["rel_path"]].append(eintrag_id)
-                for j, a in enumerate(d["angaben"]):
-                    if (i, j) in self.angaben_an:
-                        kid = kid_id(a["dok"])
-                        angabe = (a["merkmal"], a["wert"]) if "wert" in a else a["text"]
-                        neu = w.wissen.angabe_hinzu(eintrag_id, angabe, kid, a["dok"]["titel"] if kid else "",
-                                                    a["zitat"] if kid else "", datum(a["dok"]) if kid else "")
+                for a in [a for j, a in enumerate(d["angaben"]) if (i, j) in self.angaben_an] + d["bekannt"]:
+                    angabe = (a["merkmal"], a["wert"]) if "wert" in a else a["text"]
+                    for dok, zitat in quellen(a):         # steht die Angabe schon da, kommt nur die Quelle dazu
+                        kid = kid_id(dok)
+                        neu = w.wissen.angabe_hinzu(eintrag_id, angabe, kid, dok["titel"] if kid else "",
+                                                    zitat if kid else "", datum(dok) if kid else "")
                         zahlen["angaben"] += neu is not None
+                        zahlen["quellen"] += neu is None and bool(kid)
             except wissen.Eingabefehler as fehler:
                 mb.showwarning("Aus dem Dokument", f"„{d['bezeichnung']}“ ließ sich nicht übernehmen:\n{fehler}", parent=self)
                 continue
@@ -571,7 +701,8 @@ class DingeFenster(tk.Toplevel):
                 continue
             for j, a in enumerate(d["angaben"]):
                 if i not in self.dinge_an or (i, j) not in self.angaben_an:
-                    abgelehnt[kid_ids.get(a["dok"]["rel_path"]) or self._kid_id(a["dok"])].append(a)
+                    for dok, zitat in quellen(a):
+                        abgelehnt[self._kid_id(dok)].append(dict(a, zitat=zitat))
         for kid, angaben in abgelehnt.items():
             zahlen["abgelehnt"] += w.wissen.ablehnen(kid, angaben)
         if self.var_verbinden.get():
@@ -580,8 +711,15 @@ class DingeFenster(tk.Toplevel):
                     for b in ids[n + 1:]:
                         if a != b:
                             zahlen["verbunden"] += w.wissen.verbinde(a, b)
+            # Ausgeblendete nur mit Übernommenem verbinden, nie untereinander: Was der Mensch getrennt hat, bleibt getrennt
+            for doks, alt, vorgehakt in self.ausgeblendet:
+                if not vorgehakt or w.wissen.lade(alt) is None:
+                    continue
+                for a in {a for dok in doks for a in je_dok.get(dok["rel_path"], ())} - {alt}:
+                    zahlen["verbunden"] += w.wissen.verbinde(a, alt)
         self._log(f"Wiki-KI: {zahlen['neu']} Einträge neu, {zahlen['ergaenzt']} ergänzt, {zahlen['angaben']} Angaben, "
-                  f"{zahlen['belege']} Belege, {zahlen['verbunden']} Verbindungen, {zahlen['abgelehnt']} abgelehnt gemerkt")
+                  f"{zahlen['quellen']} weitere Quellen, {zahlen['belege']} Belege, {zahlen['verbunden']} Verbindungen, {zahlen['abgelehnt']} abgelehnt gemerkt")
+        self._merke_gelesen()
         if zahlen["ohne_id"]:
             mb.showwarning("Aus dem Dokument", f"{zahlen['ohne_id']} Dokument(e) ließen sich nicht als Beleg eintragen: "
                                                "Sie bekommen keine Dokument-ID (schreibgeschützt oder gerade geöffnet?). "

@@ -54,7 +54,7 @@ class BegleitetFenster(tk.Toplevel):
         self._abhol_id = None
         self._entscheider_lauf = 0                   # verwirft Antworten veralteter Entscheider
         self.base_url = app.config.get("ollama_url", ollama_client.DEFAULT_URL)
-        self.model = app.config.get("ollama_model", ollama_client.DEFAULT_MODEL)
+        self.model = ollama_client.eingestelltes_modell(app.config)
         tm = getattr(app, "tag_manager", None)
         # Tag-Baum nur hier im Tk-Thread lesen (wie die Ablage-Vorschau)
         self.known_tags = tm.get_known_tags() if tm else []

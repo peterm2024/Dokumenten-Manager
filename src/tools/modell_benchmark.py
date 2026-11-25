@@ -119,7 +119,7 @@ class BenchmarkFenster(tk.Toplevel):
         form.columnconfigure(1, weight=1)
         ttk.Label(form, text="KI-Server:").grid(row=0, column=0, sticky="w", pady=2)
         ttk.Label(form, text=self.base_url).grid(row=0, column=1, sticky="w", pady=2)
-        self.var_lesen = tk.StringVar(value=cfg.get("ollama_model", ollama_client.DEFAULT_MODEL))
+        self.var_lesen = tk.StringVar(value=ollama_client.eingestelltes_modell(cfg))
         self.var_zweit = tk.StringVar(value=cfg.get("ki_entscheidungsmodell", None)
                                       or auto_pilot.STANDARD_ENTSCHEIDUNGSMODELL)
         letzte = benchmark.lade_ergebnisse(self.ergebnis_pfad)
@@ -342,9 +342,9 @@ class BenchmarkFenster(tk.Toplevel):
             return
         namen, entscheider = self._stand.pop("modelle")
         cfg = self.app.config
-        # Vermerke wie in den Einstellungen („Standard“, „zuletzt verwendet“); als Zweitmeinung nur Entscheidungsmodelle
+        # Vermerke wie in den Einstellungen („empfohlen“, „zuletzt verwendet“); als Zweitmeinung nur Entscheidungsmodelle
         self.feld_lesen["values"] = modelle_beschriftet(namen, ollama_client.DEFAULT_MODEL, zuletzt_verwendet(
-            cfg.get("ollama_model_zuletzt", ""), cfg.get("ollama_model", ollama_client.DEFAULT_MODEL)))
+            cfg.get("ollama_model_zuletzt", ""), ollama_client.eingestelltes_modell(cfg)))
         self.feld_zweit["values"] = [OHNE_ZWEITMEINUNG] + modelle_beschriftet(
             entscheider, auto_pilot.STANDARD_ENTSCHEIDUNGSMODELL, zuletzt_verwendet(
                 cfg.get("ki_entscheidungsmodell_zuletzt", ""), cfg.get("ki_entscheidungsmodell", "") or ""))

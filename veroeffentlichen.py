@@ -45,7 +45,7 @@ EXE = os.path.join(HIER, "dist", "DokumentenManager.exe")
 BEGRIFFE = os.path.join(os.path.expanduser("~"), "KID-Messungen", "release_check", "begriffe.txt")
 
 # Arbeitsnotizen bleiben privat (Entscheidung E2, FAHRPLAN Etappe 8). Vergleich über den Pfadanfang.
-PRIVAT = ("FAHRPLAN.md", "MANUELLE_TESTS", "ARCHITEKTUR_REVIEW.md", "ToDo.txt", "CLAUDE.md", "KONZEPT_",
+PRIVAT = ("FAHRPLAN.md", "MANUELLE_TESTS", "konzepte/", "ToDo.txt", "CLAUDE.md", "KONZEPT_", "ARCHITEKTUR_REVIEW",
           "Modellradar", "spikes/", "docs/tests.md")
 UMBENENNEN = {"README.md": "ENTWICKLER.md"}     # die README.md des öffentlichen Repos ist die Nutzer-Startseite
 NUR_OEFFENTLICH = ("README.md",)                # gehört dem öffentlichen Klon, der Spiegel fasst sie nicht an

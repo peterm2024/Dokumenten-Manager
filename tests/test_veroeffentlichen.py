@@ -18,7 +18,8 @@ REGELN = [re.compile(r"Musterhausen"), re.compile(r"\bErika\b")]
 class TestAuswahl(unittest.TestCase):
     def test_arbeitsnotizen_bleiben_privat(self):
         for privat in ("FAHRPLAN.md", "MANUELLE_TESTS.md", "MANUELLE_TESTS_ARCHIV.md", "CLAUDE.md", "ToDo.txt",
-                       "KONZEPT_MAIL_IMPORT.md", "ARCHITEKTUR_REVIEW.md", "spikes/x.py", "docs/tests.md"):
+                       "KONZEPT_MAIL_IMPORT.md", "konzepte/KONZEPT_MAIL_IMPORT.md", "konzepte/ARCHITEKTUR_REVIEW.md",
+                       "spikes/x.py", "docs/tests.md"):
             self.assertFalse(v.ist_oeffentlich(privat), privat)
         for oeffentlich in ("src/gui.py", "tests/test_gui.py", "README.md", "FALLSTRICKE_UND_WORKAROUNDS.md",
                             "docs/index.md", "main.py", "icon/app.ico"):

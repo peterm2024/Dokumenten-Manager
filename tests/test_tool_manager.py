@@ -57,6 +57,47 @@ class TestUntermenue(unittest.TestCase):
         self.assertEqual(unter.winfo_children(), [])
         self.assertEqual(aufrufe, [[], [], []])
 
+    def test_rechtsklick_im_ordnerbaum(self):
+        """Tools mit "folder_menu" (25.11.2026): grau, wenn sie mit dem angeklickten Ordner nichts anfangen können."""
+        from unittest.mock import patch
+        gewaehlt = []
+
+        class FuerOrdner(_Tool):
+            ordner_label, menu_hooks = "Wiki: Dokumente lesen…", ["folder_menu"]
+
+            def ordner_moeglich(self, app, pfad):
+                return pfad != "C:/S/0_Posteingang"
+
+            def oeffne_ordner(self, app, pfad):
+                gewaehlt.append(pfad)
+                if len(gewaehlt) == 2:
+                    raise RuntimeError("kaputt")
+
+        anderes = _Tool("Inspektor")
+        anderes.menu_hooks = ["context_menu"]
+        self.menu.add_command(label="Aktualisieren")
+        self.tm.tools = [anderes]
+        self.tm.populate_folder_menu(self.menu)
+        self.assertEqual(self.menu.index("end"), 0)                    # kein Tool für Ordner: auch keine Trennlinie
+        self.tm.tools = [FuerOrdner("Wiki"), anderes]
+        self.tm.populate_folder_menu(self.menu)
+        self.assertEqual([self.menu.type(i) for i in range(3)], ["command", "separator", "command"])
+        self.assertEqual(self.menu.entrycget(2, "label"), "🛠 Wiki: Dokumente lesen…")
+        baum = self.tm.app.tree_folders
+        for auswahl, pfad, zustand in (((), None, "disabled"), (("i1",), "C:/S/0_Posteingang", "disabled"),
+                                       (("i2",), "C:/S/Stadtwerke", "normal")):
+            baum.selection.return_value, baum.item.return_value = auswahl, (pfad,) if pfad else ()
+            self.root.tk.eval(self.menu.cget("postcommand"))           # wie Tk vor dem Aufklappen
+            self.assertEqual(self.menu.entrycget(2, "state"), zustand)
+        self.menu.invoke(2)
+        self.assertEqual(gewaehlt, ["C:/S/Stadtwerke"])
+        with patch("tool_manager.mb.showerror") as fehler:
+            self.menu.invoke(2)
+        fehler.assert_called_once()
+        baum.selection.return_value = ()
+        self.menu.invoke(2)                                            # nichts markiert: nichts geschieht
+        self.assertEqual(len(gewaehlt), 2)
+
 
 class TestGruppiereTools(unittest.TestCase):
 

@@ -256,6 +256,35 @@ class TestSuggestFiling(unittest.TestCase):
         with self.assertRaises(OSError):
             ollama_client.suggest_filing(b"fake-png")
 
+    @patch("ollama_client._generate", return_value={"response": '{"absender": "A"}', "done_reason": "stop"})
+    def test_liest_ohne_zufall_mit_antwortgrenze(self, gen):
+        """Etappe 15: Temperatur 0 (sonst gelten die Vorgaben des Modells), die presence_penalty bleibt beim Modell."""
+        ollama_client.suggest_filing(b"fake-png")
+        optionen = gen.call_args[0][0]["options"]
+        self.assertEqual((optionen["temperature"], optionen["num_predict"]), (0, 1000))
+        self.assertIn("num_ctx", optionen)
+        self.assertNotIn("presence_penalty", optionen)
+        self.assertEqual(gen.call_count, 1)
+
+    @patch("ollama_client._generate")
+    def test_denkendes_modell_bekommt_einen_versuch_ohne_grenze(self, gen):
+        gen.side_effect = [{"response": " ", "done_reason": "length"},
+                           {"response": '{"absender": "Stadtwerke"}', "done_reason": "stop"}]
+        with self.assertLogs("DocManager", "WARNING"):
+            antwort = ollama_client.suggest_filing(b"fake-png")
+        self.assertEqual(antwort["absender"], "Stadtwerke")
+        zweiter = gen.call_args_list[1][0][0]["options"]
+        self.assertNotIn("num_predict", zweiter)
+        self.assertEqual(zweiter["temperature"], 0)
+        self.assertIn("num_ctx", zweiter)
+
+    @patch("ollama_client._generate", return_value={"response": '{"title": "A A A A', "done_reason": "length"})
+    def test_schleife_wird_abgeschnitten_und_nicht_wiederholt(self, gen):
+        with self.assertLogs("DocManager", "WARNING") as protokoll:
+            antwort = ollama_client.suggest_filing(b"fake-png")
+        self.assertEqual((gen.call_count, antwort["title"], antwort["absender"]), (1, "", ""))
+        self.assertNotIn("A A", "".join(protokoll.output))      # nie Inhalte im Protokoll
+
 
 class TestSuggestTitleAndTags(unittest.TestCase):
     @patch("urllib.request.urlopen")

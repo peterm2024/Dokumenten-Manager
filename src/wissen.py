@@ -27,7 +27,7 @@ Sammlung - nach dem Umbenennen gilt der Ausschluss nicht mehr (dann bildet sich 
 Bis 12.11.2026 hatte jede Art feste Felder (Kennzeichen, Halter …). Peters Test an einer Rechnung zeigte: Dokumente
 passen selten in ein Schema. Eine Datei im alten Aufbau wird beim ersten Zugriff als `wissen_alt.sqlite` beiseitegelegt
 und leer neu begonnen (Peter: keine Rücksicht auf vorhandene Einträge). Neuere Dateien werden nachgerüstet
-(`_NACHRUESTEN`, Version 2 → 3: Tabelle `abgelehnt`, 3 → 4: `merkmal_aus`). Beim Schritt 4 → 5 werden die Angaben
+(`_NACHRUESTEN`, Version 2 → 3: Tabelle `abgelehnt`, 3 → 4: `merkmal_aus`, 5 → 6: `uebersicht`). Beim Schritt 4 → 5 werden die Angaben
 geleert (freie Sätze lassen sich nicht sinnvoll in Merkmal und Wert zerlegen, Peter 19.11.2026: „Angaben leeren“ - die
 KI liest die Belege neu) und mit ihnen das Abgelehnte (es waren Sätze); Schubladen, Einträge, Belege, Verbindungen und
 die Ausschlüsse der Ablageordner bleiben.
@@ -53,7 +53,8 @@ MAX_MERKMAL = 40                      # ein Merkmal ist ein kurzer Name („Vers
 # Peter 19.11.2026: Die eigene Adresse steht in jedem Dokument - ab so vielen Quellen ist eine Angabe „in vielen
 # Dokumenten belegt“: weitere Dokumente zählen als Quelle (Anzahl, Stand), werden aber nicht mehr Beleg des Eintrags.
 MAX_BELEG_QUELLEN = 5
-SCHEMA = 5                            # 3 (13.11.2026): `abgelehnt`; 4 (15.11.2026): `merkmal_aus`; 5 (19.11.2026): Merkmal + Wert
+# 3 (13.11.2026): `abgelehnt`; 4 (15.11.2026): `merkmal_aus`; 5 (19.11.2026): Merkmal + Wert; 6 (23.11.2026): `uebersicht`
+SCHEMA = 7
 ALTER_AUFBAU = 2                      # darunter: feste Felder (bis 12.11.2026), wird beiseitegelegt
 _TABELLEN = """
 CREATE TABLE art (
@@ -91,13 +92,28 @@ CREATE TABLE quelle (
     titel TEXT NOT NULL DEFAULT '', zitat TEXT NOT NULL DEFAULT '', datum TEXT NOT NULL DEFAULT '',
     UNIQUE (angabe, kid_id));
 """
-# Von Version n auf n + 1. Bis 4 kommt nur etwas dazu; 4 → 5 leert die Angaben (freie Sätze) und das Abgelehnte.
-_NACHRUESTEN = {2: _ABGELEHNT, 3: _MERKMAL_AUS, 4: "DROP TABLE angabe;" + _ANGABEN + "DELETE FROM abgelehnt;"}
+# Spaltenwahl der Übersicht je Schublade (Peter 23.11.2026): die Schlüssel der Merkmale, je Zeile einer; ohne Eintrag
+# gelten die häufigsten. Hier und nicht in der settings.json, damit Merkmalsnamen im Daten-Ordner bleiben.
+_UEBERSICHT = """
+CREATE TABLE uebersicht (
+    art INTEGER PRIMARY KEY REFERENCES art(id) ON DELETE CASCADE, merkmale TEXT NOT NULL);
+"""
+# Welche Dokumente die KI fürs Wiki schon gelesen hat (W7b, 25.11.2026), über ihre Dokument-ID
+_GELESEN = """
+CREATE TABLE gelesen (kid_id TEXT PRIMARY KEY, wann TEXT NOT NULL);
+"""
+# Was vor dieser Tabelle Beleg oder Quelle war oder Abgelehntes hat, gilt als gelesen (ohne Zeitpunkt)
+_GELESEN_BISHER = ("INSERT OR IGNORE INTO gelesen (kid_id, wann) SELECT kid_id, '' FROM (SELECT kid_id FROM beleg UNION "
+                   "SELECT kid_id FROM quelle UNION SELECT kid_id FROM abgelehnt) WHERE kid_id != '';")
+# Von Version n auf n + 1. Es kommt nur etwas dazu - außer 4 → 5: leert die Angaben (freie Sätze) und das Abgelehnte.
+_NACHRUESTEN = {2: _ABGELEHNT, 3: _MERKMAL_AUS, 4: "DROP TABLE angabe;" + _ANGABEN + "DELETE FROM abgelehnt;",
+                5: _UEBERSICHT, 6: _GELESEN + _GELESEN_BISHER}
 
 # Gleiche Merkmale verschieden geschrieben - beim Vergleichen gleich (die Anzeige behält die erste Schreibweise)
 _MERKMAL_GLEICH = {"telefonnummer": "telefon", "tel": "telefon", "tel.": "telefon", "rufnummer": "telefon",
                    "faxnummer": "fax", "e-mail-adresse": "e-mail", "email": "e-mail", "mail": "e-mail",
                    "anschrift": "adresse", "internet": "webseite", "website": "webseite", "homepage": "webseite",
+                   "rolle": "funktion", "position": "funktion", "stellung": "funktion",
                    "spezialgebiet": "fachgebiet", "schwerpunkt": "fachgebiet", "tätigkeitsschwerpunkt": "fachgebiet",
                    "telefax": "fax", "fax-nr.": "fax", "fax-nr": "fax", "tel.-nr.": "telefon", "telefon-nr.": "telefon",
                    "mobilnummer": "mobil", "mobiltelefon": "mobil", "handy": "mobil", "mobilfunk": "mobil",
@@ -222,6 +238,11 @@ def _wert_kern(wert):
     return " ".join(re.findall(r"[0-9a-zäöü]+", _STR.sub("strasse ", t)))
 
 
+def angabe_schluessel(merkmal, wert):
+    """Zwei Angaben mit demselben Schlüssel sind im selben Eintrag EINE Angabe (Merkmal und Wert, Schreibweise egal)."""
+    return merkmal_kern(merkmal), _wert_kern(wert)
+
+
 def angabe_text(merkmal, wert):
     """Eine Angabe als eine Zeile: „Merkmal: Wert“, ohne Merkmal nur der Wert."""
     return f"{_leer(merkmal)}: {_leer(wert)}" if _leer(merkmal) else _leer(wert)
@@ -249,6 +270,22 @@ def _jetzt():
     return datetime.datetime.now().isoformat(timespec="seconds")
 
 
+class _Verbindung(sqlite3.Connection):
+    """Schließt beim Schließen auch ihre Cursor. SQLite gibt eine Verbindung mit halb gelesener Abfrage (`next(...)` auf
+    einen Cursor, `fetchone` bei mehreren Zeilen) sonst erst frei, wenn der Cursor verschwindet - unter dem
+    VS-Code-Debugger blieb er liegen, und das nächste Schreiben scheiterte mit „database is locked“ (FALLSTRICKE #147)."""
+
+    def execute(self, *args):
+        cursor = super().execute(*args)
+        self.__dict__.setdefault("_offen", []).append(cursor)
+        return cursor
+
+    def close(self):
+        for cursor in self.__dict__.pop("_offen", ()):
+            cursor.close()
+        super().close()
+
+
 class Wissen:
     """Die Wissensbasis einer Sammlung. Alle Methoden öffnen ihre eigene, kurzlebige Verbindung."""
 
@@ -266,18 +303,18 @@ class Wissen:
 
     def _verbinde(self):
         os.makedirs(os.path.dirname(self.pfad), exist_ok=True)
-        con = sqlite3.connect(self.pfad, timeout=5)
+        con = sqlite3.connect(self.pfad, timeout=5, factory=_Verbindung)
         version = con.execute("PRAGMA user_version").fetchone()[0]
         if 0 < version < ALTER_AUFBAU:                          # alter Aufbau mit festen Feldern: beiseite, leer neu
             con.close()
             os.replace(self.pfad, self.pfad_alt)
             logging.getLogger("DocManager").info("Wiki: Datei im alten Aufbau beiseitegelegt, das Wiki beginnt leer")
-            con = sqlite3.connect(self.pfad, timeout=5)
+            con = sqlite3.connect(self.pfad, timeout=5, factory=_Verbindung)
             version = 0
         con.row_factory = sqlite3.Row
         con.execute("PRAGMA foreign_keys = ON")
         if version == 0:
-            con.executescript("BEGIN;" + _TABELLEN + _ANGABEN + _ABGELEHNT + _MERKMAL_AUS + "".join(
+            con.executescript("BEGIN;" + _TABELLEN + _ANGABEN + _ABGELEHNT + _MERKMAL_AUS + _UEBERSICHT + _GELESEN + "".join(
                 f"INSERT INTO art (name, reihe) VALUES ('{name}', {n});" for n, name in enumerate(START_ARTEN))
                 + f"PRAGMA user_version = {SCHEMA}; COMMIT;")
         elif version < SCHEMA:                                  # neuerer Aufbau: nachrüsten (4 → 5 leert die Angaben)
@@ -392,6 +429,31 @@ class Wissen:
             "JOIN art a ON a.id = e.art")], [])
         zeilen.sort(key=lambda z: (z.pop("reihe"), z["art"], z["bezeichnung"].casefold()))
         return zeilen
+
+    def eintraege_mit_angaben(self, art):
+        """Einträge einer Schublade (Id), alphabetisch, mit ihren Angaben (wie `_angaben`): [{id, bezeichnung, angaben}]
+        - für die Übersicht je Schublade (tools/wiki_uebersicht.py). Liest nur."""
+        def arbeit(con):
+            angaben = self._angaben(con)
+            eintraege = [{"id": z["id"], "bezeichnung": z["bezeichnung"], "angaben": angaben.get(z["id"], [])}
+                         for z in con.execute("SELECT id, bezeichnung FROM eintrag WHERE art = ?", (art,))]
+            return sorted(eintraege, key=lambda e: e["bezeichnung"].casefold())
+        return self._lies(arbeit, [])
+
+    def uebersicht_spalten(self, art):
+        """Gewählte Merkmale (Schlüssel) der Übersicht dieser Schublade, None = keine eigene Wahl. Liest nur."""
+        def arbeit(con):
+            z = con.execute("SELECT merkmale FROM uebersicht WHERE art = ?", (art,)).fetchone()
+            return None if z is None else [m for m in z["merkmale"].split("\n") if m]
+        return self._lies(arbeit, None)
+
+    def setze_uebersicht_spalten(self, art, merkmale):
+        """Spaltenwahl der Übersicht merken. :param merkmale: Schlüssel (auch leer) oder None = zurück zu den häufigsten"""
+        def arbeit(con):
+            con.execute("DELETE FROM uebersicht WHERE art = ?", (art,))
+            if merkmale is not None:
+                con.execute("INSERT INTO uebersicht (art, merkmale) VALUES (?, ?)", (art, "\n".join(sorted(merkmale))))
+        self._mit(arbeit)
 
     def suchtexte(self):
         """{eintrag_id: [Bezeichnung, Notiz, Angaben …]} - wonach der Filter im Fenster sucht (`passt`). Liest nur."""
@@ -595,9 +657,9 @@ class Wissen:
     @staticmethod
     def _gleiche_angabe(con, eintrag_id, merkmal, wert, ausser=None):
         """Id der Angabe des Eintrags mit demselben Merkmal und Wert (Schreibweise egal) oder None."""
-        schluessel = (merkmal_kern(merkmal), _wert_kern(wert))
+        schluessel = angabe_schluessel(merkmal, wert)
         return next((z["id"] for z in con.execute("SELECT id, merkmal, wert FROM angabe WHERE eintrag = ?", (eintrag_id,))
-                     if (merkmal_kern(z["merkmal"]), _wert_kern(z["wert"])) == schluessel and z["id"] != ausser), None)
+                     if angabe_schluessel(z["merkmal"], z["wert"]) == schluessel and z["id"] != ausser), None)
 
     @staticmethod
     def _quellen_umziehen(con, von, nach):
@@ -668,6 +730,18 @@ class Wissen:
             con.execute("DELETE FROM angabe WHERE id = ?", (angabe_id,))
             self._beruehrt(con, z["eintrag"])
         self._mit(arbeit)
+
+    # ------------------------------------------------------------ Gelesenes
+    def merke_gelesen(self, kid_ids):
+        """Diese Dokumente (Dokument-IDs) hat die KI gelesen und der Mensch entschieden."""
+        kid_ids = sorted({k for k in kid_ids if k})
+        if kid_ids:
+            self._mit(lambda con: con.executemany("INSERT OR REPLACE INTO gelesen (kid_id, wann) VALUES (?, ?)",
+                                                  [(k, _jetzt()) for k in kid_ids]))
+
+    def gelesene(self):
+        """Dokument-IDs aller gelesenen Dokumente. Liest nur."""
+        return self._lies(lambda con: {z[0] for z in con.execute("SELECT kid_id FROM gelesen")}, set())
 
     # ------------------------------------------------------------ Abgelehntes
     @staticmethod

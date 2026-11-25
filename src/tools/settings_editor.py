@@ -25,15 +25,16 @@ def wahl_aenderung(angezeigt, eingabe):
     return None if eingabe == (angezeigt or "").strip() else eingabe
 
 
-_MARKE = "   ← "   # trennt in der Auswahlliste den Modellnamen von „Standard“ / „zuletzt verwendet“
+_MARKE = "   ← "   # trennt in der Auswahlliste den Modellnamen von „empfohlen“ / „zuletzt verwendet“
 
 
 def modelle_beschriftet(namen, standard, zuletzt):
-    """Einträge der Modell-Auswahlliste: Standardmodell und zuletzt verwendetes Modell bekommen einen Vermerk
-    (Peter 19.11.2026 bei der Abnahme von Etappe 13 Schritt 1)."""
+    """Einträge der Modell-Auswahlliste: Standardmodell („empfohlen“) und zuletzt verwendetes Modell bekommen einen
+    Vermerk (Peter 19.11.2026 bei der Abnahme von Etappe 13 Schritt 1; „empfohlen“ statt „Standard“ seit Schritt 5 -
+    statt einer Modellliste je Grafikkarte, gemessen war auf allen Karten dasselbe Modell das beste)."""
     liste = []
     for name in namen:
-        marken = [text for text, trifft in (("Standard", name == standard), ("zuletzt verwendet", name == zuletzt))
+        marken = [text for text, trifft in (("empfohlen", name == standard), ("zuletzt verwendet", name == zuletzt))
                   if trifft]
         liste.append(name + _MARKE + ", ".join(marken) if marken else name)
     return liste
@@ -42,6 +43,25 @@ def modelle_beschriftet(namen, standard, zuletzt):
 def modell_aus_anzeige(text):
     """Modellname ohne den Vermerk aus `modelle_beschriftet` - gespeichert wird nur der Name."""
     return (text or "").split(_MARKE)[0].strip()
+
+
+def fehlende_modelle_text(namen, lesen, zweit):
+    """
+    Für „Verbindung testen“: welche eingestellten Modelle der Server nicht hat, mit dem Befehl zum Laden; "" = alle da.
+    :param namen: Modelle des Servers (ollama_client.list_models)
+    :param zweit: Modell der Zweitmeinung, "" = ausgeschaltet
+    """
+    zeilen = []
+    if not ollama_client.hat_modell(namen, lesen):
+        zeilen.append(f"Das eingestellte Modell „{lesen}“ ist auf dem Server nicht vorhanden. Laden mit:\n"
+                      f"ollama pull {lesen}")
+    if zweit and not ollama_client.hat_modell(namen, zweit):
+        zeilen.append(f"Das Modell „{zweit}“ für die Zweitmeinung zur Ordnerwahl ist auf dem Server nicht vorhanden. "
+                      "Ohne Zweitmeinung legt die Vollautomatik öfter falsch ab. Laden mit:\n"
+                      f"ollama pull {zweit}")
+    if zeilen:
+        zeilen.append("Den Befehl auf dem Rechner eingeben, auf dem Ollama läuft (einmalig, mehrere GB).")
+    return "\n\n".join(zeilen)
 
 
 def zuletzt_verwendet(gespeichert_vorher, eingestellt):
@@ -163,6 +183,9 @@ class SettingsEditorWindow(tk.Toplevel):
     def _modell_uebernehmen(self):
         alt = self.app.config.get("ollama_model", ollama_client.DEFAULT_MODEL)
         neu = self.var_ollama_model.get().strip()
+        if not neu:                        # ohne Modell gibt es keine KI - leer heißt „empfohlen“ (FALLSTRICKE #145)
+            neu = ollama_client.DEFAULT_MODEL
+            self.var_ollama_model.set(neu)
         if neu != alt:
             if alt:
                 self.app.config.set("ollama_model_zuletzt", alt)
@@ -184,7 +207,7 @@ class SettingsEditorWindow(tk.Toplevel):
         threading.Thread(target=holen, daemon=True).start()
 
     def _modelle_zeigen(self, arten=None):
-        """Listen (Lese-Modelle, Entscheidungsmodelle) in die beiden Felder eintragen, mit Vermerk „Standard“ /
+        """Listen (Lese-Modelle, Entscheidungsmodelle) in die beiden Felder eintragen, mit Vermerk „empfohlen“ /
         „zuletzt verwendet“ je Feld. Ohne `arten` nur die Vermerke neu setzen (nach einer Änderung)."""
         if not self.winfo_exists():
             return
@@ -195,7 +218,7 @@ class SettingsEditorWindow(tk.Toplevel):
         je_feld = (
             (ollama_client.DEFAULT_MODEL,
              zuletzt_verwendet(cfg.get("ollama_model_zuletzt", ""),
-                               cfg.get("ollama_model", ollama_client.DEFAULT_MODEL))),
+                               ollama_client.eingestelltes_modell(cfg))),
             (auto_pilot.STANDARD_ENTSCHEIDUNGSMODELL,
              zuletzt_verwendet(cfg.get("ki_entscheidungsmodell_zuletzt", ""), self._wahl_angezeigt)),
         )
@@ -517,7 +540,7 @@ class SettingsEditorWindow(tk.Toplevel):
         row_model = ttk.Frame(tab)
         row_model.pack(fill=tk.X, padx=8, pady=(2, 4))
         ttk.Label(row_model, text="Modell:", width=16).pack(side=tk.LEFT)
-        self.var_ollama_model = tk.StringVar(value=self.app.config.get("ollama_model", ollama_client.DEFAULT_MODEL))
+        self.var_ollama_model = tk.StringVar(value=ollama_client.eingestelltes_modell(self.app.config))
         # Seit 19.11.2026 Auswahlliste mit den Modellen des Servers (Etappe 13 Schritt 1); bleibt beschreibbar, damit
         # man auch ohne erreichbaren Server ein Modell eintragen kann.
         entry_model = auswahlfeld(row_model, self.var_ollama_model, self._modell_uebernehmen,
@@ -959,13 +982,15 @@ class SettingsEditorWindow(tk.Toplevel):
 
     def _test_ollama_connection(self):
         """
-        Erreichbarkeit, Modellliste und - neu seit 12.09.2026 - ob das eingestellte Modell auf
-        der Grafikkarte läuft (ollama_client.gpu_status). Ein still auf der CPU rechnender
+        Erreichbarkeit, Modellliste, fehlende Modelle samt Befehl zum Laden (Lese-Modell und Zweitmeinung,
+        23.11.2026) und - seit 12.09.2026 - ob das eingestellte Modell auf der Grafikkarte läuft
+        (ollama_client.gpu_status). Ein still auf der CPU rechnender
         Server sah bisher in diesem Test gesund aus und fiel erst als Timeout in Musterstadt auf.
         Der GPU-Check kann das Modell erst laden (Sekunden) und läuft deshalb im Thread.
         """
         url = self.var_ollama_url.get().strip()
-        model = self.var_ollama_model.get().strip() or ollama_client.DEFAULT_MODEL
+        model = modell_aus_anzeige(self.var_ollama_model.get()) or ollama_client.DEFAULT_MODEL
+        zweit = modell_aus_anzeige(self.var_entscheidungsmodell.get())
         erreichbar = ollama_client.is_reachable(url)
         status = getattr(self.app, "ki_status", None)
         if status is not None and url == status.url():
@@ -978,9 +1003,11 @@ class SettingsEditorWindow(tk.Toplevel):
         except Exception:
             models = []
         text = "Verbindung erfolgreich."
-        text += f"\nVerfügbare Modelle: {', '.join(models)}" if models else "\nKeine Modelle gefunden (ollama pull <modell> auf dem Server ausführen?)."
-        if not any(ollama_client._passt_modellname(m, model) for m in models):
-            text += f"\n\nDas eingestellte Modell „{model}“ ist auf dem Server nicht vorhanden."
+        text += f"\nVerfügbare Modelle: {', '.join(models)}" if models else "\nKeine Modelle gefunden."
+        fehlt = fehlende_modelle_text(models, model, zweit)
+        if fehlt:
+            text += "\n\n" + fehlt
+        if not ollama_client.hat_modell(models, model):
             messagebox.showwarning("Ollama", text, parent=self)
             return
 

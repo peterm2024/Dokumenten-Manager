@@ -101,9 +101,12 @@ class DokumentenVerwaltung:
         self.base_title = fenstertitel()
         self.root.title(self.base_title)
         # Fenstersymbol (icon/app.ico, erzeugt von icon/icon_erzeugen.py; in der EXE per
-        # --add-data eingebettet). Fehlt die Datei, bleibt das Tk-Standardsymbol.
+        # --add-data eingebettet). Fehlt die Datei, bleibt das Tk-Standardsymbol. `default` gilt für alle weiteren
+        # Fenster, sonst zeigen die Werkzeugfenster die Tk-Feder (Peter 25.11.2026).
         try:
-            self.root.iconbitmap(app_paths.bundled_default_path(os.path.join("icon", "app.ico")))
+            symbol = app_paths.bundled_default_path(os.path.join("icon", "app.ico"))
+            self.root.iconbitmap(symbol)
+            self.root.iconbitmap(default=symbol)
         except Exception:
             pass
         
@@ -244,6 +247,8 @@ class DokumentenVerwaltung:
         # 2. Direkt in das Rechtsklick-Menü der Dateiliste einklinken
         if hasattr(self, 'file_context_menu'):
             self.tool_manager.populate_context_menu(self.file_context_menu)
+        if hasattr(self, 'folder_context_menu'):
+            self.tool_manager.populate_folder_menu(self.folder_context_menu)
 
         # Menü-Hilfe Stufe 3: Erklärung beim Verweilen auf einem Menüeintrag (menue_tooltip.py).
         # Erst NACH den Tools, damit deren Einträge und Untermenüs bekannt sind.

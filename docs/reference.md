@@ -68,6 +68,10 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 ## Vollautomatik
 
 ::: auto_pilot
+::: ordner_finden
+::: titel_datum
+::: tag_regeln
+::: ablage_ausfuehren
 ::: personen_namen
 ::: eingangsstempel
 ::: ordnernamen
@@ -123,4 +127,6 @@ Der Text kommt automatisch aus den Docstrings im Code. Die Liste der Module wird
 ::: tools.wiki_dinge
 ::: tools.wiki_schubladen
 ::: tools.wiki_ablageordner
+::: tools.wiki_lesen
+::: tools.wiki_uebersicht
 ::: tools.modell_benchmark

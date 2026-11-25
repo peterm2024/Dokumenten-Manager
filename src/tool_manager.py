@@ -142,6 +142,39 @@ class ToolManager:
                 )
             self._merke_eintrag(tool, context_menu)
 
+    def populate_folder_menu(self, folder_menu):
+        """Fügt Tools mit "folder_menu" ins Rechtsklick-Menü des Ordnerbaums ein (25.11.2026). Vor jedem Öffnen fragt
+        `postcommand` sie, ob sie mit dem angeklickten Ordner etwas anfangen können - sonst ist der Eintrag grau."""
+        tools = [t for t in self.tools if "folder_menu" in t.menu_hooks]
+        if not tools:
+            return
+        folder_menu.add_separator()
+        eintraege = []
+        for tool in tools:
+            folder_menu.add_command(label=f"🛠 {tool.ordner_label}", command=lambda t=tool: self.oeffne_ordner(t))
+            eintraege.append((tool, folder_menu.index("end")))
+        folder_menu.configure(postcommand=lambda: self._pruefe_ordner(folder_menu, eintraege))
+
+    def _ordner(self):
+        """Absoluter Pfad des im Ordnerbaum markierten Ordners (der Rechtsklick markiert ihn) oder None."""
+        auswahl = self.app.tree_folders.selection()
+        werte = self.app.tree_folders.item(auswahl[0], "values") if auswahl else ()
+        return werte[0] if werte else None
+
+    def _pruefe_ordner(self, menu, eintraege):
+        ordner = self._ordner()
+        for tool, index in eintraege:
+            menu.entryconfig(index, state=tk.NORMAL if ordner and tool.ordner_moeglich(self.app, ordner) else tk.DISABLED)
+
+    def oeffne_ordner(self, tool):
+        ordner = self._ordner()
+        if not ordner:
+            return
+        try:
+            tool.oeffne_ordner(self.app, ordner)
+        except Exception as e:
+            mb.showerror("Tool-Fehler", f"Das Tool '{tool.name}' hat einen Fehler verursacht:\n{e}")
+
     def fuelle_untermenue(self, tool, menu):
         """Das Untermenü eines Tools leeren (samt seinen Unter-Untermenüs) und vom Tool neu füllen lassen. Ein Fehler
         darin kostet nur das Untermenü; ins Protokoll nur die Art des Fehlers (keine Pfade oder Namen)."""

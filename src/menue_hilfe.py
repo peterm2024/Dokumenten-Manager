@@ -191,6 +191,8 @@ def eintraege_fuer_tools(tools):
             eintraege.append(Eintrag(menue, tool.menu_label, was, wofuer))
         if "context_menu" in hooks:
             eintraege.append(Eintrag("Rechtsklick Dokument", f"🛠 {tool.name}", was, wofuer))
+        if "folder_menu" in hooks:
+            eintraege.append(Eintrag("Rechtsklick Ordner", f"🛠 {tool.ordner_label}", tool.ordner_hilfe, wofuer))
     return eintraege
 
 

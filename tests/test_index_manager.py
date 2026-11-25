@@ -182,6 +182,59 @@ class TestIndexManager(unittest.TestCase):
         self.mock_app.master_folder = None
         self.assertEqual(self.manager.ablage_texte(), [])
 
+    @patch("index_manager.PDFHandler.get_fulltext", side_effect=lambda pfad: " \n\t " if pfad.endswith("a.pdf") else "Text b")
+    @patch("index_manager.PDFHandler.get_metadata")
+    def test_lesestand_fuer_das_wiki(self, mock_meta, _text):
+        mock_meta.side_effect = lambda pfad: (
+            {"title": " ", "creationDate": "D:20260310113000+01'00'", "KID_ID": ""} if pfad.endswith("a.pdf") else
+            {"title": "Rechnung", "KID_DokumentenDatum": "2026-01-02", "creationDate": "D:20200101000000",
+             "KID_ID": "AAAA-0001", "KID_MailID": "mid:1@x", "KID_Richtung": "eingang"})
+        b = os.path.join("Ordner", "b.pdf")
+        stand = sorted(self.manager.lesestand(), key=lambda d: d["rel_path"])
+        self.assertEqual(stand[1], {"rel_path": "a.pdf", "titel": "a", "kid_id": "", "datum": "2026-03-10", "mail": False,
+                                    "zeichen": None})                          # noch nicht im Volltext-Cache
+        self.assertEqual(stand[0], {"rel_path": b, "titel": "Rechnung", "kid_id": "AAAA-0001", "datum": "2026-01-02",
+                                    "mail": True, "zeichen": None})
+        self._volltext_einlesen()
+        self.assertEqual({d["rel_path"]: d["zeichen"] for d in self.manager.lesestand()}, {"a.pdf": 0, b: 6})
+        con = self.manager._connect()
+        with con:
+            con.execute("UPDATE fulltext SET text_ocr = 'OCR a' WHERE rel_path = 'a.pdf'")
+            con.execute("UPDATE fulltext SET size = size + 1 WHERE rel_path = ?", (b,))    # veraltet: zählt als unbekannt
+        self.assertEqual({d["rel_path"]: d["zeichen"] for d in self.manager.lesestand()}, {"a.pdf": 5, b: None})
+        self.mock_app.master_folder = None
+        self.assertEqual(self.manager.lesestand(), [])
+
+    @patch("index_manager.PDFHandler.get_fulltext", return_value="Text")
+    @patch("index_manager.PDFHandler.get_metadata", return_value={"title": "", "keywords": "", "KID_DokumentenDatum": ""})
+    def test_text_gilt_weiter_nach_der_dokument_id(self, _meta, lesen):
+        """W7b: Die Dokument-ID ändert die Datei, nicht ihren Text - OCR- und KI-Text bleiben im Cache."""
+        self._volltext_einlesen()
+        con = self.manager._connect()
+        with con:
+            con.execute("UPDATE fulltext SET text_ai = 'verbessert', tier = 'meister'")
+        pfade = {"a.pdf": os.path.join(self.master, "a.pdf"), "b": os.path.join(self.master, "Ordner", "b.pdf")}
+        vorher = os.stat(pfade["a.pdf"])
+        for p in pfade.values():
+            with open(p, "a") as f:
+                f.write(" + ID")
+        self.manager.text_gilt_weiter("a.pdf", vorher)
+        lesen.reset_mock()
+        self._volltext_einlesen()
+        self.assertEqual([c.args[0] for c in lesen.call_args_list], [pfade["b"]])          # nur b wird neu gelesen
+        self.assertEqual(dict(con.execute("SELECT rel_path, text_ai FROM fulltext")),
+                         {"a.pdf": "verbessert", os.path.join("Ordner", "b.pdf"): ""})
+        # war der Text schon vorher veraltet, bleibt er es
+        with open(pfade["a.pdf"], "a") as f:
+            f.write("inzwischen geändert")
+        vorher = os.stat(pfade["a.pdf"])
+        with open(pfade["a.pdf"], "a") as f:
+            f.write(" + ID")
+        self.manager.text_gilt_weiter("a.pdf", vorher)
+        lesen.reset_mock()
+        self._volltext_einlesen()
+        self.assertEqual([c.args[0] for c in lesen.call_args_list], [pfade["a.pdf"]])
+
     @patch("index_manager.PDFHandler.get_metadata")
     def test_mail_verwandte_finden_sich_ueber_ordner_hinweg(self, mock_meta):
         # Peter 05.11.2026: Mail und Anhang liegen oft in verschiedenen Ordnern, nur KID_MAILID verbindet sie

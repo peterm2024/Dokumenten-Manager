@@ -505,6 +505,55 @@ class IndexManager:
             con.close()
         return sorted(t for t in treffer if t != eigener_rel_path)
 
+    def lesestand(self):
+        """
+        Alle Dokumente der Sammlung für „Dokumente lesen“ im Wiki (tools/wiki_lesen.py): [{rel_path, titel, kid_id, datum,
+        mail, zeichen}]. `datum` = Dokumentdatum, sonst das Erstelldatum der PDF, '' ohne; `mail` = importierte Mail
+        (nicht ihr Anhang); `zeichen` = Länge des erkannten Texts im Volltext-Cache, None, wenn der die Datei (noch) nicht
+        kennt - das trägt erst das Lesen nach (wiki_text). Gleicht vorher mit der Platte ab. Eigene,
+        kurzlebige Verbindung, aus jedem Thread.
+        """
+        master = getattr(self.app, "master_folder", None)
+        if not master or not os.path.isdir(master):
+            return []
+        con = self._open_connection(self._index_pfad(master))
+        try:
+            dokumente = self._abgleich(con, os.path.abspath(master))
+            leer = "' ' || char(9) || char(10) || char(13)"
+            zeichen = dict(con.execute(
+                "SELECT t.rel_path, " + " + ".join(f"LENGTH(TRIM(COALESCE(t.{s}, ''), {leer}))"
+                                                   for s in ("text", "text_ocr", "text_ai"))
+                + " FROM fulltext t JOIN files f ON f.rel_path = t.rel_path AND f.mtime = t.mtime AND f.size = t.size"))
+        finally:
+            con.close()
+
+        def datum(d):
+            if d["kid_date"]:
+                return d["kid_date"]
+            m = re.match(r"(?:D:)?(\d{4})(\d\d)(\d\d)", d["creation_date"] or "")
+            return "-".join(m.groups()) if m else ""
+        return [{"rel_path": d["rel_path"], "titel": (d["title"] or "").strip() or os.path.splitext(d["name"])[0],
+                 "kid_id": d["kid_id"] or "", "datum": datum(d), "mail": bool(d["richtung"]),
+                 "zeichen": zeichen.get(d["rel_path"])} for d in dokumente]
+
+    def text_gilt_weiter(self, rel_path, vorher):
+        """
+        In die Datei wurden nur Metadaten geschrieben (Dokument-ID): Der erkannte Text gilt weiter. Ohne das verwürfe der
+        nächste Abgleich den per OCR oder KI verbesserten Text (_ensure_fulltext_baseline).
+        :param vorher: os.stat der Datei vor dem Schreiben - war der Text schon da veraltet, bleibt er es
+        """
+        master = getattr(self.app, "master_folder", None)
+        if not master or not os.path.isdir(master):
+            return
+        jetzt = os.stat(os.path.join(master, rel_path))
+        con = self._open_connection(self._index_pfad(master))
+        try:
+            with con:
+                con.execute("UPDATE fulltext SET mtime = ?, size = ? WHERE rel_path = ? AND mtime = ? AND size = ?",
+                            (jetzt.st_mtime, jetzt.st_size, rel_path, vorher.st_mtime, vorher.st_size))
+        finally:
+            con.close()
+
     def pfad_zur_kid_id(self, kid_id):
         """Relativer Pfad des Dokuments mit dieser Dokument-ID oder None - für Belege im Wiki von Hand (wissen.py), die
         ein Dokument über Verschieben und Umbenennen hinweg wiederfinden. Eigene, kurzlebige Verbindung."""

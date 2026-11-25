@@ -275,7 +275,7 @@ class AiTitleSuggestWindow(tk.Toplevel):
     # --- KI-Vorschläge im Hintergrund-Thread laden ---
     def _load_suggestions(self):
         base_url = self.app.config.get("ollama_url", ollama_client.DEFAULT_URL)
-        model = self.app.config.get("ollama_model", ollama_client.DEFAULT_MODEL)
+        model = ollama_client.eingestelltes_modell(self.app.config)
         if not ollama_client.is_reachable(base_url):
             messagebox.showwarning(
                 "Ollama nicht erreichbar",

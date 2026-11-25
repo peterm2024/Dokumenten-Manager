@@ -142,6 +142,23 @@ class TestPruefung(unittest.TestCase):
                                      ("Kundennummer", "4711", "Kunden-Nr. 4711"),
                                      ("zuständig für", "Feuerlöscher", "Muster Prüfdienst Feuerlöscher")):
             self.assertEqual(grund(merkmal, wert, zitat), "", wert)
+        # KI-Lauf auf Prüfbriefen 23.11.2026 (Peter: „Ja“): Lesefehler und Vertragsrollen als Angaben
+        text = ("servtce@musterversicheru ng.example www.musterversicheru ng.examplo service@muster.example "
+                "www.muster.example Jens Muster Leiter Kundenservice Versicherungsnehmer Verkäufer Zentrale "
+                "a@muster.example, b@muster.example Eigentümer")
+
+        def g(merkmal, wert):
+            return wissen_ki._pruefe_angabe({"merkmal": merkmal, "wert": wert, "zitat": wert}, text, "Musterfirma")[3]
+        for merkmal, wert, erwartet in (
+                ("E-Mail", "servtce@musterversicheru ng.example", "schreibweise"), ("E-Mail", "service@muster.example", ""),
+                ("Webseite", "www.musterversicheru ng.examplo", "schreibweise"), ("Homepage", "www.muster.example", ""),
+                ("E-Mail", "a@muster.example, b@muster.example", ""), ("Webseite", "www.muster.example.", ""),
+                ("Adresse", "Jens Muster", "etikett"), ("Telefon", "Zentrale", "etikett"),
+                ("Rolle", "Versicherungsnehmer", "rolle"), ("Funktion", "Versicherungsnehmer", "rolle"),
+                ("Funktion", "Leiter Kundenservice", ""), ("Rolle", "Eigentümer", ""), ("Beruf", "Verkäufer", "")):
+            self.assertEqual(g(merkmal, wert), erwartet, f"{merkmal}: {wert}")
+        self.assertIn("schreibweise", wissen_ki.GRUENDE)
+        self.assertEqual(wissen.merkmal_kern("Rolle"), wissen.merkmal_kern("Funktion"))      # eine Angabe, nicht zwei
         self.assertTrue(wissen_ki.wert_im_zitat("16,90 €", "Prüfgebühr 16,90 EUR"))
         self.assertFalse(wissen_ki.wert_im_zitat("16,90 Euro", "Prüfgebühr 16,90 EUR"))    # „Euro“ steht nicht da
         self.assertFalse(wissen_ki.wert_im_zitat("1690", "Gebühr 16,90 und 1690"[:10]))
@@ -247,6 +264,18 @@ class TestPruefung(unittest.TestCase):
             [ding("Person", "x", ("Spezialgebiet", "a", "a"), ("Fachgebiet", "b", "b"))])[0]["angaben"][1]["merkmal"],
             "Spezialgebiet")
 
+    def test_bekannte_angabe_nur_bei_gleichem_merkmal_und_wert(self):
+        # W4: nur dann wird das Dokument eine weitere Quelle - dieselben vier Ziffern reichen nicht
+        eintrag = {"angaben": [{"merkmal": "Baujahr", "wert": "1998", "text": "Baujahr: 1998", "zitat": ""},
+                               {"merkmal": "Telefon", "wert": "01234 5678", "text": "Telefon: 01234 5678", "zitat": ""}]}
+
+        def a(merkmal, wert):
+            return {"merkmal": merkmal, "wert": wert, "text": wissen.angabe_text(merkmal, wert), "zitat": "z"}
+        self.assertEqual(wissen_ki.bekannte_angabe(a("Telefonnummer", "01234 5678"), eintrag)["merkmal"], "Telefon")
+        self.assertIsNone(wissen_ki.bekannte_angabe(a("Einzug", "1998"), eintrag))
+        self.assertIsNone(wissen_ki.bekannte_angabe(a("Baujahr", "1999"), eintrag))
+        self.assertIsNone(wissen_ki.bekannte_angabe({"text": "Baujahr: 1998", "zitat": ""}, eintrag))
+
     def test_wiedererkennen_nach_umbenennung(self):
         # Peter 13.11.2026: gefundene und danach geänderte Einträge wurden beim nächsten Lauf neu genannt
         schloss = {"id": 1, "bezeichnung": "Schlossgut", "angaben": [
@@ -299,6 +328,12 @@ class TestLauf(unittest.TestCase):
                               (b, person("Adresse", "Musterstraße 18, 12345 Musterstadt"), False)])
         self.assertEqual([(x["wert"], x["dok"]["rel_path"]) for x in g[0]["angaben"]],
                          [("Musterstraße 8, D-12345 Musterstadt", "a.pdf"), ("Musterstraße 18, 12345 Musterstadt", "b.pdf")])
+        # W4: das zweite Dokument geht nicht verloren, es ist eine weitere Quelle mit seinem eigenen Zitat
+        self.assertEqual([[(d["rel_path"], z) for d, z in wd.quellen(x)] for x in g[0]["angaben"]],
+                         [[("a.pdf", "Musterstraße 8, D-12345 Musterstadt"), ("b.pdf", "Musterstr. 8 12345 Musterstadt")],
+                          [("b.pdf", "Musterstraße 18, 12345 Musterstadt")]])
+        g = wd.lege_zusammen([(a, person("Adresse", "Musterstraße 8") + person("Anschrift", "Musterstr. 8"), False)])
+        self.assertEqual(len(wd.quellen(g[0]["angaben"][0])), 1)               # dasselbe Dokument zählt einmal
 
     def lauf(self, texte, dokumente=None):
         index = types.SimpleNamespace(wiki_text=lambda rel: (texte[rel], ""))
@@ -409,13 +444,20 @@ class TestDingeFenster(unittest.TestCase):
         self.assertIn("2× Impressum oder Bankdaten", d.lbl_status.cget("text"))
         zeilen = [d.tree.item(i, "text") for i in d.tree.get_children()]
         self.assertEqual(zeilen, ["☑ Firma: Muster Prüfdienst", "☑ Immobilie: Altes Schloss Musterdorf",
-                                  "☑ Person: Herrn Max Mustermann   - schon im Wiki, wird ergänzt",
-                                  "☑ Gerät: Feuerlöscher   - neue Schublade"])
-        # schon im Wiki: nur die Angabe, die dort noch nicht steht
-        self.assertEqual([d.tree.item(i, "text") for i in d.tree.get_children("d:2")], ["☑ Geburtsdatum: 01.02.1950"])
+                                  "☑ Person: Herrn Max Mustermann", "☑ Gerät: Feuerlöscher"])
+        self.assertEqual([d.tree.set(i, "wert") for i in d.tree.get_children()],
+                         ["", "", "schon im Wiki, wird ergänzt", "neue Schublade"])
+        # schon im Wiki: anhaken lässt sich nur, was dort noch nicht steht; die Anschrift bekommt eine weitere Quelle (W4)
+        self.assertEqual([(d.tree.item(i, "text"), d.tree.set(i, "wert")) for i in d.tree.get_children("d:2")],
+                         [("☑ Geburtsdatum", "01.02.1950"),
+                          ("✓ Anschrift (schon im Wiki)", "Musterstraße 8, 12345 Musterstadt")])
+        self.assertIn("1 Angabe schon im Wiki (nur weiterer Beleg)", d.lbl_status.cget("text"))
+        d._schalte("b:2:0")                                                        # hat keinen Haken
+        self.assertEqual(d.tree.item("b:2:0", "text"), "✓ Anschrift (schon im Wiki)")
         # Spalte „Dokument“: die Dokument-ID beim Eintrag (hier noch keine), bei der Angabe nur, wenn er mehrere hat
-        self.assertEqual(d.tree.item("d:0", "values"), ("", "(noch ohne ID)"))
-        self.assertEqual(d.tree.item("a:0:1", "values"), ("„Tel.: 01234/5678“", ""))
+        self.assertEqual(d.tree.item("d:0", "values"), ("", "", "(noch ohne ID)"))
+        self.assertEqual((d.tree.item("a:0:1", "text"), d.tree.item("a:0:1", "values")),
+                         ("☑ Telefon", ("01234 5678", "„Tel.: 01234/5678“", "")))
         self.assertEqual(self.w.anzahl(), 1)                                       # noch nichts im Wiki
         d._schalte("d:3")                                                          # das Gerät nicht
         d._schalte("a:0:1")                                                        # die Telefonnummer nicht
@@ -442,6 +484,8 @@ class TestDingeFenster(unittest.TestCase):
         person = self.w.lade(max_)
         self.assertEqual([a["text"] for a in person["angaben"]],
                          ["Anschrift: Musterstraße 8, 12345 Musterstadt", "Geburtsdatum: 01.02.1950"])
+        self.assertEqual([[(q["kid_id"], q["zitat"]) for q in a["quellen"]] for a in person["angaben"]],
+                         [[(kid, "Musterstraße 8 12345 Musterstadt")], [(kid, "geb. 01.02.1950")]])
         self.assertEqual(len(person["belege"]), 1)
         self.assertEqual(f.eintrag["bezeichnung"], "Muster Prüfdienst")            # das Wiki zeigt den ersten
 
@@ -464,21 +508,21 @@ class TestDingeFenster(unittest.TestCase):
             d = f.dinge
             self.warte(d)
         self.assertIn("2 früher abgelehnte Angaben ausgeblendet", d.lbl_status.cget("text"))
-        self.assertEqual([d.tree.item(i, "text") for i in d.tree.get_children()], [
-            "☑ Firma: Muster Prüfdienst   - schon im Wiki als „Prüfdienst Muster & Söhne“, wird ergänzt",
-            "☑ Immobilie: Altes Schloss Musterdorf   - schon im Wiki als „Altes Schloss“, wird ergänzt",
-            "☑ Person: Herrn Max Mustermann   - schon im Wiki, wird ergänzt",
-            "☑ Gerät: Feuerlöscher   - neue Schublade"])
-        self.assertEqual([[d.tree.item(a, "text") for a in d.tree.get_children(i)] for i in d.tree.get_children()],
-                         [[], [], [], ["☑ Standort: Keller"]])
+        # Firma, Schloss und Person samt Angaben und Beleg stehen schon da: ausgeblendet, nicht noch einmal (24.11.2026)
+        self.assertIn("3 Einträge ohne Neues ausgeblendet", d.lbl_status.cget("text"))
+        self.assertEqual([(d.tree.item(i, "text"), d.tree.set(i, "wert")) for i in d.tree.get_children()],
+                         [("☑ Gerät: Feuerlöscher", "neue Schublade")])
+        self.assertEqual([(d.tree.item(a, "text"), d.tree.set(a, "wert")) for a in d.tree.get_children("d:0")],
+                         [("☑ Standort", "Keller")])
         # von Hand zuordnen: das Gerät gehört zum Schloss - oder wird neu in einer vorhandenen Schublade angelegt
         schloss = next(e for e in self.w.liste() if e["bezeichnung"] == "Altes Schloss")
-        d.zuordnen(3, ziel=schloss)
-        self.assertEqual(d.tree.item("d:3", "text"), "☑ Gerät: Feuerlöscher   - schon im Wiki als „Altes Schloss“, wird ergänzt")
-        d.zuordnen(3, schublade="Sonstiges")
-        self.assertEqual(d.tree.item("d:3", "text"), "☑ Sonstiges: Feuerlöscher")
-        d.zuordnen(3, ziel=schloss)
-        d.tree.selection_set("a:3:0")
+        d.zuordnen(0, ziel=schloss)
+        self.assertEqual((d.tree.item("d:0", "text"), d.tree.set("d:0", "wert")),
+                         ("☑ Gerät: Feuerlöscher", "schon im Wiki als „Altes Schloss“, wird ergänzt"))
+        d.zuordnen(0, schublade="Sonstiges")
+        self.assertEqual((d.tree.item("d:0", "text"), d.tree.set("d:0", "wert")), ("☑ Sonstiges: Feuerlöscher", ""))
+        d.zuordnen(0, ziel=schloss)
+        d.tree.selection_set("a:0:0")
         d._doppelklick()                                                           # Angabe: ihr Dokument zeigen
         self.assertEqual(self.gezeigt, [self.pdf])
         d._uebernehmen()
@@ -494,8 +538,117 @@ class TestDingeFenster(unittest.TestCase):
             f.dinge_lesen([{"rel_path": "Rechnung.pdf", "titel": "Rechnung Prüfdienst"}])
             d = f.dinge
             self.warte(d)
-        self.assertNotIn("Gerät", " ".join(d.tree.item(i, "text") for i in d.tree.get_children()))
+        self.assertEqual(d.tree.get_children(), ())
+        self.assertIn("Alles davon steht schon im Wiki.", d.lbl_status.cget("text"))
+        self.assertEqual(d.ziel, {})
+        self.assertEqual(str(d.btn_uebernehmen.cget("state")), "disabled")
         d.destroy()
+
+    def test_ohne_neues_wird_ausgeblendet_und_trotzdem_verbunden(self):
+        kid = PDFHandler.ensure_kid_id(self.pdf)
+        telefon = ("Telefon", "01234/5678", "Tel.: 01234/5678")
+        firma, schloss = self.w.speichere("Firma", "Muster Prüfdienst"), self.w.speichere("Immobilie", "Altes Schloss")
+        for e in (firma, schloss):
+            self.w.beleg_hinzu(e, kid, "Rechnung")
+        self.w.angabe_hinzu(firma, telefon[:2], kid, "Rechnung", telefon[2])
+        self.w.angabe_hinzu(schloss, "Feuerlöscher geprüft am 19.02.2016")          # von Hand, sinngleich: kein Neues
+        f = wf.WikiFenster(self.app)
+        self.addCleanup(lambda: f.winfo_exists() and f.destroy())
+
+        def lies(*dinge):
+            with patch("tools.wiki_dinge.wissen_ki.lies_json", return_value=({"dinge": list(dinge)}, 1.0)):
+                f.dinge_lesen([{"rel_path": "Rechnung.pdf", "titel": "Rechnung"}])
+                self.warte(f.dinge)
+            return f.dinge
+        alt = [ding("Firma", "Muster Prüfdienst", telefon),
+               ding("Immobilie", "Altes Schloss", ("Feuerlöscher geprüft am", "19.02.2016", "Prüf-/Lieferdatum: 19.02.2016"))]
+        d = lies(*alt, ding("Gerät", "Feuerlöscher", ("Standort", "Keller", "Standort Keller")))
+        self.assertEqual([d.tree.item(i, "text") for i in d.tree.get_children()], ["☑ Gerät: Feuerlöscher"])
+        d._uebernehmen()
+        geraet = next(e["id"] for e in self.w.liste() if e["bezeichnung"] == "Feuerlöscher")
+        self.assertEqual(sorted(v["bezeichnung"] for v in self.w.lade(geraet)["verbunden"]),
+                         ["Altes Schloss", "Muster Prüfdienst"])
+        self.assertEqual([v["bezeichnung"] for v in self.w.lade(firma)["verbunden"]], ["Feuerlöscher"])   # nicht mit dem Schloss
+
+        # Ist das Dokument noch kein Beleg, bleibt der Eintrag stehen: Übernehmen trägt es ein
+        self.w.beleg_weg(self.w.lade(schloss)["belege"][0]["id"])
+        d = lies(*alt)
+        self.assertEqual([(d.tree.item(i, "text"), d.tree.set(i, "wert")) for i in d.tree.get_children()],
+                         [("☑ Immobilie: Altes Schloss", "schon im Wiki, nur weiterer Beleg")])
+        self.assertIn("1 Eintrag ohne Neues ausgeblendet", d.lbl_status.cget("text"))
+        d.var_verbinden.set(False)
+        d._uebernehmen()
+        self.assertEqual([b["kid_id"] for b in self.w.lade(schloss)["belege"]], [kid])
+
+        # Ein Dokument ohne Dokument-ID kann noch kein Beleg sein: nichts ausblenden
+        with patch.object(wd.DingeFenster, "_kid_id", return_value=""):
+            d = lies(*alt)
+        self.assertEqual(len(d.tree.get_children()), 2)
+        d.destroy()
+
+        # Nicht verbunden wird, was sonst auch keinen Haken hätte (Text schlecht erkannt) - und was inzwischen gelöscht ist
+        heft = ding("Heft", "Musterstraße 8", ("Ort", "Musterstadt", "Musterstraße 8 12345 Musterstadt"))
+        with patch("tools.wiki_dinge.wissen_ki.text_guete", return_value=0):
+            d = lies(*alt, heft)
+        self.assertEqual([d.tree.item(i, "text") for i in d.tree.get_children()], ["☐ Heft: Musterstraße 8"])
+        d._schalte("d:0")
+        d._uebernehmen()
+        neu = next(e["id"] for e in self.w.liste() if e["bezeichnung"] == "Musterstraße 8")
+        self.assertEqual(self.w.lade(neu)["verbunden"], [])
+        self.w.loesche(neu)
+        d = lies(*alt, heft)
+        self.w.loesche(schloss)
+        d._uebernehmen()
+        neu = next(e["id"] for e in self.w.liste() if e["bezeichnung"] == "Musterstraße 8")
+        self.assertEqual([v["bezeichnung"] for v in self.w.lade(neu)["verbunden"]], ["Muster Prüfdienst"])
+
+    def test_gelesen_nach_der_entscheidung_und_nie_ohne_sie(self):
+        """W7b: gelesen ist, worüber entschieden wurde - nicht ein geschlossenes Fenster, nicht was nicht ging."""
+        namen = ("Rechnung.pdf", "Zwei.pdf", "Drei.pdf", "Vier.pdf", "Fuenf.pdf")
+        for n in namen[1:]:
+            with open(os.path.join(self.sammlung, n), "wb") as datei:
+                datei.write(pdf_bytes())
+        self.app.index_manager.wiki_text = lambda rel: ("" if rel == "Vier.pdf" else TEXT, "")
+        self.app.index_manager.text_gilt_weiter = lambda rel, vorher: weiter.append((rel, vorher.st_size))
+        weiter, groesse = [], os.path.getsize(self.pdf)
+        f = wf.WikiFenster(self.app)
+        self.addCleanup(lambda: f.winfo_exists() and f.destroy())
+        firma = {"dinge": [ding("Firma", "Muster Prüfdienst", ("Telefon", "01234/5678", "Tel.: 01234/5678"))]}
+
+        def id_von(name):
+            return PDFHandler.get_metadata(os.path.join(self.sammlung, name)).get("KID_ID") or ""
+
+        def lies(antworten, dokumente):
+            with patch("tools.wiki_dinge.wissen_ki.lies_json", side_effect=antworten):
+                f.dinge_lesen([{"rel_path": n, "titel": n} for n in dokumente])
+                self.warte(f.dinge)
+            return f.dinge
+        lies([(firma, 1.0)], namen[:1]).destroy()                                  # geschlossen: nicht gelesen, keine ID
+        self.assertEqual((self.w.gelesene(), id_von("Rechnung.pdf")), (set(), ""))
+        # Rechnung gibt etwas her, Zwei nichts, Drei scheitert, Vier hat keinen Text - Fuenf kam nicht dran (Abbruch)
+        unbrauchbar = wd.wissen_ki.UnbrauchbareAntwort("x")
+        d = lies([(firma, 1.0), ({"dinge": []}, 1.0), unbrauchbar], namen[:4])
+        self.assertEqual(self.w.gelesene(), set())                                 # erst mit der Entscheidung
+        self.assertEqual(f.zuletzt_lesen, {"Drei.pdf"})
+        d._schalte("d:0")
+        d._uebernehmen()                                                           # „Nichts davon übernehmen“
+        self.root.update()
+        self.assertFalse(d.winfo_exists())
+        self.assertEqual(self.w.anzahl(), 0)
+        self.assertEqual(self.w.gelesene(), {id_von("Rechnung.pdf"), id_von("Zwei.pdf")})
+        self.assertNotIn("", self.w.gelesene())
+        self.assertEqual((id_von("Drei.pdf"), id_von("Vier.pdf")), ("", ""))
+        self.assertEqual(weiter, [("Rechnung.pdf", groesse), ("Zwei.pdf", groesse)])   # der erkannte Text gilt weiter
+        self.assertEqual(len(self.w.abgelehnte([id_von("Rechnung.pdf")])[id_von("Rechnung.pdf")]), 1)   # trotz neuer ID
+        # nichts zu entscheiden: gleich gelesen, Drei ist kein Sorgenkind mehr
+        d = lies([({"dinge": []}, 1.0)], ("Drei.pdf",))
+        self.assertIn(id_von("Drei.pdf"), self.w.gelesene() - {""})
+        self.assertEqual(f.zuletzt_lesen, set())
+        self.assertEqual(str(d.btn_uebernehmen.cget("state")), "disabled")
+        # ohne Dokument-ID (Datei nicht schreibbar) lässt es sich nicht merken: kommt zuletzt dran
+        with patch("tools.wiki_dinge.PDFHandler.ensure_kid_id", return_value=""):
+            lies([({"dinge": []}, 1.0)], ("Fuenf.pdf",))
+        self.assertEqual((f.zuletzt_lesen, len(self.w.gelesene())), ({"Fuenf.pdf"}, 3))
 
     def test_aufzaehlung_nicht_vorgehakt_und_spalte_mit_ids(self):
         f = wf.WikiFenster(self.app)
@@ -514,11 +667,12 @@ class TestDingeFenster(unittest.TestCase):
             self.warte(d)
         self.assertEqual([d.tree.item(i, "text") for i in d.tree.get_children()],
                          ["☑ Firma: Kanzlei Muster & Partner"] +
-                         [f"☐ Person: {n}   - aus einer Aufzählung (z.B. Briefkopf)"
-                          for n in ("Anna Muster", "Bernd Beispiel", "Carla Probe")])
-        self.assertEqual(d.tree.item("d:0", "values"), ("", f"{kid}, {kid}"))
-        self.assertEqual(d.tree.item("a:0:0", "values")[1], kid)                     # zwei Dokumente: ID je Angabe
-        # Rechtsklick (Peter 19.11.2026): Dokument zeigen, Dokument-ID kopieren - beim Eintrag je Dokument ein Untermenü
+                         [f"☐ Person: {n}" for n in ("Anna Muster", "Bernd Beispiel", "Carla Probe")])
+        self.assertEqual([d.tree.set(f"d:{n}", "wert") for n in range(4)], [""] + ["aus einer Aufzählung (z.B. Briefkopf)"] * 3)
+        self.assertEqual(d.tree.set("d:0", "quelle"), f"{kid} +1")
+        self.assertEqual(d.tree.set("a:0:0", "quelle"), f"{kid} +1")             # W4: beide Dokumente sind Quelle
+        # Rechtsklick (Peter 19.11.2026): Dokument zeigen, Dokument-ID kopieren - bei mehreren Dokumenten Untermenüs
+        d.dinge[0]["angaben"][0]["weitere"] = []                                    # eine Angabe aus einem Dokument
         menue = d.baue_menue("a:0:0")
         self.assertEqual([menue.entrycget(n, "label") for n in range(menue.index("end") + 1)],
                          ["Dokument zeigen", f"Dokument-ID kopieren ({kid})"])
@@ -536,6 +690,72 @@ class TestDingeFenster(unittest.TestCase):
         self.assertEqual([e["bezeichnung"] for e in self.w.liste()], ["Anna Muster", "Kanzlei Muster & Partner"])
         self.assertEqual(self.w.abgelehnte([kid]), {})                             # nicht vorgehakt: nicht abgelehnt
 
+    def test_mehrere_dokumente_werden_quellen_einer_angabe(self):
+        # W4: zwei Dokumente eines Laufs und später ein drittes nennen dieselbe Telefonnummer - eine Angabe, drei Quellen
+        pfade = [self.pdf] + [os.path.join(self.sammlung, n) for n in ("Zwei.pdf", "Drei.pdf")]
+        for p in pfade[1:]:
+            with open(p, "wb") as f:
+                f.write(pdf_bytes())
+        kids = [PDFHandler.ensure_kid_id(p) for p in pfade]
+        self.assertEqual(len(set(kids)), 3)
+        doks = [{"rel_path": os.path.basename(p), "titel": os.path.basename(p)[:-4]} for p in pfade]
+        f = wf.WikiFenster(self.app)
+        self.addCleanup(lambda: f.winfo_exists() and f.destroy())
+
+        def lies(dokumente, *angaben):
+            antwort = {"dinge": [ding("Firma", "Muster Prüfdienst", *angaben)]}
+            with patch("tools.wiki_dinge.wissen_ki.lies_json", return_value=(antwort, 1.0)):
+                f.dinge_lesen(dokumente)
+                self.warte(f.dinge)
+            return f.dinge
+        telefon = ("Telefon", "01234/5678", "Tel.: 01234/5678")
+        d = lies(doks[:2], telefon, ("Prüfgebühr", "16,90 EUR", "Prüfgebühr 16,90 EUR"))
+        self.assertEqual(d.tree.set("a:0:0", "quelle"), f"{kids[0]} +1")
+        self.assertEqual([x["rel_path"] for x in d._doks_der_zeile("a:0:0")], ["Rechnung.pdf", "Zwei.pdf"])
+        d._schalte("a:0:1")                                                        # die Gebühr nicht: aus beiden abgelehnt
+        d._uebernehmen()
+        firma = self.w.liste()[0]["id"]
+        self.assertEqual([(a["text"], sorted(q["kid_id"] for q in a["quellen"])) for a in self.w.lade(firma)["angaben"]],
+                         [("Telefon: 01234 5678", sorted(kids[:2]))])
+        self.assertEqual({k: len(v) for k, v in self.w.abgelehnte(kids).items()}, {kids[0]: 1, kids[1]: 1})
+
+        # Aus zwei Dokumenten abgelehnt, im dritten neu: dort wird es angeboten, mit nur diesem Dokument als Quelle
+        d = lies(doks, ("Prüfgebühr", "16,90 EUR", "Prüfgebühr 16,90 EUR"))
+        self.assertEqual([(d.tree.item(i, "text"), d.tree.set(i, "quelle")) for i in d.tree.get_children("d:0")],
+                         [("☑ Prüfgebühr", kids[2])])
+        self.assertEqual(d.dinge[0]["angaben"][0]["dok"]["rel_path"], "Drei.pdf")
+        d.destroy()
+
+        d = lies(doks[2:], ("Telefonnummer", "01234/5678", "Tel.: 01234/5678"))    # nur Bekanntes, anders benannt
+        self.assertEqual([d.tree.item(i, "text") for i in d.tree.get_children("d:0")], ["✓ Telefon (schon im Wiki)"])
+        self.assertEqual(d.baue_menue("b:0:0").entrycget(0, "label"), "Dokument zeigen")
+        d._schalte("d:0")                                                          # Eintrag abgewählt
+        self.assertEqual((d.btn_uebernehmen.cget("text"), str(d.btn_uebernehmen.cget("state"))),
+                         ("Nichts davon übernehmen", "normal"))
+        d._schalte("d:0")
+        d._uebernehmen()
+        eintrag = self.w.lade(firma)
+        self.assertEqual([sorted(q["kid_id"] for q in a["quellen"]) for a in eintrag["angaben"]], [sorted(kids)])
+        self.assertEqual(sorted(b["kid_id"] for b in eintrag["belege"]), sorted(kids))
+        self.assertEqual(self.w.abgelehnte([kids[2]]), {})
+
+        # ab MAX_BELEG_QUELLEN nur noch Quelle, nicht mehr Beleg - auch beim Übernehmen aus dem Dokument
+        for n in range(wissen.MAX_BELEG_QUELLEN):
+            self.w.angabe_hinzu(firma, ("Telefon", "01234 5678"), f"AAAA-{n:04d}", "x", "y")
+        vorher = {b["kid_id"] for b in self.w.lade(firma)["belege"]}
+        viertes = os.path.join(self.sammlung, "Vier.pdf")
+        with open(viertes, "wb") as datei:
+            datei.write(pdf_bytes())
+        kid4 = PDFHandler.ensure_kid_id(viertes)
+        lies([{"rel_path": "Vier.pdf", "titel": "Vier"}], telefon)._uebernehmen()
+        eintrag = self.w.lade(firma)
+        self.assertIn(kid4, [q["kid_id"] for q in eintrag["angaben"][0]["quellen"]])
+        self.assertEqual({b["kid_id"] for b in eintrag["belege"]}, vorher)
+        # noch einmal gelesen: schon Quelle, und Beleg wird es nie - bringt nichts Neues
+        d = lies([{"rel_path": "Vier.pdf", "titel": "Vier"}], telefon)
+        self.assertIn("1 Eintrag ohne Neues ausgeblendet", d.lbl_status.cget("text"))
+        d.destroy()
+
     def test_schlecht_erkannt_nicht_vorgehakt_ohne_verbinden_und_schliessen_bricht_ab(self):
         f = wf.WikiFenster(self.app)
         self.addCleanup(lambda: f.winfo_exists() and f.destroy())
@@ -544,8 +764,9 @@ class TestDingeFenster(unittest.TestCase):
             f.dinge_lesen([{"rel_path": "Rechnung.pdf", "titel": "Rechnung"}])
             d = f.dinge
             self.warte(d)
-        self.assertEqual(d.tree.item("d:0", "text"), "☐ Firma: Muster Prüfdienst   - Text schlecht erkannt")
-        self.assertEqual(str(d.btn_uebernehmen.cget("state")), "disabled")
+        self.assertEqual((d.tree.item("d:0", "text"), d.tree.set("d:0", "wert")),
+                         ("☐ Firma: Muster Prüfdienst", "Text schlecht erkannt"))
+        self.assertEqual(d.btn_uebernehmen.cget("text"), "Nichts davon übernehmen")
         d._schalte("d:0")
         d.var_verbinden.set(False)
         d._uebernehmen()

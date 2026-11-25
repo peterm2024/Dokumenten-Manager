@@ -6,6 +6,7 @@ import sqlite3
 import tempfile
 import threading
 import unittest
+from unittest.mock import patch
 
 import app_paths
 import wissen
@@ -29,6 +30,25 @@ class TestWissen(unittest.TestCase):
         self.assertEqual([(a["id"], a["name"]) for a in self.w.arten()], [(None, n) for n in wissen.START_ARTEN])
         self.assertFalse(self.w.sichere())
         self.assertFalse(os.path.exists(self.w.pfad))
+
+    def test_halb_gelesene_abfrage_sperrt_die_datei_nicht(self):
+        """FALLSTRICKE #147: Wer den Cursor festhält (Debugger), hielt auch die Datei fest - die nächste Änderung
+        scheiterte nach 5 s mit „database is locked“."""
+        firma, haus = self.w.speichere("Firma", "Muster GmbH"), self.w.speichere("Immobilie", "Musterhaus")
+        for n in range(3):
+            self.w.angabe_hinzu(firma, (f"Merkmal {'abc'[n]}", "Wert"), "AAAA-0001", "Brief", "Wert")
+        gehalten, original = [], wissen._Verbindung.execute
+
+        def halte(con, *args):
+            gehalten.append(original(con, *args))
+            return gehalten[-1]
+        with patch.object(wissen._Verbindung, "execute", halte):
+            self.w.angabe_hinzu(firma, ("Merkmal a", "Wert"), "AAAA-0002", "Brief 2", "Wert")   # die erste von dreien
+            self.assertTrue(self.w.verbinde(firma, haus))
+            with self.assertRaises(wissen.Eingabefehler):
+                self.w.art_loeschen(self.art("Firma"))                                           # hat noch Einträge
+            self.w.trenne(firma, haus)
+        self.assertGreater(len(gehalten), 5)
 
     def test_anlegen_laden_aendern_loeschen(self):
         firma = self.w.art_neu("firma")                                      # gibt es schon: dieselbe Schublade
@@ -313,6 +333,7 @@ class TestWissen(unittest.TestCase):
             f"INSERT INTO angabe (eintrag, text, kid_id, zitat) VALUES ({e}, 'Wohnt in der Musterstraße 1.', "
             "'AAAA-0001', 'Musterstraße 1');"
             "INSERT INTO abgelehnt (kid_id, text, zitat, wann) VALUES ('AAAA-0001', 'Kunde der Rechnung', 'Kunde', 'x');"
+            + "DROP TABLE uebersicht; DROP TABLE gelesen;"
             + ("DROP TABLE merkmal_aus;" if version < 4 else "")
             + ("DROP TABLE abgelehnt;" if version < 3 else "")
             + f"PRAGMA user_version = {version};")
@@ -345,6 +366,51 @@ class TestWissen(unittest.TestCase):
                 con = sqlite3.connect(self.w.pfad)
                 self.assertEqual(con.execute("PRAGMA user_version").fetchone()[0], wissen.SCHEMA)
                 con.close()
+
+    def test_nachruesten_der_uebersicht_leert_nichts(self):
+        # Schema 5 → 6 (23.11.2026): nur eine Tabelle dazu - Angaben, Quellen und Abgelehntes bleiben
+        e = self.w.speichere(self.art("Firma"), "Muster GmbH")
+        self.w.angabe_hinzu(e, ("Telefon", "01234 5678"), "AAAA-0001", "Rechnung", "Tel.")
+        self.w.ablehnen("AAAA-0001", [{"text": "x", "zitat": "y"}])
+        con = sqlite3.connect(self.w.pfad)
+        con.executescript("DROP TABLE uebersicht; DROP TABLE gelesen; PRAGMA user_version = 5;")
+        con.close()
+        firma = self.art("Firma")
+        self.assertIsNone(self.w.uebersicht_spalten(firma))
+        d = self.w.lade(e)
+        self.assertEqual([(a["text"], len(a["quellen"])) for a in d["angaben"]], [("Telefon: 01234 5678", 1)])
+        self.assertEqual(len(self.w.abgelehnte(["AAAA-0001"])["AAAA-0001"]), 1)
+        self.assertFalse(os.path.exists(self.w.pfad_vor_umbau))
+        self.w.setze_uebersicht_spalten(firma, ["telefon", "adresse"])
+        self.assertEqual(self.w.uebersicht_spalten(firma), ["adresse", "telefon"])
+        self.w.setze_uebersicht_spalten(firma, [])
+        self.assertEqual(self.w.uebersicht_spalten(firma), [])                 # leer ist eine Wahl, None keine
+        self.w.setze_uebersicht_spalten(firma, None)
+        self.assertIsNone(self.w.uebersicht_spalten(firma))
+        # die Schublade verschwindet: ihre Wahl mit
+        self.w.setze_uebersicht_spalten(firma, ["telefon"])
+        self.w.arten_zusammenlegen(firma, self.art("Sonstiges"))
+        self.assertIsNone(self.w.uebersicht_spalten(firma))
+
+    def test_gelesenes_merken_und_nachruesten(self):
+        self.assertEqual(self.w.gelesene(), set())
+        self.w.merke_gelesen([])
+        self.assertFalse(os.path.exists(self.w.pfad))                          # nichts zu merken legt nichts an
+        self.w.merke_gelesen(["AAAA-0001", "", "AAAA-0002", "AAAA-0001"])
+        self.w.merke_gelesen(["AAAA-0002"])
+        self.assertEqual(self.w.gelesene(), {"AAAA-0001", "AAAA-0002"})
+        # Schema 6 → 7 (W7b): was schon Beleg oder Quelle war oder Abgelehntes hat, gilt als gelesen; nichts geht verloren
+        e = self.w.speichere(self.art("Firma"), "Muster GmbH")
+        self.w.beleg_hinzu(e, "BBBB-0001", "Brief")
+        self.w.angabe_hinzu(e, ("Telefon", "01234 5678"), "BBBB-0002", "Rechnung", "Tel.")
+        self.w.ablehnen("BBBB-0003", [{"text": "x", "zitat": "y"}])
+        self.assertEqual(self.w.gelesene(), {"AAAA-0001", "AAAA-0002"})        # danach zählt nur noch das Lesen
+        con = sqlite3.connect(self.w.pfad)
+        con.executescript("DROP TABLE gelesen; DELETE FROM beleg WHERE kid_id = 'BBBB-0002'; PRAGMA user_version = 6;")
+        con.close()
+        self.assertEqual(self.w.gelesene(), {"BBBB-0001", "BBBB-0002", "BBBB-0003"})
+        self.assertEqual([a["text"] for a in self.w.lade(e)["angaben"]], ["Telefon: 01234 5678"])
+        self.assertFalse(os.path.exists(self.w.pfad_vor_umbau))
 
     def test_merkmal_und_wert_aus_einer_zeile(self):
         for zeile, erwartet in (("Telefon: 01234 56789", ("Telefon", "01234 56789")),
@@ -388,6 +454,10 @@ class TestWissen(unittest.TestCase):
         self.w.angabe_weg(erste)
         self.assertEqual(self.w.abgelehnte(["AAAA-0001"]),
                          {"AAAA-0001": [{"text": "Versicherungsnummer: V-4711", "zitat": "Vers.-Nr. V-4711"}]})
+
+    def test_angabe_schluessel(self):
+        self.assertEqual(wissen.angabe_schluessel("Tel.:", "01234/5678"), wissen.angabe_schluessel("Telefonnummer", "01234 5678"))
+        self.assertNotEqual(wissen.angabe_schluessel("Baujahr", "1998"), wissen.angabe_schluessel("Einzug", "1998"))
 
     def test_laenderkennung_und_fachgebiet_sind_gleich(self):
         # Peters Abnahme W3 (19.11.2026): dieselbe Adresse mit und ohne „D-“, „Spezialgebiet“ neben „Fachgebiet“

@@ -123,7 +123,7 @@ class AbsenderNachlesenTool(BaseTool):
             return True
 
         base_url = app.config.get("ollama_url", ollama_client.DEFAULT_URL)
-        model = app.config.get("ollama_model", ollama_client.DEFAULT_MODEL)
+        model = ollama_client.eingestelltes_modell(app.config)
         known_tags = app.tag_manager.get_known_tags() if hasattr(app, "tag_manager") else []
         kategorien = app.tag_manager.get_kategorien() if hasattr(app, "tag_manager") else []
         dienst = getattr(app, "auto_pilot_service", None)

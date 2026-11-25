@@ -55,6 +55,12 @@ class TestToolEintraege(unittest.TestCase):
                          [("Tools → PDF-Werkzeuge", "PDF-Inspektor…"), ("Rechtsklick Dokument", "🛠 PDF-Inspektor")])
         self.assertTrue(menue_hilfe.finde(eintraege, "🛠 PDF-Inspektor", menue="Rechtsklick Dokument"))
 
+    def test_tool_im_ordnerbaum(self):
+        t = _Tool("Wiki", hooks=("folder_menu",))
+        t.ordner_label, t.ordner_hilfe = "Wiki: Dokumente lesen…", "zeigt den Stand"
+        self.assertEqual([(e.menue, e.label, e.was) for e in menue_hilfe.eintraege_fuer_tools([t])],
+                         [("Rechtsklick Ordner", "🛠 Wiki: Dokumente lesen…", "zeigt den Stand")])
+
     def test_reihenfolge_der_menues(self):
         tools = [_Tool("Z", "PDF-Werkzeuge"), _Tool("A", "Vollautomatik"), _Tool("Ohne")]
         menues = []

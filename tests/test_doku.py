@@ -28,7 +28,9 @@ def _module():
 
 
 def _dokumente():
-    return [os.path.basename(p) for p in glob.glob(os.path.join(WURZEL, "*.md"))]
+    """Pfade ab der Wurzel; die Konzepte liegen seit 23.11.2026 in konzepte/."""
+    return ([os.path.basename(p) for p in glob.glob(os.path.join(WURZEL, "*.md"))]
+            + ["konzepte/" + os.path.basename(p) for p in glob.glob(os.path.join(WURZEL, "konzepte", "*.md"))])
 
 
 class TestDoku(unittest.TestCase):
@@ -50,7 +52,7 @@ class TestDoku(unittest.TestCase):
     def test_jedes_konzept_steht_im_fahrplan(self):
         self._nur_mit_arbeitsnotizen()
         text = _lies("FAHRPLAN.md")
-        fehlt = sorted(d for d in _dokumente() if d.startswith("KONZEPT_") and d not in text)
+        fehlt = sorted(d for d in _dokumente() if "KONZEPT_" in d and f"]({d})" not in text)
         self.assertEqual(fehlt, [], "Neues Konzept: in die Konzept-Übersicht von FAHRPLAN.md eintragen")
 
     def test_hauptdokumente_verweisen_aufeinander(self):
@@ -69,8 +71,11 @@ class TestDoku(unittest.TestCase):
         kaputt = []
         for dokument in _dokumente():
             for ziel in re.findall(r"\]\(([^)#\s]+)(?:#[^)]*)?\)", _lies(dokument)):
-                # ../ zeigt aus dem Repo heraus (Projekte-Wiki), das gibt es nicht auf jedem Rechner
-                if not ziel.startswith(("http", "mailto", "..")) and not os.path.exists(os.path.join(WURZEL, ziel)):
+                if ziel.startswith(("http", "mailto")):
+                    continue
+                ab_wurzel = os.path.normpath(os.path.join(os.path.dirname(dokument), ziel))
+                # ..  zeigt aus dem Repo heraus (Projekte-Wiki), das gibt es nicht auf jedem Rechner
+                if not ab_wurzel.startswith("..") and not os.path.exists(os.path.join(WURZEL, ab_wurzel)):
                     kaputt.append(f"{dokument}: {ziel}")
         self.assertEqual(kaputt, [])
 
